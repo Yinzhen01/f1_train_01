@@ -24,7 +24,7 @@ from humanoid.utils import get_args, export_policy_as_jit, task_registry, Logger
 from isaacgym.torch_utils import *
 
 # Fallback: download checkpoint from OSS if not found locally
-FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813121400A315.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787205291&Signature=R2vqqLgSGWSm2kLHA2aJlP03vSg%3D"
+FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813173527A499.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787218985&Signature=ZOArPgQzMb9wR8vaEfs7GPL7Vt4%3D"
 
 
 def find_checkpoint():
@@ -225,29 +225,16 @@ def play(args):
     policy = ppo_runner.get_inference_policy(device=env.device)
     print("[play_gm] Policy loaded successfully!")
 
-    # Setup camera for video recording
-    camera_properties = gymapi.CameraProperties()
-    camera_properties.width = 1920
-    camera_properties.height = 1080
-    h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
-
-    # Attach camera to robot body (follow view)
-    camera_offset = gymapi.Vec3(2.0, -2.0, 1.5)
-    camera_rotation = gymapi.Quat.from_axis_angle(gymapi.Vec3(-0.3, 0.2, 1), np.deg2rad(135))
-    actor_handle = env.gym.get_actor_handle(env.envs[0], 0)
-    body_handle = env.gym.get_actor_rigid_body_handle(env.envs[0], actor_handle, 0)
-    env.gym.attach_camera_to_body(
-        h1, env.envs[0], body_handle,
-        gymapi.Transform(camera_offset, camera_rotation),
-        gymapi.FOLLOW_POSITION,
-    )
+    # 使用 base_task.py 已创建的 camera_handle (720x480)
+    h1 = env.camera_handle
+    print(f"[play_gm] Using camera handle: {h1}")
 
     # Setup video writer - save to logs dir (not /personal which may not exist)
     video_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", train_cfg.runner.experiment_name)
     os.makedirs(video_dir, exist_ok=True)
     video_path = os.path.join(video_dir, "play_output.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(video_path, fourcc, 50.0, (1920, 1080))
+    video = cv2.VideoWriter(video_path, fourcc, 50.0, (720, 480))
     print(f"[play_gm] Recording video to: {video_path}")
 
     # Get foot indices for diagnostics
@@ -336,7 +323,7 @@ def play(args):
         if frame_count % 2 == 0:  # Record at 25fps (sim runs at 50Hz)
             img = env.gym.get_camera_image(env.sim, env.envs[0], h1, gymapi.IMAGE_COLOR)
             if img is not None and len(img) > 0:
-                img = np.reshape(img, (1080, 1920, 4))
+                img = np.reshape(img, (480, 720, 4))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 video.write(img[..., :3])
 
