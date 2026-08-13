@@ -216,7 +216,8 @@ def play(args):
 
     # Create environment (headless with rendering enabled)
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
+    # 注：viewer 相机 API（set_camera/viewer_camera_look_at）在 headless 下无效，
+    # camera sensor 在下方 update_camera() 中手动定位跟随
 
     # Create runner and load policy
     ppo_runner, train_cfg, _ = task_registry.make_alg_runner(
@@ -228,6 +229,16 @@ def play(args):
     # 使用 base_task.py 已创建的 camera_handle (720x480)
     h1 = env.camera_handle
     print(f"[play_gm] Using camera handle: {h1}")
+
+    # 相机定位：位于机器人前上方斜侧，看向机器人（每 10 步更新实现跟随）
+    def update_camera():
+        root_pos = env.root_states[0, :3].cpu().numpy()
+        env.gym.set_camera_location(
+            h1, env.envs[0],
+            gymapi.Vec3(root_pos[0] + 2.5, root_pos[1] + 2.5, root_pos[2] + 1.0),
+            gymapi.Vec3(root_pos[0], root_pos[1], 0.4),
+        )
+    update_camera()
 
     # Setup video writer - save to logs dir (not /personal which may not exist)
     video_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", train_cfg.runner.experiment_name)
@@ -316,6 +327,8 @@ def play(args):
 
         # Render and record video frame
         frame_count += 1
+        if frame_count % 10 == 0:
+            update_camera()  # 相机跟随机器人
         env.gym.fetch_results(env.sim, True)
         env.gym.step_graphics(env.sim)
         env.gym.render_all_camera_sensors(env.sim)
@@ -326,6 +339,8 @@ def play(args):
                 img = np.reshape(img, (480, 720, 4))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 video.write(img[..., :3])
+                if frame_count % 500 == 0:
+                    print(f"[play_gm] Frame {frame_count} mean brightness: {img.mean():.1f}")
 
         if i % 200 == 0:
             print(f"[play_gm] Step {i}/{total_steps} | vel_x={env.base_lin_vel[0, 0].item():.3f} | height={env.root_states[0, 2].item():.3f}")
