@@ -61,6 +61,9 @@ class BaseTask():
         self.graphics_device_id = self.sim_device_id
         if self.headless == True:
             self.graphics_device_id = -1
+            # Allow headless rendering for video recording (no viewer but GPU camera sensors)
+            if getattr(cfg.env, 'enable_headless_render', False):
+                self.graphics_device_id = self.sim_device_id
 
         self.num_envs = cfg.env.num_envs
         self.num_obs = cfg.env.num_observations
