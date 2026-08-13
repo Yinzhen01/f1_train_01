@@ -331,7 +331,7 @@ class X1DHStandCfg(LeggedRobotCfg):
         # if true negative total rewards are clipped at zero (avoids early termination problems)
         only_positive_rewards = True
         # tracking reward = exp(-error*sigma)
-        tracking_sigma = 5 
+        tracking_sigma = 10
         max_contact_force = 700  # forces above this value are penalized
         
         class scales:
