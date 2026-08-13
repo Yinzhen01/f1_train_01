@@ -27,6 +27,61 @@ from isaacgym.torch_utils import *
 FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813173527A499.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787218985&Signature=ZOArPgQzMb9wR8vaEfs7GPL7Vt4%3D"
 
 
+def _gait_state_label(left_on, right_on):
+    if left_on and right_on:
+        return "double"
+    if not left_on and not right_on:
+        return "flight"
+    return "single"
+
+
+def _draw_play_hud(img, env, robot_index, play_step, target_vel, current_vel_x, avg_vel,
+                   left_force, right_force, l_on, r_on):
+    """视频 HUD overlay（与 play.py 一致）：速度指令/足端接触/步态相位/髋膝角度"""
+    img_h, img_w = img.shape[:2]
+    # 分辨率自适应：1080p 与 play.py 布局一致；低分辨率回退时压缩到左上角
+    if img_w >= 1600:
+        base_x, base_y, line_height = img_w - 1200, 55, 48
+    else:
+        base_x, base_y, line_height = 30, 45, 32
+
+    def draw_outlined_text(image, text, pos, color, scale=0.9):
+        cv2.putText(image, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(image, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
+
+    draw_outlined_text(
+        img, f"step={play_step:4d} | CMD:{target_vel:.2f} REAL:{current_vel_x:.2f} AVG:{avg_vel:.2f}",
+        (base_x, base_y), (255, 255, 0), 1.0)
+    l_color = (0, 255, 0) if l_on else (0, 0, 255)
+    r_color = (0, 255, 0) if r_on else (0, 0, 255)
+    draw_outlined_text(
+        img, f"L-FOOT: {'ON ' if l_on else 'OFF'} ({left_force:.1f} N)",
+        (base_x, base_y + line_height), l_color)
+    draw_outlined_text(
+        img, f"R-FOOT: {'ON ' if r_on else 'OFF'} ({right_force:.1f} N)",
+        (base_x, base_y + line_height * 2), r_color)
+    if l_on and r_on:
+        state_text, state_color = "STATE: *** DOUBLE SUPPORT ***", (0, 255, 255)
+    elif not l_on and not r_on:
+        state_text, state_color = "STATE: >>> FLIGHT PHASE <<<", (255, 0, 255)
+    else:
+        state_text, state_color = "STATE: SINGLE SUPPORT", (200, 200, 200)
+    draw_outlined_text(img, state_text, (base_x, base_y + line_height * 3), state_color, 1.0)
+    try:
+        phase = env._get_phase()[robot_index].item()
+        # X1-12DOF: L/R hip_pitch, knee (indices 0,3 / 6,9)
+        lp = env.dof_pos[robot_index, 0].item() * 57.3
+        lk = env.dof_pos[robot_index, 3].item() * 57.3
+        rp = env.dof_pos[robot_index, 6].item() * 57.3
+        rk = env.dof_pos[robot_index, 9].item() * 57.3
+        draw_outlined_text(
+            img,
+            f"ph={phase:.3f} | L hp/kn={lp:+.1f}/{lk:+.1f}  R hp/kn={rp:+.1f}/{rk:+.1f}",
+            (base_x, base_y + line_height * 4), (180, 255, 180), 0.95)
+    except Exception as e:
+        print(f"[play_gm] HUD phase info skipped: {e}")
+
+
 def find_checkpoint():
     """Search broadly for model_*.pt checkpoint"""
     search_dirs = [
@@ -226,17 +281,27 @@ def play(args):
     policy = ppo_runner.get_inference_policy(device=env.device)
     print("[play_gm] Policy loaded successfully!")
 
-    # 使用 base_task.py 已创建的 camera_handle (720x480)
-    h1 = env.camera_handle
-    print(f"[play_gm] Using camera handle: {h1}")
+    # 高分辨率相机：渲染管线已启用（headless GPU graphics），尝试 1920x1080；
+    # 失败（handle -1）时回退到 base_task.py 的 720x480 相机
+    camera_properties = gymapi.CameraProperties()
+    camera_properties.width = 1920
+    camera_properties.height = 1080
+    h1 = env.gym.create_camera_sensor(env.envs[0], camera_properties)
+    if h1 == -1:
+        h1 = env.camera_handle
+        CAM_W, CAM_H = 720, 480
+        print("[play_gm] WARN: high-res camera failed, fallback to base 720x480")
+    else:
+        CAM_W, CAM_H = 1920, 1080
+    print(f"[play_gm] Using camera handle: {h1} ({CAM_W}x{CAM_H})")
 
-    # 相机定位：位于机器人前上方斜侧，看向机器人（每 10 步更新实现跟随）
+    # 相机定位：机器人前上方斜侧跟随（距离 2m 保证清晰度）
     def update_camera():
         root_pos = env.root_states[0, :3].cpu().numpy()
         env.gym.set_camera_location(
             h1, env.envs[0],
-            gymapi.Vec3(root_pos[0] + 2.5, root_pos[1] + 2.5, root_pos[2] + 1.0),
-            gymapi.Vec3(root_pos[0], root_pos[1], 0.4),
+            gymapi.Vec3(root_pos[0] + 1.4, root_pos[1] + 1.4, root_pos[2] + 0.7),
+            gymapi.Vec3(root_pos[0], root_pos[1], 0.5),
         )
     update_camera()
 
@@ -245,7 +310,7 @@ def play(args):
     os.makedirs(video_dir, exist_ok=True)
     video_path = os.path.join(video_dir, "play_output.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(video_path, fourcc, 50.0, (720, 480))
+    video = cv2.VideoWriter(video_path, fourcc, 50.0, (CAM_W, CAM_H))
     print(f"[play_gm] Recording video to: {video_path}")
 
     # Get foot indices for diagnostics
@@ -277,6 +342,7 @@ def play(args):
 
     FIX_COMMAND = True
     fix_vel = 0.5  # Forward walking speed
+    vel_sum = 0.0  # HUD 平均速度统计
 
     for i in range(total_steps):
         actions = policy(obs.detach())
@@ -288,6 +354,8 @@ def play(args):
             env.commands[:, 3] = 0.0
 
         obs, critic_obs, rews, dones, infos = env.step(actions.detach())
+        vel_sum += env.base_lin_vel[0, 0].item()
+        avg_vel = vel_sum / (i + 1)
 
         # Record diagnostic data
         diag["base_height"].append(env.root_states[0, 2].item())
@@ -333,11 +401,17 @@ def play(args):
         env.gym.step_graphics(env.sim)
         env.gym.render_all_camera_sensors(env.sim)
 
-        if frame_count % 2 == 0:  # Record at 25fps (sim runs at 50Hz)
+        if frame_count % 2 == 0:  # 50fps 视频（policy 100Hz，每 2 步 1 帧）
             img = env.gym.get_camera_image(env.sim, env.envs[0], h1, gymapi.IMAGE_COLOR)
             if img is not None and len(img) > 0:
-                img = np.reshape(img, (480, 720, 4))
+                img = np.reshape(img, (CAM_H, CAM_W, 4))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                # HUD overlay：与 play.py viewer 录制一致的状态文字
+                _fz_l = env.contact_forces[0, left_foot_idx, 2].item()
+                _fz_r = env.contact_forces[0, right_foot_idx, 2].item()
+                _draw_play_hud(img, env, 0, i,
+                               env.commands[0, 0].item(), env.base_lin_vel[0, 0].item(), avg_vel,
+                               _fz_l, _fz_r, _fz_l > 1.0, _fz_r > 1.0)
                 video.write(img[..., :3])
                 if frame_count % 500 == 0:
                     print(f"[play_gm] Frame {frame_count} mean brightness: {img.mean():.1f}")
