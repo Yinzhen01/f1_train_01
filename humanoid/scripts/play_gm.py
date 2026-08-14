@@ -295,13 +295,26 @@ def play(args):
         CAM_W, CAM_H = 1920, 1080
     print(f"[play_gm] Using camera handle: {h1} ({CAM_W}x{CAM_H})")
 
-    # 相机定位：机器人前上方斜侧跟随（距离 2m 保证清晰度）
+    # 相机跟随（防晃动）：固定相机高度 + 水平 EMA 平滑
+    # root z 随步态 ±2-3cm 颠簸，若相机 z 跟随会上下晃；水平低通滤波消除步态振荡
+    cam_xy = np.zeros(2)
+    cam_inited = False
+    CAM_SMOOTH = 0.2  # EMA 系数（10Hz 更新，时间常数约 0.5s，2Hz 步态振荡衰减至 ~15%）
+    CAM_OFF = np.array([1.4, 1.4])  # 相机相对机器人的水平偏移
+
     def update_camera():
+        nonlocal cam_xy, cam_inited
         root_pos = env.root_states[0, :3].cpu().numpy()
+        goal = root_pos[:2] + CAM_OFF
+        if not cam_inited:
+            cam_xy = goal.copy()
+            cam_inited = True
+        else:
+            cam_xy = CAM_SMOOTH * goal + (1 - CAM_SMOOTH) * cam_xy
         env.gym.set_camera_location(
             h1, env.envs[0],
-            gymapi.Vec3(root_pos[0] + 1.4, root_pos[1] + 1.4, root_pos[2] + 0.7),
-            gymapi.Vec3(root_pos[0], root_pos[1], 0.5),
+            gymapi.Vec3(cam_xy[0], cam_xy[1], 1.2),              # 固定高度
+            gymapi.Vec3(cam_xy[0] - 1.4, cam_xy[1] - 1.4, 0.5),  # 看向固定高度躯干，视线方向恒定
         )
     update_camera()
 
