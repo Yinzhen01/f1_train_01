@@ -147,7 +147,7 @@ class X1DHStandCfg(LeggedRobotCfg):
         stiffness = {'hip_pitch_joint': 30, 'hip_roll_joint': 40,'hip_yaw_joint': 35,
                      'knee_pitch_joint': 100, 'ankle_pitch_joint': 35, 'ankle_roll_joint': 35}
         damping = {'hip_pitch_joint': 3, 'hip_roll_joint': 3.0,'hip_yaw_joint': 4, 
-                   'knee_pitch_joint': 10, 'ankle_pitch_joint': 1.5, 'ankle_roll_joint': 1.5}
+                   'knee_pitch_joint': 8, 'ankle_pitch_joint': 1.5, 'ankle_roll_joint': 1.5}
 
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.5
@@ -331,7 +331,7 @@ class X1DHStandCfg(LeggedRobotCfg):
         # if true negative total rewards are clipped at zero (avoids early termination problems)
         only_positive_rewards = True
         # tracking reward = exp(-error*sigma)
-        tracking_sigma = 10
+        tracking_sigma = 5
         max_contact_force = 700  # forces above this value are penalized
         
         class scales:

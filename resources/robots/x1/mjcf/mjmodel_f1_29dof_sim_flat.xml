@@ -1,0 +1,4 @@
+<mujoco model="zhiyuan scene">
+    <include file="robot/xyber_f1/mjmodel_f1_29dof_sim.xml" />
+    <include file="environment/flat.xml" />
+</mujoco>
