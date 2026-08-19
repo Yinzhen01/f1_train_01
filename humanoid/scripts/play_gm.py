@@ -24,7 +24,7 @@ from humanoid.utils import get_args, export_policy_as_jit, task_registry, Logger
 from isaacgym.torch_utils import *
 
 # Fallback: download checkpoint from OSS if not found locally
-FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813173527A499.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787218985&Signature=ZOArPgQzMb9wR8vaEfs7GPL7Vt4%3D"
+FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813121400A315.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787222353&Signature=rnEcXxn1dzAVReNKWFYgZ0DvlZI%3D"
 
 
 def _gait_state_label(left_on, right_on):

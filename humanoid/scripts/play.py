@@ -386,7 +386,7 @@ def play(args):
     if _vf_reset > 0:
         print(f"[sync] reset 标定帧 → video_frame={_vf_reset}  step=-1")
 
-    for i in range(10 * stop_state_log):
+    for i in range(3 * stop_state_log):  # 30s 视频（0.01s/步；CSV 窗口 0-999 不变）
         actions = policy(obs.detach())
         _last_actions = actions.detach()
 
