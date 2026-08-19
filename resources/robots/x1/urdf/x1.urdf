@@ -1293,7 +1293,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-1" upper="2" effort="180" velocity="8.90" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="left_hip_roll_link">
@@ -1348,7 +1348,7 @@
     <axis
       xyz="0 0 -1" />
     <limit lower="-1.5" upper="0.2" effort="150.0" velocity="27.23" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="left_hip_yaw_link">
@@ -1403,7 +1403,7 @@
     <axis
       xyz="0 0 -1" />
     <limit lower="-1.5" upper="1.5" effort="150.0" velocity="27.23" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="left_knee_pitch_link">
@@ -1449,7 +1449,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="0" upper="2" effort="180.0" velocity="8.9" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="left_ankle_pitch_link">
@@ -1504,7 +1504,7 @@
     <axis
       xyz="0 0 -1" />
     <limit lower="-0.41" upper="0.35" effort="80.0" velocity="13.61" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="left_ankle_roll_link">
@@ -1559,7 +1559,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-0.64" upper="0.64" effort="80.0" velocity="13.61" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="leg_l_toe_a_link">
@@ -1934,7 +1934,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-2" upper="1" effort="180.0" velocity="8.9" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="right_hip_roll_link">
@@ -1980,7 +1980,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-0.2" upper="1.5" effort="150.0" velocity="27.23" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="right_hip_yaw_link">
@@ -2035,7 +2035,7 @@
     <axis
       xyz="-0 0 1" />
     <limit lower="-1.5" upper="1.5" effort="150.0" velocity="27.23" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="right_knee_pitch_link">
@@ -2081,7 +2081,7 @@
     <axis
       xyz="0 0 -1" />
     <limit lower="0" upper="2" effort="180.0" velocity="8.9" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="right_ankle_pitch_link">
@@ -2132,7 +2132,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-0.41" upper="0.35" effort="80.0" velocity="13.61" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="right_ankle_roll_link">
@@ -2178,7 +2178,7 @@
     <axis
       xyz="0 0 1" />
     <limit lower="-0.64" upper="0.64" effort="80.0" velocity="13.61" />
-      <dynamics damping="1.0" />
+      <dynamics damping="0" />
   </joint>
   <link
     name="leg_r_toe_a_link">

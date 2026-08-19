@@ -172,8 +172,7 @@ def play(args):
     env_cfg.domain_rand.add_dof_lag = False
     env_cfg.domain_rand.add_imu_lag = False
     env_cfg.noise.curriculum = False
-    env_cfg.commands.heading_command = False  # exp_heading_false: play 与训练一致（yaw 独立指令，commands[3] 死位）；
-    # 验收 cmd=(0.5,0,0) 下 yaw drift（对照 exp_010 旧 URDF 36°，判定 URDF 修复是否消除转圈根因）
+    env_cfg.commands.heading_command = True  # exp_heading: play 时也开启 heading 跟踪
 
     # --- 踝关节阶跃辨识名义值（固定点，非随机区间）---
     # pitch: coulomb0.5 viscous0.225 arm0.15; roll: coulomb0.5 viscous0 arm0.035; tauLPF=8ms

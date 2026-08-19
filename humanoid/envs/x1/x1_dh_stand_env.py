@@ -734,10 +734,14 @@ class X1DHStandEnv(LeggedRobot):
         Calculates a reward based on how closely the robot's linear velocity matches the commanded values.
         """
         stand_command = (torch.norm(self.commands[:, :3], dim=1) <= self.cfg.commands.stand_com_threshold)
-        lin_vel_error_square = torch.sum(torch.square(
-            self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
-        lin_vel_error_abs = torch.sum(torch.abs(
-            self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        # C6: vy 误差加权 ×10（方向精度优先）。依据 damp0_reward_v1 play 实测：vy 0.077 m/s、侧漂 0.778m、
+        # crab ~10°（traj 13° - yaw 3°）；平方核对小误差近乎平坦（vy 全修仅 +0.045/步）→ 加权后梯度增强 ~9 倍。
+        # vx 不加权：速度数值精度低要求（用户目标③），避免全局压力重蹈 damp1 塌缩。
+        # cmd_y≠0 时核仍围绕 cmd_y，横向命令跟随（目标④）同步收紧。
+        lin_vel_error_square = torch.square(self.commands[:, 0] - self.base_lin_vel[:, 0]) \
+            + 10.0 * torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
+        lin_vel_error_abs = torch.abs(self.commands[:, 0] - self.base_lin_vel[:, 0]) \
+            + 10.0 * torch.abs(self.commands[:, 1] - self.base_lin_vel[:, 1])
         r_square = torch.exp(-lin_vel_error_square * self.cfg.rewards.tracking_sigma)
         r_abs = torch.exp(-lin_vel_error_abs * self.cfg.rewards.tracking_sigma * 2)
         r = torch.where(stand_command, r_abs, r_square)

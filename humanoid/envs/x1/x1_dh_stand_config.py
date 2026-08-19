@@ -304,10 +304,7 @@ class X1DHStandCfg(LeggedRobotCfg):
                            "stand": [2,3],
                            "walk_omnidirectional": [4,6]}
 
-        heading_command = False  # exp_heading_false: yaw 变独立指令（vx/vy/yaw 独立采样，omnidirectional else 分支），
-        # 恢复 exp_010 baseline 四命令语义（前进/倒退/横移/原地转）。试验假设：exp_010 旧 URDF 的 yaw 36° 转圈
-        # 根因是左右物理不对称（已被 new_urdf 修复）→ heading=False 下 yaw drift 应 <10°（对照 heading=True 线）。
-        # 若仍大幅转圈 → 转圈根因不止 URDF，heading=True 线保留。
+        heading_command = True  # exp_heading: 开启 heading 跟踪，ang_vel 由 heading 误差实时算
         stand_com_threshold = 0.05 # if (lin_vel_x, lin_vel_y, ang_vel_yaw).norm < this, robot should stand
         sw_switch = True # use stand_com_threshold or not
 
