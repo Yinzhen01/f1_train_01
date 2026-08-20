@@ -123,6 +123,7 @@ class DHOnPolicyRunner:
         for it in range(self.current_learning_iteration, tot_iter):
             self.it = it
             start = time.time()
+            debug_sums = {}
 
             obs_std, obs_mean = torch.std_mean(obs, dim=0)
             # Rollout
@@ -139,6 +140,14 @@ class DHOnPolicyRunner:
                     )
                     self.alg.process_env_step(rewards, dones, infos)
 
+                    if hasattr(self.env, "get_command_tracking_debug"):
+                        step_debug = self.env.get_command_tracking_debug()
+                        for key, value in step_debug.items():
+                            value = value.detach()
+                            if key not in debug_sums:
+                                debug_sums[key] = torch.zeros_like(value)
+                            debug_sums[key] += value
+
                     if self.log_dir is not None:
                         # Book keeping
                         if "episode" in infos:
@@ -154,6 +163,11 @@ class DHOnPolicyRunner:
                         )
                         cur_reward_sum[new_ids] = 0
                         cur_episode_length[new_ids] = 0
+
+                debug_metrics = {
+                    key: (value / self.num_steps_per_env).item()
+                    for key, value in debug_sums.items()
+                }
 
                 stop = time.time()
                 collection_time = stop - start
@@ -220,6 +234,8 @@ class DHOnPolicyRunner:
             "Perf/collection time", locs["collection_time"], locs["it"]
         )
         self.writer.add_scalar("Perf/learning_time", locs["learn_time"], locs["it"])
+        for key, value in locs["debug_metrics"].items():
+            self.writer.add_scalar("Debug/" + key, value, locs["it"])
         if len(locs["rewbuffer"]) > 0:
             self.writer.add_scalar(
                 "Train/mean_reward", statistics.mean(locs["rewbuffer"]), locs["it"]
@@ -275,6 +291,23 @@ class DHOnPolicyRunner:
             #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
             #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
 
+        debug_string = ""
+        debug_fields = (
+            ("Moving env fraction", "command/moving_fraction"),
+            ("Zero-xy turn fraction", "command/zero_xy_turn_fraction"),
+            ("Command |vx| mean", "command/vx_abs_mean"),
+            ("Base |vx| mean", "tracking/base_vx_abs_mean"),
+            ("Active vx abs error", "tracking/vx_error_abs_active"),
+            ("Active vx response ratio", "tracking/vx_response_ratio"),
+            ("Active vx too-slow fraction", "tracking/vx_too_slow_fraction"),
+            ("Straight lateral drift", "tracking/straight_lateral_drift_abs"),
+            ("Contact foot slip speed", "contact/foot_slip_speed_mean"),
+        )
+        for label, key in debug_fields:
+            if key in locs["debug_metrics"]:
+                debug_string += f"{(label + ':'):>{pad}} {locs['debug_metrics'][key]:.4f}\n"
+
+        log_string += debug_string
         log_string += ep_string
         log_string += (
             f"""{'-' * width}\n"""

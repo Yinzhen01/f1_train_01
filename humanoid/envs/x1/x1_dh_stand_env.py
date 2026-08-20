@@ -569,6 +569,92 @@ class X1DHStandEnv(LeggedRobot):
             self.num_envs, device=self.device, dtype=torch.long)
         self.gait_start = torch.randint(0, 2, (self.num_envs,)).to(self.device)*0.5
 
+    def get_command_tracking_debug(self):
+        """Return rollout-level diagnostics that expose in-place stepping.
+
+        Reward totals alone cannot distinguish forward locomotion from a policy
+        that satisfies the phase/contact rewards while remaining near zero
+        velocity.  The runner averages these scalar tensors over every rollout
+        step and publishes them under ``Debug/`` in TensorBoard/Gradmotion.
+        """
+        command_xy = self.commands[:, :2]
+        command_vx = self.commands[:, 0]
+        command_vy = self.commands[:, 1]
+        command_yaw = self.commands[:, 2]
+        base_vx = self.base_lin_vel[:, 0]
+        base_vy = self.base_lin_vel[:, 1]
+
+        moving = torch.norm(self.commands[:, :3], dim=1) > self.cfg.commands.stand_com_threshold
+        vx_active = torch.abs(command_vx) > 0.1
+        straight_forward = (command_vx > 0.1) & (torch.abs(command_vy) < 0.05)
+        zero_xy_turn = (
+            (torch.norm(command_xy, dim=1) <= self.cfg.commands.stand_com_threshold)
+            & (torch.abs(command_yaw) > self.cfg.commands.stand_com_threshold)
+        )
+
+        def masked_mean(values, mask):
+            mask_float = mask.to(values.dtype)
+            return torch.sum(values * mask_float) / torch.clamp(torch.sum(mask_float), min=1.0)
+
+        vx_error = base_vx - command_vx
+        vy_error = base_vy - command_vy
+        lin_error = torch.norm(self.base_lin_vel[:, :2] - command_xy, dim=1)
+        vx_response_ratio = torch.clamp(base_vx / torch.where(
+            vx_active, command_vx, torch.ones_like(command_vx)
+        ), -3.0, 3.0)
+        vx_direction_match = (torch.sign(base_vx) == torch.sign(command_vx)).float()
+        vx_too_slow = (torch.abs(base_vx) < 0.5 * torch.abs(command_vx)).float()
+
+        # Correlation reveals whether base velocity changes with the command,
+        # even when signed means cancel across forward/backward commands.
+        active_float = vx_active.float()
+        active_count = torch.clamp(torch.sum(active_float), min=1.0)
+        command_vx_active_mean = torch.sum(command_vx * active_float) / active_count
+        base_vx_active_mean = torch.sum(base_vx * active_float) / active_count
+        command_centered = (command_vx - command_vx_active_mean) * active_float
+        base_centered = (base_vx - base_vx_active_mean) * active_float
+        vx_correlation = torch.sum(command_centered * base_centered) / torch.sqrt(
+            torch.sum(torch.square(command_centered)) * torch.sum(torch.square(base_centered)) + 1e-6
+        )
+
+        foot_contact = self.contact_forces[:, self.feet_indices, 2] > 40.0
+        foot_speed_xy = torch.norm(self.rigid_state[:, self.feet_indices, 10:12], dim=2)
+        contact_float = foot_contact.float()
+        contact_foot_slip = torch.sum(foot_speed_xy * contact_float) / torch.clamp(
+            torch.sum(contact_float), min=1.0
+        )
+
+        return {
+            "command/moving_fraction": moving.float().mean(),
+            "command/stand_fraction": (~moving).float().mean(),
+            "command/vx_active_fraction": vx_active.float().mean(),
+            "command/vx_positive_fraction": (command_vx > 0.1).float().mean(),
+            "command/vx_negative_fraction": (command_vx < -0.1).float().mean(),
+            "command/lateral_active_fraction": (torch.abs(command_vy) > 0.1).float().mean(),
+            "command/zero_xy_turn_fraction": zero_xy_turn.float().mean(),
+            "command/vx_mean": command_vx.mean(),
+            "command/vx_abs_mean": torch.abs(command_vx).mean(),
+            "command/vy_abs_mean": torch.abs(command_vy).mean(),
+            "command/yaw_abs_mean": torch.abs(command_yaw).mean(),
+            "tracking/base_vx_mean": base_vx.mean(),
+            "tracking/base_vx_abs_mean": torch.abs(base_vx).mean(),
+            "tracking/base_vy_abs_mean": torch.abs(base_vy).mean(),
+            "tracking/lin_vel_error_mean": masked_mean(lin_error, moving),
+            "tracking/vx_error_abs_active": masked_mean(torch.abs(vx_error), vx_active),
+            "tracking/vy_error_abs_moving": masked_mean(torch.abs(vy_error), moving),
+            "tracking/vx_response_ratio": masked_mean(vx_response_ratio, vx_active),
+            "tracking/vx_direction_match_fraction": masked_mean(vx_direction_match, vx_active),
+            "tracking/vx_too_slow_fraction": masked_mean(vx_too_slow, vx_active),
+            "tracking/vx_command_response_correlation": vx_correlation,
+            "tracking/straight_lateral_drift_abs": masked_mean(torch.abs(base_vy), straight_forward),
+            "tracking/yaw_rate_error_abs_moving": masked_mean(
+                torch.abs(self.base_ang_vel[:, 2] - command_yaw), moving
+            ),
+            "contact/foot_slip_speed_mean": contact_foot_slip,
+            "policy/action_rms": torch.sqrt(torch.mean(torch.square(self.actions))),
+            "policy/torque_rms": torch.sqrt(torch.mean(torch.square(self.torques))),
+        }
+
 # ================================================ Rewards ================================================== #
     def _reward_ref_joint_pos(self):
         """
