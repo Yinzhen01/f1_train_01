@@ -36,10 +36,18 @@ from humanoid.envs import *
 from humanoid.utils import get_args, task_registry
 
 def train(args):
+    print(f"[gradmotion-smoke] creating environment: task={args.task}", flush=True)
     env, env_cfg = task_registry.make_env(name=args.task, args=args)
+    print(f"[gradmotion-smoke] environment ready: num_envs={env.num_envs}", flush=True)
     ppo_runner, train_cfg, log_dir = task_registry.make_alg_runner(env=env, name=args.task, args=args)
+    print(
+        f"[gradmotion-smoke] runner ready: max_iterations={train_cfg.runner.max_iterations}",
+        flush=True,
+    )
     ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations, init_at_random_ep_len=False)
+    print("[gradmotion-smoke] training completed", flush=True)
 
 if __name__ == '__main__':
     args = get_args()
+    print("[gradmotion-smoke] arguments parsed", flush=True)
     train(args)
