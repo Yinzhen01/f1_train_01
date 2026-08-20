@@ -20,7 +20,7 @@ from datetime import datetime
 
 from humanoid import LEGGED_GYM_ROOT_DIR
 from humanoid.envs import *
-from humanoid.utils import get_args, export_policy_as_jit, task_registry, Logger
+from humanoid.utils import get_args, task_registry
 from isaacgym.torch_utils import *
 
 # Fallback: download checkpoint from OSS if not found locally
