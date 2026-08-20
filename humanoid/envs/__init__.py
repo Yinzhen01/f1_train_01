@@ -36,6 +36,10 @@ from .base.legged_robot import LeggedRobot
 
 from .x1.x1_dh_stand_config  import X1DHStandCfg, X1DHStandCfgPPO
 from .x1.x1_dh_stand_no_dr_config import X1DHStandNoDRCfg, X1DHStandNoDRCfgPPO
+from .x1.x1_dh_stand_no_dr_forward_config import (
+    X1DHStandNoDRForwardCfg,
+    X1DHStandNoDRForwardCfgPPO,
+)
 
 from .x1.x1_dh_stand_env import X1DHStandEnv
 
@@ -47,4 +51,10 @@ task_registry.register(
     X1DHStandEnv,
     X1DHStandNoDRCfg(),
     X1DHStandNoDRCfgPPO(),
+)
+task_registry.register(
+    "x1_dh_stand_no_dr_forward",
+    X1DHStandEnv,
+    X1DHStandNoDRForwardCfg(),
+    X1DHStandNoDRForwardCfgPPO(),
 )
