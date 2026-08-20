@@ -40,6 +40,10 @@ from .x1.x1_dh_stand_no_dr_forward_config import (
     X1DHStandNoDRForwardCfg,
     X1DHStandNoDRForwardCfgPPO,
 )
+from .x1.x1_dh_stand_no_dr_mixed_config import (
+    X1DHStandNoDRMixedCfg,
+    X1DHStandNoDRMixedCfgPPO,
+)
 
 from .x1.x1_dh_stand_env import X1DHStandEnv
 
@@ -57,4 +61,10 @@ task_registry.register(
     X1DHStandEnv,
     X1DHStandNoDRForwardCfg(),
     X1DHStandNoDRForwardCfgPPO(),
+)
+task_registry.register(
+    "x1_dh_stand_no_dr_mixed",
+    X1DHStandEnv,
+    X1DHStandNoDRMixedCfg(),
+    X1DHStandNoDRMixedCfgPPO(),
 )
