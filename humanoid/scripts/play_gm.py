@@ -82,8 +82,12 @@ def _draw_play_hud(img, env, robot_index, play_step, target_vel, current_vel_x, 
         print(f"[play_gm] HUD phase info skipped: {e}")
 
 
-def find_checkpoint():
-    """Search broadly for model_*.pt checkpoint"""
+def find_checkpoint(checkpoint_num=-1):
+    """Search for an exact requested checkpoint, or the latest checkpoint."""
+    expected_name = None
+    if checkpoint_num is not None and int(checkpoint_num) >= 0:
+        expected_name = f"model_{int(checkpoint_num)}.pt"
+        print(f"[play_gm] Requiring exact checkpoint: {expected_name}")
     search_dirs = [
         "/personal",
         "/workspace",
@@ -115,9 +119,14 @@ def find_checkpoint():
             models += sorted(glob.glob(os.path.join(d, "*.pt")))
         # Exclude deploy/video/diag files
         models = [m for m in models if "deploy" not in m and "video" not in m and "diag" not in m]
+        if expected_name is not None:
+            models = [m for m in models if os.path.basename(m) == expected_name]
         if models:
             print(f"[play_gm] Found checkpoint: {models[-1]}")
             return models[-1]  # Return latest
+    if expected_name is not None:
+        print(f"[play_gm] ERROR: requested checkpoint {expected_name} was not found")
+        return None
     # Fallback: download from OSS if not found locally
     print("[play_gm] No local checkpoint found, downloading from OSS...")
     download_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", "x1_dh_stand", "gm_play")
@@ -252,7 +261,7 @@ def play(args):
     train_cfg.seed = 12345
 
     # Find and load checkpoint
-    checkpoint_path = find_checkpoint()
+    checkpoint_path = find_checkpoint(args.checkpoint)
     if checkpoint_path is None:
         print("[play_gm] ERROR: No checkpoint found in /personal/ or logs/")
         sys.exit(1)
@@ -354,7 +363,7 @@ def play(args):
     }
 
     FIX_COMMAND = True
-    fix_vel = 0.5  # Forward walking speed
+    fix_vel = 0.4  # Match the fixed command used by the trainability run
     vel_sum = 0.0  # HUD 平均速度统计
 
     for i in range(total_steps):
