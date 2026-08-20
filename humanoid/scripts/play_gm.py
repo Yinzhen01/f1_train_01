@@ -340,8 +340,9 @@ def play(args):
     right_foot_idx = env.feet_indices[1].item()
 
     obs = env.get_observations()
-    total_steps = 2000  # 40 seconds at 50Hz control
+    total_steps = 2000  # 20 seconds at 100Hz control
     frame_count = 0
+    video_frame_count = 0
 
     # Diagnostic data storage
     diag = {
@@ -435,6 +436,7 @@ def play(args):
                                env.commands[0, 0].item(), env.base_lin_vel[0, 0].item(), avg_vel,
                                _fz_l, _fz_r, _fz_l > 1.0, _fz_r > 1.0)
                 video.write(img[..., :3])
+                video_frame_count += 1
                 if frame_count % 500 == 0:
                     print(f"[play_gm] Frame {frame_count} mean brightness: {img.mean():.1f}")
 
@@ -443,7 +445,7 @@ def play(args):
 
     # Cleanup
     video.release()
-    print(f"[play_gm] Video saved to {video_path} ({frame_count} frames)")
+    print(f"[play_gm] Video saved to {video_path} ({video_frame_count} frames)")
 
     # Package video as .pt for GM SDK auto-upload
     if os.path.exists(video_path):
@@ -457,7 +459,7 @@ def play(args):
     # Print summary
     print("\n[play_gm] === Playback Summary ===")
     print(f"  Total steps: {total_steps}")
-    print(f"  Frames recorded: {frame_count}")
+    print(f"  Frames recorded: {video_frame_count}")
     avg_vel = np.mean(diag["base_vel_x"])
     avg_height = np.mean(diag["base_height"])
     print(f"  Avg forward velocity: {avg_vel:.3f} m/s (target: {fix_vel})")
