@@ -30,21 +30,17 @@ class X1DHStandNoDRForwardCfg(X1DHStandNoDRCfg):
             heading = [0.0, 0.0]
 
     class rewards(X1DHStandNoDRCfg.rewards):
-        # Preserve negative feedback from low-speed and hard-tracking terms.
-        only_positive_rewards = False
+        # Keep the baseline's early-training safety.  Without this clamp, the
+        # first A/B run learned to terminate a negative-return episode by
+        # pitching forward instead of learning a stable gait.
+        only_positive_rewards = True
 
         class scales(X1DHStandNoDRCfg.rewards.scales):
-            # Make forward translation dominate the learnability gate.
+            # Preserve the complete baseline gait/contact prior and change only
+            # the terms that distinguish in-place stepping from translation.
             tracking_lin_vel = 4.0
             low_speed = 1.0
             track_vel_hard = 1.0
-
-            # Keep a weak gait prior while removing the profitable in-place
-            # stepping shortcut observed in TASK_20260820_175.
-            ref_joint_pos = 0.5
-            feet_clearance = 0.25
-            feet_contact_number = 0.5
-            foot_slip = -0.25
 
 
 class X1DHStandNoDRForwardCfgPPO(X1DHStandNoDRCfgPPO):
