@@ -33,6 +33,14 @@
 
 from .helpers import class_to_dict, get_load_path, get_args, export_policy_as_jit, set_seed, update_class_from_dict
 from .task_registry import task_registry
-from .logger import Logger
 from .math import *
 from .terrain import Terrain
+
+
+def __getattr__(name):
+    """Load plotting helpers only when playback or deployment requests them."""
+    if name == "Logger":
+        from .logger import Logger
+
+        return Logger
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

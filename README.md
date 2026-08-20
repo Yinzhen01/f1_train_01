@@ -22,6 +22,7 @@ This project is about the reinforcement learning training code used by AgiBot X1
 6. Install the training code dependencies:
    - Clone this repository.
    - `pip install -e .`
+   - For playback, visualization, or MuJoCo sim2sim, install the optional deployment dependencies with `pip install -e ".[deploy]"`.
 ### Usage
 #### Train:
 ```python scripts/train.py --task=x1_dh_stand --run_name=<run_name> --headless```

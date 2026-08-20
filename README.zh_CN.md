@@ -23,6 +23,7 @@
 6. 安装训练代码依赖：
    - Clone this repository.
    - `pip install -e .`
+   - 如需回放、可视化或 MuJoCo sim2sim，请安装可选部署依赖：`pip install -e ".[deploy]"`。
 
 ### 使用
 #### Train:
