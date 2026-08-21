@@ -62,6 +62,13 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   seed 5、4096 environments，初始追加 2000 PPO updates。保留 nominal
   armature，仅随机 friction `[0.45, 0.80]`、base mass `[-1, 1] kg`、COM
   各轴 `±0.015 m`、PD gains/torque `[0.95, 1.05]`。
+- Stage-1 中间检查点 `model_6200` 已通过 `TASK_20260821_040` 做一次
+  deterministic nominal Isaac Gym 渲染，推理 commit `0b18660`。日志确认
+  nominal 动力学、DR/噪声关闭、12 关节 nominal armature、50 Hz 平滑相机，
+  2000 steps/1000 帧；平均前进速度 `0.400 m/s`（目标 `0.4 m/s`），平均高度
+  `0.614 m`，无异常。视频已验证为 1920×1080、50 fps、20 秒，路径为
+  `outputs/isaacgym/TASK_20260821_040/play_output.mp4`。这是中间视觉检查，
+  不替代 Stage-1 最终 checkpoint 的门槛评估。
 - 标准 Isaac Gym 推理收敛为 nominal-only；随机 DR 鲁棒性测试使用独立评估流程，不与普通渲染混用。
 
 ## 已作废并退出实验矩阵
