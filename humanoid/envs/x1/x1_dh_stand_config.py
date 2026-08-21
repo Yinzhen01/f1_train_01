@@ -52,6 +52,15 @@ class X1DHStandCfg(LeggedRobotCfg):
         use_ref_actions = False
         num_commands = 5 # sin_pos cos_pos vx vy vz
 
+    class motion_reference:
+        # Disabled for all existing tasks.  Dedicated imitation configs opt in.
+        enabled = False
+        file = ""
+        start_time = None
+        end_time = None
+        close_loop = True
+        phase_offset = 0.0
+
     class safety:
         # safety factors
         pos_limit = 1.0

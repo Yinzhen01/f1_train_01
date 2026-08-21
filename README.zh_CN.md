@@ -31,6 +31,20 @@
 - 训练好的模型会存`/log/<experiment_name>/exported_data/<date_time><run_name>/model_<iteration>.pt` 其中 `<experiment_name>` 在config文件中定义.
 ![](doc/train.gif)
 
+使用仓库内 `resources/motions/x1/walk_12dof.csv` 的重定向步态进行 12 关节模仿训练：
+
+```powershell
+python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_no_dr `
+  --run_name=walk_csv_imitation `
+  --headless
+```
+
+该任务只按名称读取左右髋、膝、踝共 12 个关节；CSV 中的浮动基座、腰、手臂、
+颈部和头部不会进入参考动作。默认先在 nominal armature、无域随机化环境中验证
+可训练性。首阶段以关节参考奖励为主，暂不使用未经数据标注的人工接触和抬脚
+相位奖励；配置细节见 `docs/training-profiles.md`。
+
 #### Play:
 ```python /scripts/play.py --task=x1_dh_stand --load_run=<date_time><run_name>```
 ![](doc/play.gif)

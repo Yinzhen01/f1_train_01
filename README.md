@@ -29,6 +29,23 @@ This project is about the reinforcement learning training code used by AgiBot X1
 - The trained model will be saved in `/log/<experiment_name>/exported_data/<date_time><run_name>/model_<iteration>.pt`, where `<experiment_name>` is defined in the config file.
 ![](doc/train.gif)
 
+To train a phase-conditioned 12-joint policy from the retargeted walk data in
+`resources/motions/x1/walk_12dof.csv`:
+
+```powershell
+python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_no_dr `
+  --run_name=walk_csv_imitation `
+  --headless
+```
+
+Only the named left/right hip, knee, and ankle columns are used. Floating-base,
+waist, arm, neck, and head columns are excluded from the training reference.
+The initial profile uses nominal armature with domain randomization disabled;
+its reference-first stage disables synthetic contact and foot-clearance phase
+rewards until they can be derived from motion labels. See
+`docs/training-profiles.md` for the exact boundary.
+
 #### Play:
 ```python /scripts/play.py --task=x1_dh_stand --load_run=<date_time><run_name>```
 ![](doc/play.gif)

@@ -1,8 +1,8 @@
 # X1 训练运行配置
 
-本项目用一套代码覆盖 nominal 无 DR、Stage-1 DR、课程式完整 DR 和直接完整
-DR 基线。动力学差异由已注册 task 表达；从零训练或恢复 checkpoint 由运行配置
-表达，不再为相同动力学复制实验分支。
+本项目用一套代码覆盖 nominal 无 DR、重定向步态模仿、Stage-1 DR、课程式完整
+DR 和直接完整 DR 基线。动力学或训练目标差异由已注册 task 表达；从零训练或
+恢复 checkpoint 由运行配置表达，不再为相同动力学复制实验分支。
 
 配置源为 `configs/training/x1_profiles.json`。可以独立检查当前预设：
 
@@ -18,6 +18,7 @@ python -m humanoid.training_profiles
 | `stage1_from_no_dr` | `x1_dh_stand_dr_stage1` | 显式 no-DR checkpoint | 2000 |
 | `full_dr_from_stage1` | `x1_dh_stand_dr_full` | 显式 Stage-1 checkpoint | 3000 |
 | `full_dr_scratch` | `x1_dh_stand_dr_full` | 随机初始化 | 6000 |
+| `retarget_walk_no_dr` | `x1_dh_stand_retarget_walk` | 12关节重定向参考、随机初始化 | 3000 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
 固定次数。`seed` 和 `num_envs` 的默认值分别为 5 和 4096，也允许显式覆盖。
@@ -51,6 +52,11 @@ python humanoid/scripts/train.py `
 python humanoid/scripts/train.py --training_profile=no_dr_scratch --headless
 
 python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_no_dr `
+  --run_name=walk_csv_imitation `
+  --headless
+
+python humanoid/scripts/train.py `
   --training_profile=stage1_from_no_dr `
   --load_run=<no-dr-run> `
   --checkpoint=4700 `
@@ -60,6 +66,17 @@ python humanoid/scripts/train.py `
 ## 配置边界
 
 - `no_dr_scratch` 固定使用共享 nominal armature，关闭全部 DR 和观测噪声。
+- `retarget_walk_no_dr` 同样固定 nominal armature 并关闭 DR/噪声，但把
+  `resources/motions/x1/walk_12dof.csv` 的 12 个受控腿部关节作为相位条件参考
+  轨迹；该仓库资产已从原始 `walk.csv` 按名称提取，不包含浮动基座、腰、
+  手臂、颈部或头部列。
+- 重定向参考按关节名称映射，不依赖 CSV 列顺序；选用 0.600–5.533 秒近闭合
+  周期并线性插值，超出 X1 URDF 的参考角会裁剪到实际关节限位。
+- `retarget_walk_no_dr` 的首阶段采用 reference-first 奖励：关节参考权重为 6，
+  速度跟踪权重为 4，`tracking_sigma=30`，低速项权重为 2；默认站姿奖励及
+  人工生成的接触数、腾空时间、抬脚高度和 `track_vel_hard` 暂时关闭。防滑、
+  碰撞、关节限位、动作平滑和基础姿态稳定约束仍保留。接触类奖励只能在从
+  重定向动作得到足端接触/离地标签后重新加入，避免固定 50/50 相位与数据冲突。
 - `stage1_from_no_dr` 固定 nominal armature，只启用窄范围 Stage-1 DR。
 - 两种完整 DR 运行都使用 `x1_dh_stand_dr_full`；区别仅为初始化来源和日志实验名。
 - 普通 Isaac Gym 推理仍使用 `--armature_mode=nominal`，并由推理脚本关闭 DR

@@ -52,6 +52,17 @@
         "num_envs": 4096,
         "max_iterations": 6000
       }
+    },
+    "retarget_walk_no_dr": {
+      "description": "No-DR phase-conditioned imitation of the 12 controlled leg joints from walk.csv.",
+      "task": "x1_dh_stand_retarget_walk",
+      "initialization": "scratch",
+      "experiment_name": "x1_dh_stand_retarget_walk",
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 3000
+      }
     }
   }
 }

@@ -31,6 +31,8 @@
 # Copyright (c) 2024, AgiBot Inc. All rights reserved.
 
 from humanoid.envs.base.legged_robot_config import LeggedRobotCfg
+from humanoid import LEGGED_GYM_ROOT_DIR
+from humanoid.motion_reference import load_joint_motion_csv
 
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi
@@ -114,7 +116,44 @@ class X1DHStandEnv(LeggedRobot):
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
         self.last_feet_z = self.cfg.rewards.feet_to_ankle_distance
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
-        self.ref_dof_pos = torch.zeros((self.num_envs, self.num_actions), device=self.device)      
+        self.ref_dof_pos = torch.zeros((self.num_envs, self.num_actions), device=self.device)
+        self._motion_ref_positions = None
+        self._motion_ref_phase_offset = 0.0
+        self._load_motion_reference()
+
+    def _load_motion_reference(self):
+        motion_cfg = getattr(self.cfg, "motion_reference", None)
+        if motion_cfg is None or not getattr(motion_cfg, "enabled", False):
+            return
+
+        configured_path = str(motion_cfg.file).replace(
+            "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+        )
+        table = load_joint_motion_csv(
+            configured_path,
+            self.dof_names,
+            start_time=getattr(motion_cfg, "start_time", None),
+            end_time=getattr(motion_cfg, "end_time", None),
+            close_loop=getattr(motion_cfg, "close_loop", True),
+        )
+        if table.frame_count < 2 or table.positions.shape[1] != self.num_actions:
+            raise ValueError(
+                "Motion reference must provide at least two frames for all "
+                f"{self.num_actions} controlled joints"
+            )
+        self._motion_ref_positions = torch.as_tensor(
+            table.positions, dtype=torch.float, device=self.device
+        )
+        self._motion_ref_phase_offset = float(
+            getattr(motion_cfg, "phase_offset", 0.0)
+        )
+        print(
+            "[motion-reference] "
+            f"file={configured_path} joints={len(table.joint_names)} "
+            f"frames={table.frame_count} duration={table.duration:.6f}s "
+            f"phase_offset={self._motion_ref_phase_offset:.3f}",
+            flush=True,
+        )
 
 
     def _push_robots(self):
@@ -275,6 +314,32 @@ class X1DHStandEnv(LeggedRobot):
 
     def compute_ref_state(self):
         phase = self._get_phase()
+        if self._motion_ref_positions is not None:
+            sample_phase = torch.remainder(
+                phase + self._motion_ref_phase_offset, 1.0
+            )
+            frame_position = sample_phase * (self._motion_ref_positions.shape[0] - 1)
+            frame_lower = torch.floor(frame_position).long()
+            frame_upper = torch.clamp(
+                frame_lower + 1, max=self._motion_ref_positions.shape[0] - 1
+            )
+            interpolation = (frame_position - frame_lower).unsqueeze(1)
+            lower_pose = self._motion_ref_positions[frame_lower]
+            upper_pose = self._motion_ref_positions[frame_upper]
+            self.ref_dof_pos = lower_pose + interpolation * (upper_pose - lower_pose)
+
+            # A retargeted pose can sit just outside the URDF range (the source
+            # left hip roll exceeds the X1 limit by about 0.04 rad).  Never ask
+            # the policy to imitate an unreachable target.
+            self.ref_dof_pos = torch.maximum(
+                torch.minimum(self.ref_dof_pos, self.dof_pos_limits[:, 1]),
+                self.dof_pos_limits[:, 0],
+            )
+            self.ref_action = (
+                self.ref_dof_pos - self.default_dof_pos
+            ) / self.cfg.control.action_scale
+            return
+
         sin_pos = torch.sin(2 * torch.pi * phase)
         sin_pos_l = sin_pos.clone()
         sin_pos_r = sin_pos.clone()
@@ -300,7 +365,7 @@ class X1DHStandEnv(LeggedRobot):
         self.ref_dof_pos[torch.abs(sin_pos) < 0.1] = 0.
         
         # if use_ref_actions=True, action += ref_action
-        self.ref_action = 2 * self.ref_dof_pos
+        self.ref_action = self.ref_dof_pos / self.cfg.control.action_scale
         
         # self.ref_dof_pos set ref dof pos for swing leg, ref_dof_pos=0 for stance leg
         self.ref_dof_pos += self.default_dof_pos
@@ -623,6 +688,7 @@ class X1DHStandEnv(LeggedRobot):
         contact_foot_slip = torch.sum(foot_speed_xy * contact_float) / torch.clamp(
             torch.sum(contact_float), min=1.0
         )
+        ref_joint_error = self.dof_pos - self.ref_dof_pos
 
         return {
             "command/moving_fraction": moving.float().mean(),
@@ -650,6 +716,8 @@ class X1DHStandEnv(LeggedRobot):
             "tracking/yaw_rate_error_abs_moving": masked_mean(
                 torch.abs(self.base_ang_vel[:, 2] - command_yaw), moving
             ),
+            "tracking/ref_joint_mae": torch.mean(torch.abs(ref_joint_error)),
+            "tracking/ref_joint_rmse": torch.sqrt(torch.mean(torch.square(ref_joint_error))),
             "contact/foot_slip_speed_mean": contact_foot_slip,
             "policy/action_rms": torch.sqrt(torch.mean(torch.square(self.actions))),
             "policy/torque_rms": torch.sqrt(torch.mean(torch.square(self.torques))),
