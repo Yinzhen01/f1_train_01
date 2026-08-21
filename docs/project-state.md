@@ -28,6 +28,17 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   1000 帧；平均前进速度 `0.349 m/s`（目标 `0.4 m/s`），平均高度 `0.607 m`。
   视频已下载并验证为 1920×1080、50 fps、20 秒，路径为
   `outputs/isaacgym/TASK_20260821_014/play_output.mp4`。
+- 直接完整 DR 的相机修正版推理：`TASK_20260821_037`，仍使用
+  `TASK_20260820_201/model_6000`，推理 commit `eb25b2d`；策略、nominal
+  动力学、12 关节 armature 和推理指令与 `TASK_20260821_014` 相同，仅将
+  跟随相机从每 5 个视频帧更新一次改为与 50 fps 录像逐帧同步，并保留
+  `0.5 s` EMA 时间常数。日志确认 2000 steps/1000 帧，平均前进速度
+  `0.349 m/s`、平均高度 `0.607 m`，无 Traceback/CUDA OOM。视频已下载并
+  验证为 1920×1080、50 fps、20 秒，路径为
+  `outputs/isaacgym/TASK_20260821_037/play_output.mp4`。对前 500 帧侧方背景
+  的光流分析显示：旧视频 `80.6%` 相邻帧近似静止且每第 5 帧跳变；新版
+  每帧连续移动，背景水平运动跳变量的 95 分位由约 `1.050 px` 降至
+  `0.038 px`（480×270 分析尺度）。后续以修正版视频替代旧视频做视觉比较。
 - 无 DR 最终 checkpoint 的 deterministic nominal Isaac Gym 推理：
   `TASK_20260821_018`，源为 `TASK_20260821_006/model_4700`，推理 commit
   `2d60bc3`。日志确认 nominal 动力学、plane friction `0.6`、DR/观测噪声
@@ -77,6 +88,8 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 - `2026-08-21`：armature 由外部 JSON 按关节名称统一读取；无 DR 使用 nominal，DR 使用 train range。
 - `2026-08-21`：常规 Isaac Gym 推理只允许 `nominal`；零 armature 结果退出实验矩阵，随机鲁棒性由独立评估流程承担。
 - `2026-08-21`：nominal 无 DR 以可训练性和稳定行为为阶段目标，不要求固定跑满 5000；`model_4700` 作为本轮有效终点。
+- `2026-08-21`：Isaac Gym 标准渲染的跟随相机与 50 fps 录制逐帧同步，
+  使用约 `0.5 s` 的时间平滑；该调整只影响画面，不改变策略、观测、动作或物理仿真。
 - `2026-08-21`：采用 `AGENTS.md`、专项文档、自动化测试和项目 Skill 分层管理工程规则与状态。
 
 ## 风险与注意事项
