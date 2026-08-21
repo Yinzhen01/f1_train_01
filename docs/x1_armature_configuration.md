@@ -15,6 +15,18 @@ nominal values at environment creation and reset. Both `play.py` and
 `model.dof_armature` by joint name. A missing or mismatched joint is a hard
 error rather than an index-based silent mismatch.
 
+Isaac Gym playback accepts `--armature_mode`:
+
+- `nominal` (default): disable armature DR and read the shared nominal values;
+- `training`: preserve the selected task's armature configuration, including
+  randomization when that task enables it;
+- `zero`: disable armature DR and nominal injection, and force asset armature
+  to zero for historical checkpoints trained with armature disabled.
+
+`training` does not infer historical settings from checkpoint contents because
+the old checkpoints do not store this configuration. Select `zero` explicitly
+when reproducing those runs.
+
 The hip and knee nominal value `0.02505` is currently the midpoint of the
 historical training range, not a system-identification result. Replace it when
 identified actuator values become available. Old checkpoints trained with

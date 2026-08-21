@@ -10,7 +10,6 @@ import os
 import sys
 import glob
 import shutil
-import subprocess
 import numpy as np
 import cv2
 import csv
@@ -19,13 +18,10 @@ import torch
 from datetime import datetime
 
 from humanoid import LEGGED_GYM_ROOT_DIR
+from humanoid.joint_dynamics import configure_inference_armature
 from humanoid.envs import *
 from humanoid.utils import get_args, task_registry
 from isaacgym.torch_utils import *
-
-# Fallback: download checkpoint from OSS if not found locally
-FALLBACK_CHECKPOINT_URL = "https://limx-gradmotion.oss-cn-beijing.aliyuncs.com/upload%2F2026%2F8%2F13%2Fmodel_5000_20260813121400A315.pt?OSSAccessKeyId=LTAI5tMec8RQN1nZuRkVMgxz&Expires=1787222353&Signature=rnEcXxn1dzAVReNKWFYgZ0DvlZI%3D"
-
 
 def _gait_state_label(left_on, right_on):
     if left_on and right_on:
@@ -127,23 +123,10 @@ def find_checkpoint(checkpoint_num=-1):
     if expected_name is not None:
         print(f"[play_gm] ERROR: requested checkpoint {expected_name} was not found")
         return None
-    # Fallback: download from OSS if not found locally
-    print("[play_gm] No local checkpoint found, downloading from OSS...")
-    download_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", "x1_dh_stand", "gm_play")
-    os.makedirs(download_dir, exist_ok=True)
-    download_path = os.path.join(download_dir, "model_3000.pt")
-    try:
-        result = subprocess.run(
-            ["curl", "-L", "-o", download_path, FALLBACK_CHECKPOINT_URL],
-            capture_output=True, text=True, timeout=120
-        )
-        if result.returncode == 0 and os.path.exists(download_path):
-            print(f"[play_gm] Downloaded checkpoint to {download_path} ({os.path.getsize(download_path)} bytes)")
-            return download_path
-        else:
-            print(f"[play_gm] Download failed: {result.stderr}")
-    except Exception as e:
-        print(f"[play_gm] Download error: {e}")
+    print(
+        "[play_gm] ERROR: no local checkpoint found; place the requested "
+        "model_<iteration>.pt under /personal, /workspace, or logs"
+    )
     return None
 
 
@@ -237,8 +220,8 @@ def play(args):
     env_cfg.env.episode_length_s = 1000
     env_cfg.noise.add_noise = False
 
-    # Disable all domain randomization for clean playback. Nominal armature is
-    # still applied from the shared joint-dynamics config.
+    # Disable unrelated domain randomization for clean playback. Armature is
+    # selected independently below.
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.push_robots = False
     env_cfg.domain_rand.randomize_base_mass = False
@@ -249,12 +232,12 @@ def play(args):
     env_cfg.domain_rand.randomize_motor_offset = False
     env_cfg.domain_rand.randomize_joint_friction = False
     env_cfg.domain_rand.randomize_joint_damping = False
-    env_cfg.domain_rand.randomize_joint_armature = False
     env_cfg.domain_rand.randomize_lag_timesteps = False
     env_cfg.domain_rand.add_lag = False
     env_cfg.domain_rand.add_dof_lag = False
     env_cfg.commands.heading_command = False
     env_cfg.noise.curriculum = False
+    armature_mode = configure_inference_armature(env_cfg, args.armature_mode)
 
     # Enable headless rendering: no viewer but GPU camera sensors work
     env_cfg.env.enable_headless_render = True
@@ -282,7 +265,10 @@ def play(args):
     # Create environment (headless with rendering enabled)
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     runtime_armature = env.get_runtime_joint_armatures()
-    print("[play_gm] effective nominal armature:")
+    print(
+        f"[play_gm] armature_mode={armature_mode} "
+        "effective runtime armature:"
+    )
     for joint_name, armature in runtime_armature.items():
         print(f"  {joint_name}: {armature:.6f}")
     # 注：viewer 相机 API（set_camera/viewer_camera_look_at）在 headless 下无效，

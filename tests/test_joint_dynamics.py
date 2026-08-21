@@ -3,9 +3,11 @@ import os
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from types import SimpleNamespace
 
 from humanoid.joint_dynamics import (
     armature_values_for_dof_order,
+    configure_inference_armature,
     load_joint_armature_config,
 )
 
@@ -30,6 +32,17 @@ MJCF_ROBOT_PATH = os.path.join(
 
 
 class JointDynamicsConfigTest(unittest.TestCase):
+    @staticmethod
+    def _env_cfg(randomize=True, use_nominal=True, config_path=CONFIG_PATH):
+        return SimpleNamespace(
+            domain_rand=SimpleNamespace(
+                randomize_joint_armature=randomize,
+                use_nominal_joint_armature=use_nominal,
+                joint_armature_config_file=config_path,
+            ),
+            asset=SimpleNamespace(armature=0.75),
+        )
+
     def test_x1_config_loads_and_nominal_is_inside_training_range(self):
         config = load_joint_armature_config(CONFIG_PATH)
         self.assertEqual(12, len(config["joint_order"]))
@@ -82,6 +95,30 @@ class JointDynamicsConfigTest(unittest.TestCase):
                 json.dump(bad_config, config_file)
             with self.assertRaisesRegex(ValueError, "outside its train_range"):
                 load_joint_armature_config(bad_path)
+
+    def test_nominal_inference_uses_shared_config_without_randomization(self):
+        env_cfg = self._env_cfg(randomize=True, use_nominal=False)
+        self.assertEqual(
+            "nominal", configure_inference_armature(env_cfg, "nominal")
+        )
+        self.assertTrue(env_cfg.domain_rand.use_nominal_joint_armature)
+        self.assertFalse(env_cfg.domain_rand.randomize_joint_armature)
+
+    def test_zero_inference_disables_config_and_asset_armature(self):
+        env_cfg = self._env_cfg()
+        self.assertEqual("zero", configure_inference_armature(env_cfg, "zero"))
+        self.assertFalse(env_cfg.domain_rand.use_nominal_joint_armature)
+        self.assertFalse(env_cfg.domain_rand.randomize_joint_armature)
+        self.assertEqual(0.0, env_cfg.asset.armature)
+
+    def test_training_inference_preserves_task_configuration(self):
+        env_cfg = self._env_cfg(randomize=True, use_nominal=False)
+        self.assertEqual(
+            "training", configure_inference_armature(env_cfg, "training")
+        )
+        self.assertTrue(env_cfg.domain_rand.randomize_joint_armature)
+        self.assertFalse(env_cfg.domain_rand.use_nominal_joint_armature)
+        self.assertEqual(0.75, env_cfg.asset.armature)
 
 
 if __name__ == "__main__":

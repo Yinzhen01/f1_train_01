@@ -13,6 +13,9 @@ from functools import lru_cache
 from humanoid import LEGGED_GYM_ROOT_DIR
 
 
+ARMATURE_INFERENCE_MODES = ("training", "nominal", "zero")
+
+
 def resolve_robot_config_path(path):
     """Resolve a config path that may contain the project-root placeholder."""
     if not path:
@@ -102,3 +105,34 @@ def armature_values_for_dof_order(config, dof_names):
     nominal = [config["joints"][name]["nominal"] for name in dof_names]
     train_ranges = [config["joints"][name]["train_range"] for name in dof_names]
     return nominal, train_ranges
+
+
+def configure_inference_armature(env_cfg, mode):
+    """Select the Isaac Gym armature behavior used during inference.
+
+    ``training`` preserves the task configuration. It cannot reconstruct a
+    historical setting that was never stored in a checkpoint; use ``zero``
+    explicitly for checkpoints known to have been trained with zero armature.
+    """
+    mode = str(mode).lower()
+    if mode not in ARMATURE_INFERENCE_MODES:
+        raise ValueError(
+            f"unsupported armature inference mode {mode!r}; "
+            f"expected one of {ARMATURE_INFERENCE_MODES}"
+        )
+
+    domain_rand = env_cfg.domain_rand
+    if mode == "nominal":
+        config_path = getattr(domain_rand, "joint_armature_config_file", "")
+        if not config_path:
+            raise ValueError(
+                "armature_mode=nominal requires joint_armature_config_file"
+            )
+        domain_rand.use_nominal_joint_armature = True
+        domain_rand.randomize_joint_armature = False
+    elif mode == "zero":
+        domain_rand.use_nominal_joint_armature = False
+        domain_rand.randomize_joint_armature = False
+        env_cfg.asset.armature = 0.0
+
+    return mode

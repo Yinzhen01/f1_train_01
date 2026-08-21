@@ -39,6 +39,7 @@ import cv2
 import numpy as np
 from isaacgym import gymapi
 from humanoid import LEGGED_GYM_ROOT_DIR
+from humanoid.joint_dynamics import configure_inference_armature
 
 from humanoid.envs import *
 from humanoid.utils import get_args, export_policy_as_jit, task_registry, Logger
@@ -184,8 +185,7 @@ def play(args):
     env_cfg.domain_rand.ankle_roll_joint_coulomb_range = [0.5, 0.5]
     env_cfg.domain_rand.ankle_roll_joint_viscous_range = [0.0, 0.0]
 
-    # Deterministic playback uses the shared per-joint nominal armature.
-    env_cfg.domain_rand.randomize_joint_armature = False
+    armature_mode = configure_inference_armature(env_cfg, args.armature_mode)
 
     env_cfg.domain_rand.enable_delivery = True
     env_cfg.domain_rand.delivery_tau_d = 0.008
@@ -197,7 +197,7 @@ def play(args):
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
     runtime_armature = env.get_runtime_joint_armatures()
-    print("[play] effective nominal armature:")
+    print(f"[play] armature_mode={armature_mode} effective runtime armature:")
     for joint_name, armature in runtime_armature.items():
         print(f"  {joint_name}: {armature:.6f}")
 
@@ -232,7 +232,7 @@ def play(args):
     print(f"  delivery LPF: enable={env.cfg.domain_rand.enable_delivery} "
           f"tau_d={env.cfg.domain_rand.delivery_tau_d}s ids={list(env.cfg.domain_rand.delivery_joint_ids)}")
     print(f"  coulomb_on={env.cfg.domain_rand.randomize_coulomb_friction} "
-          f"armature_mode=nominal "
+          f"armature_mode={armature_mode} "
           f"add_lag={env.cfg.domain_rand.add_lag}")
     print("[dof] Isaac order:")
     for i, name in enumerate(env.dof_names):

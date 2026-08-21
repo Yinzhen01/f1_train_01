@@ -229,6 +229,16 @@ def get_args():
             "type": int,
             "help": "Maximum number of training iterations. Overrides config file if provided.",
         },
+        {
+            "name": "--armature_mode",
+            "type": str,
+            "default": "nominal",
+            "help": (
+                "Isaac Gym inference armature mode: training preserves the task "
+                "config, nominal uses the shared per-joint defaults, and zero "
+                "reproduces historical zero-armature checkpoints."
+            ),
+        },
     ]
     # parse arguments
     args = gymutil.parse_arguments(
