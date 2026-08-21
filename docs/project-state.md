@@ -69,6 +69,14 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
+- Stage-1→完整 DR 课程续训：`TASK_20260821_073`，使用 profile
+  `x1-full-dr-20260821`、project `PRO_20260821_007`，从有效
+  `TASK_20260821_028/model_6700` 恢复。任务采用
+  `x1_dh_stand_dr_full`、4096 environments、seed 5，初始追加 3000 PPO
+  updates，预期累计约 `model_9700`。分支
+  `experiment/nominal-armature-pipeline`，创建时分支 commit `fcfa166`；
+  `2026-08-21 11:30:31` 启动请求已成功受理，当前等待 GPU 资源。旧 profile
+  下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练任务。
 - 新 Stage-1 DR：`TASK_20260821_028`，源为
   `TASK_20260821_006/model_4700`，分支 `experiment/nominal-armature-pipeline`，
   seed 5、4096 environments，初始追加 2000 PPO updates。保留 nominal
