@@ -21,10 +21,15 @@ X1 可训练性已验证，正在推进分阶段域随机化、完整域随机�
 - 建立 Stage-1→完整 DR 分支 `experiment/stage1-to-full-domain-rand`，对应任务 `TASK_20260820_208`。
 - 在 `refactor/shared-armature-config` / `90d3b5f` 中建立 X1 armature 外部共享配置，并接入 Isaac Gym 训练/推理与 MuJoCo 推理。
 - 为共享 armature 增加 URDF/MJCF 关节一致性测试和 MuJoCo 实际模型加载检查。
+- Isaac Gym nominal armature 回放：`TASK_20260821_005`，使用分支
+  `refactor/shared-armature-config` / `eb8ea24` 和 Stage-1 `model_6000`。
+  运行时回读的 12 个 armature 与共享配置完全一致；完成 2000 steps、
+  1000 帧、20 秒 1920×1080 视频，平均前进速度 `0.196 m/s`（目标
+  `0.4 m/s`），平均高度 `0.610 m`。机器人未摔倒但速度不足且存在交叉步。
 
 ## 正在进行
 
-- 在 Isaac Gym 可用环境中验证共享 armature 的运行时回读，以及关闭 DR 时使用 nominal、开启 DR 时按范围采样。
+- 在 Isaac Gym 可用环境中验证完整 DR 的 armature 范围采样；nominal 模式的运行时回读已经通过。
 - 获取 `TASK_20260820_201` 与 `TASK_20260820_208` 的最新终态和指标，完成直接训练与课程训练对比。
 - 评估共享 armature 变更应合入哪个训练分支，并区分旧 checkpoint 与新动力学下的推理结果。
 
@@ -47,6 +52,9 @@ X1 可训练性已验证，正在推进分阶段域随机化、完整域随机�
 ## 风险与注意事项
 
 - 旧的 no-DR/Stage-1 checkpoint 在 armature 关闭时使用的是零 armature；用新 nominal 参数推理会改变动力学，不能直接视为训练环境复现。
+- Stage-1 `model_6000` 使用新 nominal armature 后平均速度由历史零 armature
+  回放的约 `0.299 m/s` 降至 `0.196 m/s`；这是单次同策略对照，说明参数敏感性，
+  尚不能单独量化每个关节 armature 的贡献。
 - Windows 本地当前可做 MuJoCo 检查，但没有 Isaac Gym；Isaac Gym 运行正确性必须由云端 smoke 验证。
 - 部分动力学参数位于 URDF/MJCF，部分位于配置或代码；只同步模型文件不能保证两个模拟器一致。
 - 训练 reward、episode length 或视频改善不等于 Sim2Real/真机正确；需要分别保留参数一致性、跨仿真和真机证据。
