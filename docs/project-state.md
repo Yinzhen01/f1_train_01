@@ -29,6 +29,10 @@ X1 可训练性已验证，正在推进分阶段域随机化、完整域随机�
 
 ## 正在进行
 
+- 无 DR nominal-armature 基线：`TASK_20260821_006`，分支
+  `experiment/no-dr-nominal-armature` / `0c7bfc0`，随机初始化、seed 5、
+  4096 environments、目标 5000 iterations。云端启动日志已确认
+  `[armature] mode=nominal` 并进入 PPO 训练。
 - 在 Isaac Gym 可用环境中验证完整 DR 的 armature 范围采样；nominal 模式的运行时回读已经通过。
 - 获取 `TASK_20260820_201` 与 `TASK_20260820_208` 的最新终态和指标，完成直接训练与课程训练对比。
 - 评估共享 armature 变更应合入哪个训练分支，并区分旧 checkpoint 与新动力学下的推理结果。
