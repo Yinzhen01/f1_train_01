@@ -173,7 +173,9 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 ## 风险与注意事项
 
 - 旧零 armature 任务不得再作为恢复训练来源或比较基线，避免污染后续实验谱系。
-- 当前 hip/knee nominal `0.02505` 是训练范围中点而非系统辨识真值；新路线物理上更合理，但仍需后续辨识校准。
+- 当前共享 nominal 中 hip pitch/roll/yaw 分别采用上游
+  `x1-training-all-parameter` 分支中心值 `0.208/0.025/0.0148`；膝关节仍为
+  `0.02505`。髋 roll 和膝关节仍需后续系统辨识校准。
 - Windows 本地当前可做 MuJoCo 检查，但没有 Isaac Gym；Isaac Gym 运行正确性必须由云端 smoke 验证。
 - 部分动力学参数位于 URDF/MJCF，部分位于配置或代码；只同步模型文件不能保证两个模拟器一致。
 - 训练 reward、episode length 或视频改善不等于 Sim2Real/真机正确；需要分别保留参数一致性、跨仿真和真机证据。

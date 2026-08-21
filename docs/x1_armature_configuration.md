@@ -30,7 +30,11 @@ use the same helper so a full-DR task cannot leak random settings into a normal
 render. Randomized robustness evaluation must use a separately named task and
 must report its sampled ranges and seed.
 
-The hip and knee nominal value `0.02505` is currently the midpoint of the
-historical training range, not a system-identification result. Replace it when
-identified actuator values become available. No-DR training must still use the
-nominal value; disabling armature randomization must never imply zero armature.
+The hip nominal values follow the centers used by upstream branch
+`x1-training-all-parameter`: hip pitch `0.208`, hip roll `0.025`, and hip yaw
+`0.0148` kg m^2, with symmetric left/right values. Hip-pitch and hip-yaw DR
+ranges retain the upstream +/-20% bounds; hip roll remains marked as
+unidentified and keeps the historical `[0.0001, 0.05]` range. Knee values are
+unchanged by this update. No-DR training and standard inference both use these
+nominal values; disabling armature randomization must never imply zero
+armature.
