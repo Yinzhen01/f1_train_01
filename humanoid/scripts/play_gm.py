@@ -278,10 +278,18 @@ def play(args):
     print(f"[play_gm] Using camera handle: {h1} ({CAM_W}x{CAM_H})")
 
     # 相机跟随（防晃动）：固定相机高度 + 水平 EMA 平滑
-    # root z 随步态 ±2-3cm 颠簸，若相机 z 跟随会上下晃；水平低通滤波消除步态振荡
+    # root z 随步态 ±2-3cm 颠簸，若相机 z 跟随会上下晃；水平低通滤波消除步态振荡。
+    # 相机必须和写入的视频帧同步更新。旧实现只在 100Hz policy loop 中每 10 步
+    # 更新一次（10Hz），而视频以 50fps 保存，造成相机每 5 帧阶梯式跳动，表现为
+    # 地面和背景整体抖动。
     cam_xy = np.zeros(2)
     cam_inited = False
-    CAM_SMOOTH = 0.2  # EMA 系数（10Hz 更新，时间常数约 0.5s，2Hz 步态振荡衰减至 ~15%）
+    VIDEO_FPS = 50.0
+    VIDEO_FRAME_INTERVAL = max(1, int(round(1.0 / (env.dt * VIDEO_FPS))))
+    CAMERA_UPDATE_INTERVAL = VIDEO_FRAME_INTERVAL
+    CAMERA_SMOOTH_TAU_S = 0.5
+    camera_update_dt = env.dt * CAMERA_UPDATE_INTERVAL
+    CAM_SMOOTH = 1.0 - np.exp(-camera_update_dt / CAMERA_SMOOTH_TAU_S)
     CAM_OFF = np.array([1.4, 1.4])  # 相机相对机器人的水平偏移
 
     def update_camera():
@@ -305,8 +313,12 @@ def play(args):
     os.makedirs(video_dir, exist_ok=True)
     video_path = os.path.join(video_dir, "play_output.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(video_path, fourcc, 50.0, (CAM_W, CAM_H))
+    video = cv2.VideoWriter(video_path, fourcc, VIDEO_FPS, (CAM_W, CAM_H))
     print(f"[play_gm] Recording video to: {video_path}")
+    print(
+        f"[play_gm] Camera follow: {1.0 / camera_update_dt:.1f} Hz, "
+        f"EMA alpha={CAM_SMOOTH:.4f}, tau={CAMERA_SMOOTH_TAU_S:.2f}s"
+    )
 
     # Get foot indices for diagnostics
     left_foot_idx = env.feet_indices[0].item()
@@ -391,13 +403,13 @@ def play(args):
 
         # Render and record video frame
         frame_count += 1
-        if frame_count % 10 == 0:
-            update_camera()  # 相机跟随机器人
+        if frame_count % CAMERA_UPDATE_INTERVAL == 0:
+            update_camera()  # 与输出视频逐帧同步的平滑相机跟随
         env.gym.fetch_results(env.sim, True)
         env.gym.step_graphics(env.sim)
         env.gym.render_all_camera_sensors(env.sim)
 
-        if frame_count % 2 == 0:  # 50fps 视频（policy 100Hz，每 2 步 1 帧）
+        if frame_count % VIDEO_FRAME_INTERVAL == 0:
             img = env.gym.get_camera_image(env.sim, env.envs[0], h1, gymapi.IMAGE_COLOR)
             if img is not None and len(img) > 0:
                 img = np.reshape(img, (CAM_H, CAM_W, 4))
