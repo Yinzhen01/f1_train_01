@@ -5,6 +5,7 @@ __pycache__/
 venv/
 *.egg-info/
 .agents/skills/gm-cli/api_key.json
+.agents/skills/register-limxdynamics-account/*_agents/
 logs/
 outputs/
 MUJOCO_LOG.TXT
