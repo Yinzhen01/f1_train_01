@@ -42,6 +42,10 @@ import torch
 import pygame
 from threading import Thread
 from humanoid.utils.helpers import get_load_path
+from humanoid.joint_dynamics import (
+    armature_values_for_dof_order,
+    load_joint_armature_config,
+)
 import os
 import time
 
@@ -133,6 +137,30 @@ def pd_control(target_q, q, kp, target_dq, dq, kd, cfg):
     return torque_out
 
 
+def apply_nominal_armature_to_mujoco(model, env_cfg):
+    """Apply the same named nominal armature used by Isaac Gym playback."""
+    config_path = getattr(
+        env_cfg.domain_rand, "joint_armature_config_file", ""
+    )
+    if not config_path:
+        raise ValueError("MuJoCo inference requires joint_armature_config_file")
+
+    config = load_joint_armature_config(config_path)
+    joint_names = config["joint_order"]
+    nominal, _ = armature_values_for_dof_order(config, joint_names)
+
+    print(f"[armature] MuJoCo nominal config={config['path']}")
+    for joint_name, value in zip(joint_names, nominal):
+        joint_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, joint_name
+        )
+        if joint_id < 0:
+            raise ValueError(f"MuJoCo model is missing joint {joint_name!r}")
+        dof_address = model.jnt_dofadr[joint_id]
+        model.dof_armature[dof_address] = value
+        print(f"  {joint_name}: {float(model.dof_armature[dof_address]):.6f}")
+
+
 def run_mujoco(policy, cfg, env_cfg):
     """
     Run the Mujoco simulation using the provided policy and configuration.
@@ -147,6 +175,7 @@ def run_mujoco(policy, cfg, env_cfg):
     print("Load mujoco xml from:", cfg.sim_config.mujoco_model_path)
     # load model xml
     model = mujoco.MjModel.from_xml_path(cfg.sim_config.mujoco_model_path)
+    apply_nominal_armature_to_mujoco(model, env_cfg)
     # simulation timestep
     model.opt.timestep = cfg.sim_config.dt
     # model data
@@ -330,5 +359,3 @@ if __name__ == '__main__':
     print("Load model from:", model_path)
 
     run_mujoco(policy, Sim2simCfg(), env_cfg)
-
-    

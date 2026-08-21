@@ -184,14 +184,8 @@ def play(args):
     env_cfg.domain_rand.ankle_roll_joint_coulomb_range = [0.5, 0.5]
     env_cfg.domain_rand.ankle_roll_joint_viscous_range = [0.0, 0.0]
 
-    env_cfg.domain_rand.randomize_joint_armature = True
-    env_cfg.domain_rand.randomize_joint_armature_each_joint = True
-    for _ji in range(1, 13):
-        setattr(env_cfg.domain_rand, f'joint_{_ji}_armature_range', [0.0, 0.0])
-    env_cfg.domain_rand.joint_5_armature_range = [0.15, 0.15]   # left_ankle_pitch
-    env_cfg.domain_rand.joint_6_armature_range = [0.035, 0.035]  # left_ankle_roll
-    env_cfg.domain_rand.joint_11_armature_range = [0.15, 0.15]  # right_ankle_pitch
-    env_cfg.domain_rand.joint_12_armature_range = [0.035, 0.035]  # right_ankle_roll
+    # Deterministic playback uses the shared per-joint nominal armature.
+    env_cfg.domain_rand.randomize_joint_armature = False
 
     env_cfg.domain_rand.enable_delivery = True
     env_cfg.domain_rand.delivery_tau_d = 0.008
@@ -202,6 +196,10 @@ def play(args):
 
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     env.set_camera(env_cfg.viewer.pos, env_cfg.viewer.lookat)
+    runtime_armature = env.get_runtime_joint_armatures()
+    print("[play] effective nominal armature:")
+    for joint_name, armature in runtime_armature.items():
+        print(f"  {joint_name}: {armature:.6f}")
 
     train_cfg.runner.resume = True
     train_cfg.runner.load_run = -1
@@ -234,7 +232,7 @@ def play(args):
     print(f"  delivery LPF: enable={env.cfg.domain_rand.enable_delivery} "
           f"tau_d={env.cfg.domain_rand.delivery_tau_d}s ids={list(env.cfg.domain_rand.delivery_joint_ids)}")
     print(f"  coulomb_on={env.cfg.domain_rand.randomize_coulomb_friction} "
-          f"armature_on={env.cfg.domain_rand.randomize_joint_armature} "
+          f"armature_mode=nominal "
           f"add_lag={env.cfg.domain_rand.add_lag}")
     print("[dof] Isaac order:")
     for i, name in enumerate(env.dof_names):

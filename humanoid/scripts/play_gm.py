@@ -237,7 +237,8 @@ def play(args):
     env_cfg.env.episode_length_s = 1000
     env_cfg.noise.add_noise = False
 
-    # Disable all domain randomization for clean playback
+    # Disable all domain randomization for clean playback. Nominal armature is
+    # still applied from the shared joint-dynamics config.
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.push_robots = False
     env_cfg.domain_rand.randomize_base_mass = False
@@ -280,6 +281,10 @@ def play(args):
 
     # Create environment (headless with rendering enabled)
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+    runtime_armature = env.get_runtime_joint_armatures()
+    print("[play_gm] effective nominal armature:")
+    for joint_name, armature in runtime_armature.items():
+        print(f"  {joint_name}: {armature:.6f}")
     # 注：viewer 相机 API（set_camera/viewer_camera_look_at）在 headless 下无效，
     # camera sensor 在下方 update_camera() 中手动定位跟随
 

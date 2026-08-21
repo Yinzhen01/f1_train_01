@@ -44,6 +44,10 @@ from humanoid.envs.base.base_task import BaseTask
 # from humanoid.utils.terrain import Terrain
 from humanoid.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from humanoid.utils.helpers import class_to_dict
+from humanoid.joint_dynamics import (
+    armature_values_for_dof_order,
+    load_joint_armature_config,
+)
 from .legged_robot_config import LeggedRobotCfg
 from humanoid.utils.terrain import Terrain
 
@@ -410,6 +414,63 @@ class LeggedRobot(BaseTask):
             self.link_inertia_y[env_ids, :, :] = torch_rand_float(inertia_y[0], inertia_y[1], (len(env_ids), self.num_bodies-1), device=self.device)
             self.link_inertia_z[env_ids, :, :] = torch_rand_float(inertia_z[0], inertia_z[1], (len(env_ids), self.num_bodies-1), device=self.device)
             
+    def _init_joint_armature_config(self):
+        """Load nominal armature and DR ranges before creating actors."""
+        use_nominal = getattr(
+            self.cfg.domain_rand, "use_nominal_joint_armature", False
+        )
+        randomize = self.cfg.domain_rand.randomize_joint_armature
+        self.joint_armature_enabled = bool(use_nominal or randomize)
+        self.joint_armature_config = None
+
+        if not self.joint_armature_enabled:
+            return
+
+        config_path = getattr(
+            self.cfg.domain_rand, "joint_armature_config_file", ""
+        )
+        if config_path:
+            self.joint_armature_config = load_joint_armature_config(config_path)
+            nominal, train_ranges = armature_values_for_dof_order(
+                self.joint_armature_config, self.dof_names
+            )
+            self.nominal_joint_armatures = torch.tensor(
+                nominal, dtype=torch.float, device=self.device
+            )
+            self.joint_armature_range_low = torch.tensor(
+                [item[0] for item in train_ranges],
+                dtype=torch.float,
+                device=self.device,
+            )
+            self.joint_armature_range_high = torch.tensor(
+                [item[1] for item in train_ranges],
+                dtype=torch.float,
+                device=self.device,
+            )
+            mode = "randomized" if randomize else "nominal"
+            print(
+                f"[armature] mode={mode} "
+                f"config={self.joint_armature_config['path']}"
+            )
+            return
+
+        if use_nominal:
+            raise ValueError(
+                "use_nominal_joint_armature=True requires "
+                "joint_armature_config_file"
+            )
+
+        # Legacy fallback for other robot configs that still define ranges in
+        # Python and use one asset-level nominal value.
+        self.nominal_joint_armatures = torch.full(
+            (self.num_dofs,),
+            float(self.cfg.asset.armature),
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.joint_armature_range_low = None
+        self.joint_armature_range_high = None
+
     def randomize_dof_props(self, env_ids):
         # Randomise the motor strength:
         # rand ouput torque
@@ -479,16 +540,33 @@ class LeggedRobot(BaseTask):
                 joint_damping_range = self.cfg.domain_rand.joint_damping_range
                 self.joint_damping_coeffs[env_ids] = torch_rand_float(joint_damping_range[0], joint_damping_range[1], (len(env_ids), 1), device=self.device)
         
-        # rand joint armature inertia set in sim
-        if self.cfg.domain_rand.randomize_joint_armature:
-            if self.cfg.domain_rand.randomize_joint_armature_each_joint:
-                for i in range(self.num_dofs):
-                    range_key = f'joint_{i+1}_armature_range'
-                    armature_range = getattr(self.cfg.domain_rand, range_key)
-                    self.joint_armatures[env_ids, i] = torch_rand_float(armature_range[0], armature_range[1], (len(env_ids), 1), device=self.device).reshape(-1)
+        # Always start from nominal armature. DR, when enabled, overrides it.
+        if self.joint_armature_enabled:
+            if self.cfg.domain_rand.randomize_joint_armature:
+                if self.joint_armature_config is not None:
+                    random_unit = torch.rand(
+                        len(env_ids), self.num_dofs, device=self.device
+                    )
+                    low = self.joint_armature_range_low.unsqueeze(0)
+                    high = self.joint_armature_range_high.unsqueeze(0)
+                    self.joint_armatures[env_ids] = low + random_unit * (high - low)
+                elif self.cfg.domain_rand.randomize_joint_armature_each_joint:
+                    for i in range(self.num_dofs):
+                        range_key = f'joint_{i+1}_armature_range'
+                        armature_range = getattr(self.cfg.domain_rand, range_key)
+                        self.joint_armatures[env_ids, i] = torch_rand_float(
+                            armature_range[0], armature_range[1],
+                            (len(env_ids), 1), device=self.device
+                        ).reshape(-1)
+                else:
+                    joint_armature_range = self.cfg.domain_rand.joint_armature_range
+                    sampled = torch_rand_float(
+                        joint_armature_range[0], joint_armature_range[1],
+                        (len(env_ids), 1), device=self.device
+                    )
+                    self.joint_armatures[env_ids] = sampled.expand(-1, self.num_dofs)
             else:
-                joint_armature_range = self.cfg.domain_rand.joint_armature_range
-                self.joint_armatures[env_ids] = torch_rand_float(joint_armature_range[0], joint_armature_range[1], (len(env_ids), 1), device=self.device)
+                self.joint_armatures[env_ids] = self.nominal_joint_armatures
             
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
@@ -643,12 +721,19 @@ class LeggedRobot(BaseTask):
                     else:
                         dof_props["damping"][i] *= self.joint_damping_coeffs[env_id, 0]
                         
-                if self.cfg.domain_rand.randomize_joint_armature:
-                    if self.cfg.domain_rand.randomize_joint_armature_each_joint:
-                        dof_props["armature"][i] = self.joint_armatures[env_id, i]
-                    else:
-                        dof_props["armature"][i] = self.joint_armatures[env_id, 0]
+                if self.joint_armature_enabled:
+                    dof_props["armature"][i] = self.joint_armatures[env_id, i]
             self.gym.set_actor_dof_properties(self.envs[env_id], 0, dof_props)
+
+    def get_runtime_joint_armatures(self, env_id=0):
+        """Read back effective armature values from one Isaac Gym actor."""
+        dof_props = self.gym.get_actor_dof_properties(
+            self.envs[env_id], self.actor_handles[env_id]
+        )
+        return {
+            name: float(dof_props["armature"][index])
+            for index, name in enumerate(self.dof_names)
+        }
     
     def _post_physics_step_callback(self):
         ''' Callback called before computing terminations, rewards, and observations
@@ -1133,6 +1218,7 @@ class LeggedRobot(BaseTask):
         self.dof_names = self.gym.get_asset_dof_names(robot_asset)
         self.num_bodies = len(body_names)
         self.num_dofs = len(self.dof_names)
+        self._init_joint_armature_config()
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
         print(body_names)
         print(feet_names)
@@ -1237,10 +1323,10 @@ class LeggedRobot(BaseTask):
         else:
             self.joint_damping_coeffs = torch.ones(self.num_envs, 1, dtype=torch.float, device=self.device,requires_grad=False)
             
-        if self.cfg.domain_rand.randomize_joint_armature_each_joint:
-            self.joint_armatures = torch.zeros(self.num_envs, self.num_dofs, dtype=torch.float, device=self.device,requires_grad=False)  
-        else:
-            self.joint_armatures = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device,requires_grad=False)
+        if self.joint_armature_enabled:
+            self.joint_armatures = self.nominal_joint_armatures.unsqueeze(0).repeat(
+                self.num_envs, 1
+            )
             
         if self.cfg.domain_rand.randomize_torque:
             self.torque_multi = torch.ones(self.num_envs, self.num_actions, dtype=torch.float, device=self.device,requires_grad=False)

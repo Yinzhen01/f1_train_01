@@ -237,6 +237,8 @@ class LeggedRobotCfg(BaseConfig):
         
         randomize_joint_armature = False
         randomize_joint_armature_each_joint = False
+        use_nominal_joint_armature = False
+        joint_armature_config_file = ""
         joint_armature_range = [0.0001, 0.05]     # Factor
         joint_1_armature_range = [0.0001, 0.05]
         joint_2_armature_range = [0.0001, 0.05]

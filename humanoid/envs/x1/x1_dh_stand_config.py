@@ -61,7 +61,7 @@ class X1DHStandCfg(LeggedRobotCfg):
 
     class asset(LeggedRobotCfg.asset):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/x1/urdf/X1_12DOF.urdf'
-        xml_file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/x1/mjcf/xyber_x1_flat.xml'
+        xml_file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/x1/mjcf/X1_12DOF_flat.xml'
 
         name = "x1"
         foot_name = "ankle_roll"
@@ -237,20 +237,10 @@ class X1DHStandCfg(LeggedRobotCfg):
 
         randomize_joint_armature = True
         randomize_joint_armature_each_joint = True
-        joint_armature_range = [0.0001, 0.05]     # Factor (unused when each_joint=True)
-        # joint_N = dof index N-1; ankle pitch=5/11, ankle roll=6/12
-        joint_1_armature_range = [0.0001, 0.05]
-        joint_2_armature_range = [0.0001, 0.05]
-        joint_3_armature_range = [0.0001, 0.05]
-        joint_4_armature_range = [0.0001, 0.05]
-        joint_5_armature_range = [0.12, 0.18]      # left_ankle_pitch, ID arm=0.15 ±20%
-        joint_6_armature_range = [0.028, 0.042]    # left_ankle_roll, ID arm=0.035 ±20%
-        joint_7_armature_range = [0.0001, 0.05]
-        joint_8_armature_range = [0.0001, 0.05]
-        joint_9_armature_range = [0.0001, 0.05]
-        joint_10_armature_range = [0.0001, 0.05]
-        joint_11_armature_range = [0.12, 0.18]     # right_ankle_pitch
-        joint_12_armature_range = [0.028, 0.042]   # right_ankle_roll
+        use_nominal_joint_armature = True
+        joint_armature_config_file = (
+            '{LEGGED_GYM_ROOT_DIR}/resources/robots/x1/config/joint_dynamics.json'
+        )
 
         add_lag = True
         randomize_lag_timesteps = True
