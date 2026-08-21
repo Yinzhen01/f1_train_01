@@ -356,7 +356,22 @@ def play(args):
     }
 
     FIX_COMMAND = True
-    fix_vel = 0.4  # Match the fixed command used by the trainability run
+    command_range = env_cfg.commands.ranges.lin_vel_x
+    configured_fixed_command = (
+        float(command_range[0])
+        if len(command_range) == 2
+        and abs(float(command_range[1]) - float(command_range[0])) < 1e-9
+        else 0.4
+    )
+    fix_vel = (
+        float(args.fixed_command_x)
+        if args.fixed_command_x is not None
+        else configured_fixed_command
+    )
+    print(
+        f"[play_gm] Fixed command: vx={fix_vel:.6f} m/s "
+        f"(source={'cli' if args.fixed_command_x is not None else 'task-config'})"
+    )
     vel_sum = 0.0  # HUD 平均速度统计
 
     for i in range(total_steps):

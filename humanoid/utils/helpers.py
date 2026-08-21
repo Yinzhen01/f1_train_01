@@ -251,6 +251,15 @@ def get_args():
                 "supports nominal shared per-joint values."
             ),
         },
+        {
+            "name": "--fixed_command_x",
+            "type": float,
+            "help": (
+                "Fixed forward-velocity command for policy playback. When "
+                "omitted, a task with a single configured lin_vel_x value "
+                "uses that value; other tasks retain the 0.4 m/s baseline."
+            ),
+        },
     ]
     # parse arguments
     args = gymutil.parse_arguments(
