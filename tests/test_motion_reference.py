@@ -170,15 +170,41 @@ class MotionReferenceTest(unittest.TestCase):
         rewards = self._nested_class_assignments(
             config, "X1DHStandRetargetWalkVx045Cfg", "rewards"
         )
+        motion = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkVx045Cfg", "motion_reference"
+        )
         scales = self._nested_class_assignments(
             config, "X1DHStandRetargetWalkVx045Cfg", "rewards", "scales"
         )
 
         self.assertEqual(ranges["lin_vel_x"], [0.45, 0.45])
         self.assertAlmostEqual(rewards["cycle_time"], 2.799477492696072)
-        self.assertEqual(rewards["target_feet_height"], 0.04)
-        self.assertEqual(rewards["target_feet_height_max"], 0.09)
-        self.assertEqual(scales["feet_clearance"], 3.0)
+        self.assertEqual(motion["clearance_scale"], 1.05)
+        self.assertEqual(motion["clearance_lift_offset"], 0.005)
+        self.assertEqual(motion["clearance_max"], 0.18)
+        self.assertEqual(rewards["ref_feet_clearance_sigma"], 400.0)
+        self.assertEqual(rewards["ref_feet_clearance_low_penalty"], 0.5)
+        self.assertEqual(scales["ref_feet_clearance"], 3.0)
+
+    def test_foot_clearance_reference_matches_selected_motion(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "resources"
+            / "motions"
+            / "x1"
+            / "walk_foot_clearance.csv"
+        )
+        table = load_joint_motion_csv(
+            source,
+            ("left_foot_clearance", "right_foot_clearance"),
+            start_time=0.6,
+            end_time=5.533333333333333,
+            close_loop=True,
+        )
+        self.assertEqual(table.frame_count, 149)
+        self.assertAlmostEqual(table.duration, 4.933333333333333)
+        self.assertGreater(float(table.positions[:, 0].max()), 0.15)
+        self.assertGreater(float(table.positions[:, 1].max()), 0.11)
 
 
 if __name__ == "__main__":

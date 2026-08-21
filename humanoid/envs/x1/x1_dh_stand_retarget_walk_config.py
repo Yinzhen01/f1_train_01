@@ -68,6 +68,20 @@ class X1DHStandRetargetWalkCfgPPO(X1DHStandNoDRCfgPPO):
 class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
     """Time-scaled reference whose root-path speed is 0.45 m/s."""
 
+    class motion_reference(X1DHStandRetargetWalkCfg.motion_reference):
+        # FK-derived foot-bottom clearance from the same source frames. Only
+        # two scalar targets are added; the policy still controls 12 joints.
+        clearance_file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/walk_foot_clearance.csv"
+        )
+        clearance_swing_threshold = 0.02
+        # Raise the retargeted swing modestly: 5% plus 5 mm. Raw FK peaks are
+        # about 15.5 cm (left) and 11.8 cm (right), yielding targets of about
+        # 16.8 cm and 12.9 cm after lifting.
+        clearance_scale = 1.05
+        clearance_lift_offset = 0.005
+        clearance_max = 0.18
+
     class commands(X1DHStandRetargetWalkCfg.commands):
         class ranges:
             lin_vel_x = [0.45, 0.45]
@@ -80,20 +94,13 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
         # original 4.933333 s clip by 1.762234x gives 1.259765 / 0.45.
         cycle_time = 2.799477492696072
 
-        # The first 0.45 m/s rollout kept the reference cadence but used a
-        # shallow swing. Reward accumulated swing-foot clearance in a bounded
-        # 4-9 cm window. The upper bound avoids solving the term with an
-        # unnecessarily high-stepping gait.
-        target_feet_height = 0.04
-        target_feet_height_max = 0.09
+        ref_feet_clearance_sigma = 400.0
+        ref_feet_clearance_low_penalty = 0.5
 
         class scales(X1DHStandRetargetWalkCfg.rewards.scales):
-            # This term was intentionally disabled in the original
-            # reference-first experiment. Enable it only for the faster
-            # profile, where its phase-aligned swing mask is now needed to
-            # discourage toe-skimming without re-enabling synthetic contact
-            # or air-time labels.
-            feet_clearance = 3.0
+            # Use reference-derived swing timing instead of the synthetic
+            # single-cycle stance mask used by the legacy feet_clearance term.
+            ref_feet_clearance = 3.0
 
 
 class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):

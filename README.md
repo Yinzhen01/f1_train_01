@@ -44,8 +44,9 @@ arguments to continue the same imitation task from a checkpoint.
 
 Use `retarget_walk_vx045_no_dr` or `retarget_walk_vx045_resume` to pair a
 0.45 m/s command with a 1.762234x time-scaled version of the same reference.
-The faster profile also enables a bounded swing-foot clearance reward for a
-4-9 cm lift window; synthetic contact-count and air-time rewards stay off.
+The faster profile also tracks FK-derived swing-foot clearance from the same
+motion with a modest 5% + 5 mm lift; synthetic contact-count and air-time
+rewards stay off.
 
 Only the named left/right hip, knee, and ankle columns are used. Floating-base,
 waist, arm, neck, and head columns are excluded from the training reference.

@@ -117,7 +117,9 @@ class X1DHStandEnv(LeggedRobot):
         self.last_feet_z = self.cfg.rewards.feet_to_ankle_distance
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
         self.ref_dof_pos = torch.zeros((self.num_envs, self.num_actions), device=self.device)
+        self.ref_feet_clearance = torch.zeros((self.num_envs, 2), device=self.device)
         self._motion_ref_positions = None
+        self._motion_ref_feet_clearance = None
         self._motion_ref_phase_offset = 0.0
         self._load_motion_reference()
 
@@ -144,6 +146,42 @@ class X1DHStandEnv(LeggedRobot):
         self._motion_ref_positions = torch.as_tensor(
             table.positions, dtype=torch.float, device=self.device
         )
+        clearance_file = getattr(motion_cfg, "clearance_file", "")
+        if clearance_file:
+            configured_clearance_path = str(clearance_file).replace(
+                "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+            )
+            clearance_table = load_joint_motion_csv(
+                configured_clearance_path,
+                ("left_foot_clearance", "right_foot_clearance"),
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if clearance_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Foot-clearance and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            clearance = torch.as_tensor(
+                clearance_table.positions, dtype=torch.float, device=self.device
+            )
+            swing_threshold = float(
+                getattr(motion_cfg, "clearance_swing_threshold", 0.02)
+            )
+            lifted = clearance * float(
+                getattr(motion_cfg, "clearance_scale", 1.0)
+            ) + float(getattr(motion_cfg, "clearance_lift_offset", 0.0))
+            clearance = torch.where(
+                clearance > swing_threshold,
+                lifted,
+                clearance,
+            )
+            self._motion_ref_feet_clearance = torch.clamp(
+                clearance,
+                min=0.0,
+                max=float(getattr(motion_cfg, "clearance_max", 0.20)),
+            )
         self._motion_ref_phase_offset = float(
             getattr(motion_cfg, "phase_offset", 0.0)
         )
@@ -327,6 +365,12 @@ class X1DHStandEnv(LeggedRobot):
             lower_pose = self._motion_ref_positions[frame_lower]
             upper_pose = self._motion_ref_positions[frame_upper]
             self.ref_dof_pos = lower_pose + interpolation * (upper_pose - lower_pose)
+            if self._motion_ref_feet_clearance is not None:
+                lower_clearance = self._motion_ref_feet_clearance[frame_lower]
+                upper_clearance = self._motion_ref_feet_clearance[frame_upper]
+                self.ref_feet_clearance = lower_clearance + interpolation * (
+                    upper_clearance - lower_clearance
+                )
 
             # A retargeted pose can sit just outside the URDF range (the source
             # left hip roll exceeds the X1 limit by about 0.04 rad).  Never ask
@@ -940,6 +984,36 @@ class X1DHStandEnv(LeggedRobot):
         rew_pos = torch.sum(rew_pos * swing_mask, dim=1)
         self.feet_height *= ~contact
         return rew_pos
+
+    def _reward_ref_feet_clearance(self):
+        """Track reference-derived swing-foot height with a low-lift penalty."""
+        if self._motion_ref_feet_clearance is None:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        actual_clearance = (
+            self.rigid_state[:, self.feet_indices, 2]
+            - self.cfg.rewards.feet_to_ankle_distance
+        )
+        target = self.ref_feet_clearance
+        swing_threshold = float(
+            getattr(self.cfg.motion_reference, "clearance_swing_threshold", 0.02)
+        )
+        swing_mask = (target > swing_threshold).float()
+        squared_error = torch.square(actual_clearance - target)
+        tracking = torch.exp(
+            -squared_error * self.cfg.rewards.ref_feet_clearance_sigma
+        )
+        low_lift_fraction = torch.clamp(
+            (target - actual_clearance) / torch.clamp(target, min=swing_threshold),
+            min=0.0,
+            max=1.0,
+        )
+        score = tracking - (
+            self.cfg.rewards.ref_feet_clearance_low_penalty * low_lift_fraction
+        )
+        return torch.sum(score * swing_mask, dim=1) / torch.clamp(
+            torch.sum(swing_mask, dim=1), min=1.0
+        )
 
     def _reward_low_speed(self):
         """
