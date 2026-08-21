@@ -46,6 +46,9 @@ class X1DHStandNoDRCfg(X1DHStandCfg):
         randomize_joint_friction_each_joint = False
         randomize_joint_damping = False
         randomize_joint_damping_each_joint = False
+        # No-DR means deterministic nominal dynamics, not zero armature.
+        # The per-joint values and config path are inherited from X1DHStandCfg.
+        use_nominal_joint_armature = True
         randomize_joint_armature = False
         randomize_joint_armature_each_joint = False
         randomize_coulomb_friction = False
