@@ -30,11 +30,17 @@ use the same helper so a full-DR task cannot leak random settings into a normal
 render. Randomized robustness evaluation must use a separately named task and
 must report its sampled ranges and seed.
 
-The hip nominal values follow the centers used by upstream branch
-`x1-training-all-parameter`: hip pitch `0.208`, hip roll `0.025`, and hip yaw
-`0.0148` kg m^2, with symmetric left/right values. Hip-pitch and hip-yaw DR
-ranges retain the upstream +/-20% bounds; hip roll remains marked as
-unidentified and keeps the historical `[0.0001, 0.05]` range. Knee values are
-unchanged by this update. No-DR training and standard inference both use these
-nominal values; disabling armature randomization must never imply zero
-armature.
+The nominal values and DR ranges follow upstream branch
+`x1-training-all-parameter`, with symmetric left/right values:
+
+- hip pitch: nominal `0.208`, range `[0.1664, 0.2496]` kg m^2;
+- hip roll: nominal `0.025`, range `[0.0001, 0.05]` kg m^2;
+- hip yaw: nominal `0.0148`, range `[0.01184, 0.01776]` kg m^2;
+- knee pitch: nominal `0.2728`, range `[0.21824, 0.32736]` kg m^2;
+- ankle pitch: nominal `0.15`, range `[0.12, 0.18]` kg m^2;
+- ankle roll: nominal `0.035`, range `[0.028, 0.042]` kg m^2.
+
+The upstream comments mark hip roll as unidentified; its nominal is the center
+used by upstream playback rather than an identified physical value. No-DR
+training and standard inference both use these nominal values; disabling
+armature randomization must never imply zero armature.

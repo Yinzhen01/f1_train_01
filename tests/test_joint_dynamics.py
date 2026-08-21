@@ -52,12 +52,15 @@ class JointDynamicsConfigTest(unittest.TestCase):
             self.assertLessEqual(low, entry["nominal"])
             self.assertLessEqual(entry["nominal"], high)
 
-    def test_hip_nominal_values_match_identified_branch_centers(self):
+    def test_values_match_all_parameter_branch_centers_and_ranges(self):
         joints = load_joint_armature_config(CONFIG_PATH)["joints"]
         expected = {
             "hip_pitch_joint": (0.208, (0.1664, 0.2496)),
             "hip_roll_joint": (0.025, (0.0001, 0.05)),
             "hip_yaw_joint": (0.0148, (0.01184, 0.01776)),
+            "knee_pitch_joint": (0.2728, (0.21824, 0.32736)),
+            "ankle_pitch_joint": (0.15, (0.12, 0.18)),
+            "ankle_roll_joint": (0.035, (0.028, 0.042)),
         }
         for side in ("left", "right"):
             for suffix, (nominal, train_range) in expected.items():
