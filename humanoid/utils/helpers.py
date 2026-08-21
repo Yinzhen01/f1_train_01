@@ -234,9 +234,8 @@ def get_args():
             "type": str,
             "default": "nominal",
             "help": (
-                "Isaac Gym inference armature mode: training preserves the task "
-                "config, nominal uses the shared per-joint defaults, and zero "
-                "reproduces historical zero-armature checkpoints."
+                "Isaac Gym inference armature mode. Standard playback only "
+                "supports nominal shared per-joint values."
             ),
         },
     ]

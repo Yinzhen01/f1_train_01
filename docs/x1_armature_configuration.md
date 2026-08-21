@@ -15,20 +15,14 @@ nominal values at environment creation and reset. Both `play.py` and
 `model.dof_armature` by joint name. A missing or mismatched joint is a hard
 error rather than an index-based silent mismatch.
 
-Isaac Gym playback accepts `--armature_mode`:
-
-- `nominal` (default): disable armature DR and read the shared nominal values;
-- `training`: preserve the selected task's armature configuration, including
-  randomization when that task enables it;
-- `zero`: disable armature DR and nominal injection, and force asset armature
-  to zero for historical checkpoints trained with armature disabled.
-
-`training` does not infer historical settings from checkpoint contents because
-the old checkpoints do not store this configuration. Select `zero` explicitly
-when reproducing those runs.
+Isaac Gym standard playback accepts only `--armature_mode=nominal`: it disables
+armature DR and reads the shared nominal values. Randomized robustness
+evaluation is a separate workflow rather than a playback mode, so a normal
+render cannot silently change the evaluation dynamics. Zero-armature playback
+is intentionally unsupported because those checkpoints are excluded from the
+maintained experiment set.
 
 The hip and knee nominal value `0.02505` is currently the midpoint of the
 historical training range, not a system-identification result. Replace it when
-identified actuator values become available. Old checkpoints trained with
-armature disabled used zero armature; set `use_nominal_joint_armature = False`
-when reproducing those historical dynamics exactly.
+identified actuator values become available. No-DR training must still use the
+nominal value; disabling armature randomization must never imply zero armature.

@@ -48,6 +48,9 @@ class X1DHStandDRStage1Cfg(X1DHStandNoDRMixedCfg):
         randomize_motor_offset = False
         randomize_joint_friction = False
         randomize_joint_damping = False
+        # Stage-1 keeps deterministic robot armature at the shared nominal
+        # values. Disabling armature DR must not fall back to zero inertia.
+        use_nominal_joint_armature = True
         randomize_joint_armature = False
         randomize_coulomb_friction = False
         add_lag = False

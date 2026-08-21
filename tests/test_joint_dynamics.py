@@ -104,21 +104,11 @@ class JointDynamicsConfigTest(unittest.TestCase):
         self.assertTrue(env_cfg.domain_rand.use_nominal_joint_armature)
         self.assertFalse(env_cfg.domain_rand.randomize_joint_armature)
 
-    def test_zero_inference_disables_config_and_asset_armature(self):
-        env_cfg = self._env_cfg()
-        self.assertEqual("zero", configure_inference_armature(env_cfg, "zero"))
-        self.assertFalse(env_cfg.domain_rand.use_nominal_joint_armature)
-        self.assertFalse(env_cfg.domain_rand.randomize_joint_armature)
-        self.assertEqual(0.0, env_cfg.asset.armature)
-
-    def test_training_inference_preserves_task_configuration(self):
-        env_cfg = self._env_cfg(randomize=True, use_nominal=False)
-        self.assertEqual(
-            "training", configure_inference_armature(env_cfg, "training")
-        )
-        self.assertTrue(env_cfg.domain_rand.randomize_joint_armature)
-        self.assertFalse(env_cfg.domain_rand.use_nominal_joint_armature)
-        self.assertEqual(0.75, env_cfg.asset.armature)
+    def test_non_nominal_inference_modes_are_rejected(self):
+        for mode in ("zero", "training"):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError, "unsupported armature"):
+                    configure_inference_armature(self._env_cfg(), mode)
 
 
 if __name__ == "__main__":
