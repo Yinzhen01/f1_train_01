@@ -75,13 +75,26 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   `x1_dh_stand_dr_full`、4096 environments、seed 5，初始追加 3000 PPO
   updates，预期累计约 `model_9700`。分支
   `experiment/nominal-armature-pipeline`，创建时分支 commit `fcfa166`；
-  `2026-08-21 11:30:31` 启动请求已成功受理，当前等待 GPU 资源。旧 profile
+  `2026-08-21 11:30:31` 启动请求成功受理，`11:31:04` 开始运行；当前已从
+  完整 DR 切换后的短暂崩溃期持续恢复。旧 profile
   下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练任务。
 - Stage-1 最终模型扭矩诊断重放：`TASK_20260821_074`，源为
   `TASK_20260821_028/model_6700`，使用 deterministic nominal Isaac Gym、
   50 Hz 平滑相机及已修复的诊断持久化代码。任务将记录 20 秒、100 Hz、
   2000 点的 12 关节实际施加扭矩，并生成原始 CSV、峰值/RMS 表和时间曲线；
   当前因完整 DR 训练占用资源而排队，保持等待且不影响训练任务。
+- 独立资源池 A：profile `x1-pool-a-20260821`、project
+  `PRO_20260821_018`。已创建并启动等价 Stage-1 nominal 扭矩诊断
+  `TASK_20260821_110`，源仍为 `TASK_20260821_028/model_6700`，使用
+  `x1_dh_stand_dr_stage1`、`--armature_mode=nominal`、Isaac Gym v19 和
+  1×4090D。该任务用于绕开 `TASK_074` 与完整 DR 共用单 GPU 的排队，不替换
+  或修改原任务；以最先成功产出完整诊断数据的任务作为交付源。
+- 独立资源池 B：profile `x1-pool-b-20260821`、project
+  `PRO_20260821_019`。为规避 4090D SKU 的全局排队，已在 1×4090 SKU 上
+  创建并启动第二个等价诊断 `TASK_20260821_111`，与资源池 A 的
+  `TASK_20260821_110` 竞速；两者源 checkpoint、nominal 推理参数和诊断代码
+  一致，先完整产出者作为交付源。账号密码和 API key 仅保存在本机凭据
+  管理器与 gm profile，不写入仓库。
 - 新 Stage-1 DR：`TASK_20260821_028`，源为
   `TASK_20260821_006/model_4700`，分支 `experiment/nominal-armature-pipeline`，
   seed 5、4096 environments，初始追加 2000 PPO updates。保留 nominal
@@ -106,11 +119,12 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 下一步
 
-1. 监控 `TASK_20260821_028`；达到行为门槛即停止扩展并做 nominal 推理，
-   否则每次仅追加 1000 PPO updates 后复评。
-2. 从通过门槛的新 Stage-1 checkpoint 继续完整 DR；初始追加 3000 PPO
-   updates，按评估结果自适应延长并做 nominal 推理。
-3. 使用 `TASK_20260821_014` 作为直接完整 DR 路线的公平 nominal A/B 对照。
+1. 继续监控完整 DR `TASK_20260821_073`；初始 3000 updates 完成后先做
+   deterministic nominal 推理与扭矩诊断，再按门槛决定是否追加 1000。
+2. 监控资源池 A 的 `TASK_20260821_110`，完成后下载视频与 100 Hz 扭矩数据，
+   生成 12 关节统计表和时间曲线；原 `TASK_074` 保持不动。
+3. 同时监控资源池 B 的 `TASK_20260821_111`；诊断任务结束后，资源池账号
+   继续保留给后续独立推理或追加训练，避免必须等待现有账号 GPU 全部释放。
 
 ## 关键决策
 
@@ -123,6 +137,8 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 - `2026-08-21`：Isaac Gym 标准渲染的跟随相机与 50 fps 录制逐帧同步，
   使用约 `0.5 s` 的时间平滑；该调整只影响画面，不改变策略、观测、动作或物理仿真。
 - `2026-08-21`：采用 `AGENTS.md`、专项文档、自动化测试和项目 Skill 分层管理工程规则与状态。
+- `2026-08-21`：用户授权按并行需求提前申请 Gradmotion 账号和 GPU 资源池，
+  不要求等待现有机器耗尽；不得中断正在运行的有效任务，凭据不得进入仓库。
 
 ## 风险与注意事项
 
