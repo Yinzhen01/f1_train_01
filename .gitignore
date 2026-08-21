@@ -5,3 +5,6 @@ __pycache__/
 venv/
 *.egg-info/
 .agents/skills/gm-cli/api_key.json
+logs/
+outputs/
+MUJOCO_LOG.TXT
