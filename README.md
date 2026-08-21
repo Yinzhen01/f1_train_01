@@ -39,6 +39,9 @@ python humanoid/scripts/train.py `
   --headless
 ```
 
+Use `retarget_walk_resume` with explicit `--load_run` and `--checkpoint`
+arguments to continue the same imitation task from a checkpoint.
+
 Only the named left/right hip, knee, and ankle columns are used. Floating-base,
 waist, arm, neck, and head columns are excluded from the training reference.
 The initial profile uses nominal armature with domain randomization disabled;

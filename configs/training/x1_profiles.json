@@ -63,6 +63,21 @@
         "num_envs": 4096,
         "max_iterations": 3000
       }
+    },
+    "retarget_walk_resume": {
+      "description": "Continue the no-DR retargeted-walk imitation task from an explicit checkpoint.",
+      "task": "x1_dh_stand_retarget_walk",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_retarget_walk",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 2500
+      }
     }
   }
 }

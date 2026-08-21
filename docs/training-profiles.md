@@ -19,6 +19,7 @@ python -m humanoid.training_profiles
 | `full_dr_from_stage1` | `x1_dh_stand_dr_full` | 显式 Stage-1 checkpoint | 3000 |
 | `full_dr_scratch` | `x1_dh_stand_dr_full` | 随机初始化 | 6000 |
 | `retarget_walk_no_dr` | `x1_dh_stand_retarget_walk` | 12关节重定向参考、随机初始化 | 3000 |
+| `retarget_walk_resume` | `x1_dh_stand_retarget_walk` | 显式重定向训练 checkpoint | 2500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
 固定次数。`seed` 和 `num_envs` 的默认值分别为 5 和 4096，也允许显式覆盖。
@@ -54,6 +55,13 @@ python humanoid/scripts/train.py --training_profile=no_dr_scratch --headless
 python humanoid/scripts/train.py `
   --training_profile=retarget_walk_no_dr `
   --run_name=walk_csv_imitation `
+  --headless
+
+python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_resume `
+  --load_run=<retarget-run> `
+  --checkpoint=500 `
+  --run_name=walk_csv_imitation_continue `
   --headless
 
 python humanoid/scripts/train.py `
