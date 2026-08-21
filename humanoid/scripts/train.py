@@ -33,6 +33,7 @@
 
 
 from humanoid.envs import *
+from humanoid.training_profiles import apply_training_profile
 from humanoid.utils import get_args, task_registry
 
 def train(args):
@@ -49,5 +50,6 @@ def train(args):
 
 if __name__ == '__main__':
     args = get_args()
+    args = apply_training_profile(args)
     print("[gradmotion-smoke] arguments parsed", flush=True)
     train(args)

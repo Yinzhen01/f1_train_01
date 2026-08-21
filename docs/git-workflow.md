@@ -18,7 +18,9 @@
 
 ## 分支与 worktree
 
-- 一个实验或一类不可拆分的工程变更对应一个分支。
+- 一类不可拆分的代码、资产或配置定义变更对应一个分支。若 task 代码完全相同，
+  仅初始化方式、恢复 checkpoint、seed、环境数、训练步数或资源不同，则使用
+  `configs/training/x1_profiles.json` 和 Gradmotion task 记录区分，不复制代码分支。
 - 使用小写 kebab-case 和现有前缀：`experiment/`、`feat/`、`fix/`、`docs/`、`refactor/`、`chore/`。
 - 训练任务已经从某个 commit 启动后，不在原分支上混入会改变实验定义的改动；新方案另开分支。
 - 主工作区存在用户改动或运行产物时，优先使用独立 worktree 隔离，不移动或删除用户文件。

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "no_dr_scratch": {
+      "description": "Nominal-armature mixed-command baseline from random initialization.",
+      "task": "x1_dh_stand_no_dr_mixed",
+      "initialization": "scratch",
+      "experiment_name": "x1_dh_stand_no_dr_mixed",
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 2000
+      }
+    },
+    "stage1_from_no_dr": {
+      "description": "Stage-1 domain randomization resumed from an explicit nominal no-DR checkpoint.",
+      "task": "x1_dh_stand_dr_stage1",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_dr_stage1",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 2000
+      }
+    },
+    "full_dr_from_stage1": {
+      "description": "Complete domain randomization resumed from an explicit Stage-1 checkpoint.",
+      "task": "x1_dh_stand_dr_full",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_dr_full",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 3000
+      }
+    },
+    "full_dr_scratch": {
+      "description": "Direct complete-domain-randomization A/B baseline from random initialization.",
+      "task": "x1_dh_stand_dr_full",
+      "initialization": "scratch",
+      "experiment_name": "x1_dh_stand_full_dr_baseline",
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 6000
+      }
+    }
+  }
+}

@@ -148,7 +148,11 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
         # alg runner parameters
         if args.max_iterations is not None:
             cfg_train.runner.max_iterations = args.max_iterations
-        if args.resume:
+        if getattr(args, "training_profile", None) is not None:
+            # A declarative profile owns both sides of the scratch/resume
+            # decision, including an explicit False for scratch profiles.
+            cfg_train.runner.resume = args.resume
+        elif args.resume:
             cfg_train.runner.resume = args.resume
         if args.experiment_name is not None:
             cfg_train.runner.experiment_name = args.experiment_name
@@ -169,6 +173,15 @@ def get_args():
             "type": str,
             "default": "XBotL_free",
             "help": "Resume training or start testing from a checkpoint. Overrides config file if provided.",
+        },
+        {
+            "name": "--training_profile",
+            "type": str,
+            "help": (
+                "Declarative X1 training profile from "
+                "configs/training/x1_profiles.json. The profile selects the "
+                "task and scratch/resume mode."
+            ),
         },
         {
             "name": "--resume",

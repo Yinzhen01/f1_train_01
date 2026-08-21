@@ -45,6 +45,8 @@
 - 无 DR 混合指令训练：`python humanoid/scripts/train.py --task=x1_dh_stand_no_dr_mixed --run_name=<name> --headless`
 - Stage-1 DR 训练：`python humanoid/scripts/train.py --task=x1_dh_stand_dr_stage1 --run_name=<name> --headless`
 - 完整 DR 训练：`python humanoid/scripts/train.py --task=x1_dh_stand_dr_full --run_name=<name> --headless`
+- 配置化训练：`python humanoid/scripts/train.py --training_profile=<profile> --run_name=<name> --headless`
+- 查看训练预设：`python -m humanoid.training_profiles`
 - Isaac Gym 推理：`python humanoid/scripts/play.py --task=<task> --load_run=<run> --armature_mode=nominal`
 - MuJoCo 推理：`python humanoid/scripts/sim2sim.py --task=<task> --load_model=<exported-policy>`
 - 本地单元测试：`python -m unittest discover -s tests -v`
@@ -87,6 +89,7 @@
 | 项目状态 | 恢复上下文、规划下一步、判断实验阶段时 | `docs/project-state.md` |
 | Git 工作流 | branch、commit、push、merge、rebase、stash、冲突或 PR 时 | `docs/git-workflow.md` |
 | X1 armature | 修改或核对训练/推理 armature 时 | `docs/x1_armature_configuration.md` |
+| X1 训练预设 | 从零/恢复训练、选择 no-DR/Stage-1/full-DR 时 | `docs/training-profiles.md` |
 | 用户使用说明 | 安装、训练、回放、导出或添加环境时 | `README.zh_CN.md` |
 
 不存在的需求、架构、测试、部署或安全文档不要臆造。确有长期需要时再创建，并在本表登记读取条件。
