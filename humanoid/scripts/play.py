@@ -39,7 +39,7 @@ import cv2
 import numpy as np
 from isaacgym import gymapi
 from humanoid import LEGGED_GYM_ROOT_DIR
-from humanoid.joint_dynamics import configure_inference_armature
+from humanoid.joint_dynamics import configure_nominal_inference_environment
 
 from humanoid.envs import *
 from humanoid.utils import get_args, export_policy_as_jit, task_registry, Logger
@@ -150,46 +150,14 @@ if joystick_use:
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 10)
-    env_cfg.terrain.mesh_type = 'plane'
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 5
     env_cfg.terrain.max_init_terrain_level = 5
     env_cfg.env.episode_length_s = 1000
-    env_cfg.noise.add_noise = False
-    env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.push_robots = False
-    env_cfg.domain_rand.continuous_push = False
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_com = False
-    env_cfg.domain_rand.randomize_gains = False
-    env_cfg.domain_rand.randomize_torque = False
-    env_cfg.domain_rand.randomize_link_mass = False
-    env_cfg.domain_rand.randomize_motor_offset = False
-    env_cfg.domain_rand.randomize_joint_friction = False
-    env_cfg.domain_rand.randomize_joint_damping = False
-    env_cfg.domain_rand.randomize_lag_timesteps = False
-    # play: 关闭整机 lag，避免与踝辨识 tauLPF 叠加重延迟
-    env_cfg.domain_rand.add_lag = False
-    env_cfg.domain_rand.add_dof_lag = False
-    env_cfg.domain_rand.add_imu_lag = False
-    env_cfg.noise.curriculum = False
     env_cfg.commands.heading_command = True  # exp_heading: play 时也开启 heading 跟踪
-
-    # --- 踝关节阶跃辨识名义值（固定点，非随机区间）---
-    # pitch: coulomb0.5 viscous0.225 arm0.15; roll: coulomb0.5 viscous0 arm0.035; tauLPF=8ms
-    env_cfg.domain_rand.randomize_coulomb_friction = True
-    env_cfg.domain_rand.joint_coulomb_range = [0.0, 0.0]
-    env_cfg.domain_rand.joint_viscous_range = [0.0, 0.0]
-    env_cfg.domain_rand.ankle_pitch_joint_coulomb_range = [0.5, 0.5]
-    env_cfg.domain_rand.ankle_pitch_joint_viscous_range = [0.225, 0.225]
-    env_cfg.domain_rand.ankle_roll_joint_coulomb_range = [0.5, 0.5]
-    env_cfg.domain_rand.ankle_roll_joint_viscous_range = [0.0, 0.0]
-
-    armature_mode = configure_inference_armature(env_cfg, args.armature_mode)
-
-    env_cfg.domain_rand.enable_delivery = True
-    env_cfg.domain_rand.delivery_tau_d = 0.008
-    env_cfg.domain_rand.delivery_joint_ids = [4, 5, 10, 11]
+    armature_mode = configure_nominal_inference_environment(
+        env_cfg, args.armature_mode
+    )
 
     train_cfg.seed = 123145
     print("train_cfg.runner_class_name:", train_cfg.runner_class_name)
@@ -222,18 +190,16 @@ def play(args):
     csv_log_end = stop_state_log - 1
     num_dof = env_cfg.env.num_actions  # 12
 
-    assert num_dof == 12, f"exp_010_1 expects 12 DOF, got {num_dof}"
+    assert num_dof == 12, f"X1 playback expects 12 DOF, got {num_dof}"
     assert len(env.dof_names) == 12, f"dof_names len={len(env.dof_names)}"
 
-    print(f"[play] exp_010_add_ankle_parameter  X1-12DOF  fixed cmd={FIXED_CMD_VX} m/s")
+    print(f"[play] X1-12DOF nominal inference fixed cmd={FIXED_CMD_VX} m/s")
     print(f"[play] csv_log steps {csv_log_start}–{csv_log_end}")
-    print("[play] ankle ID plant (nominal):")
-    print(f"  pitch: Fc=0.5 B=0.225 arm=0.15 | roll: Fc=0.5 B=0 arm=0.035")
-    print(f"  delivery LPF: enable={env.cfg.domain_rand.enable_delivery} "
-          f"tau_d={env.cfg.domain_rand.delivery_tau_d}s ids={list(env.cfg.domain_rand.delivery_joint_ids)}")
-    print(f"  coulomb_on={env.cfg.domain_rand.randomize_coulomb_friction} "
-          f"armature_mode={armature_mode} "
-          f"add_lag={env.cfg.domain_rand.add_lag}")
+    print(
+        f"[play] armature_mode={armature_mode} "
+        f"coulomb_randomization={env.cfg.domain_rand.randomize_coulomb_friction} "
+        f"action_lag={env.cfg.domain_rand.add_lag}"
+    )
     print("[dof] Isaac order:")
     for i, name in enumerate(env.dof_names):
         print(f"  [{i:2d}] {name:32s} → {JOINT_SHORT_NAMES[i]}")

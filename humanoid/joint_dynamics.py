@@ -15,6 +15,43 @@ from humanoid import LEGGED_GYM_ROOT_DIR
 
 ARMATURE_INFERENCE_MODES = ("nominal",)
 
+_NOMINAL_INFERENCE_DISABLED_FLAGS = (
+    "randomize_friction",
+    "push_robots",
+    "add_ext_force",
+    "continuous_push",
+    "randomize_base_mass",
+    "randomize_com",
+    "randomize_link_com",
+    "randomize_base_inertia",
+    "randomize_link_inertia",
+    "randomize_gains",
+    "randomize_torque",
+    "randomize_link_mass",
+    "randomize_motor_offset",
+    "randomize_joint_friction",
+    "randomize_joint_friction_each_joint",
+    "randomize_joint_damping",
+    "randomize_joint_damping_each_joint",
+    "randomize_joint_armature_each_joint",
+    "randomize_coulomb_friction",
+    "add_lag",
+    "randomize_lag_timesteps",
+    "randomize_lag_timesteps_perstep",
+    "add_dof_lag",
+    "randomize_dof_lag_timesteps",
+    "randomize_dof_lag_timesteps_perstep",
+    "add_dof_pos_vel_lag",
+    "randomize_dof_pos_lag_timesteps",
+    "randomize_dof_pos_lag_timesteps_perstep",
+    "randomize_dof_vel_lag_timesteps",
+    "randomize_dof_vel_lag_timesteps_perstep",
+    "add_imu_lag",
+    "randomize_imu_lag_timesteps",
+    "randomize_imu_lag_timesteps_perstep",
+    "enable_delivery",
+)
+
 
 def resolve_robot_config_path(path):
     """Resolve a config path that may contain the project-root placeholder."""
@@ -130,4 +167,31 @@ def configure_inference_armature(env_cfg, mode):
     domain_rand.use_nominal_joint_armature = True
     domain_rand.randomize_joint_armature = False
 
+    return mode
+
+
+def configure_nominal_inference_environment(env_cfg, armature_mode="nominal"):
+    """Configure the deterministic environment used by standard playback."""
+    terrain = env_cfg.terrain
+    terrain.mesh_type = "plane"
+    terrain.curriculum = False
+    terrain.measure_heights = False
+    terrain.static_friction = 0.6
+    terrain.dynamic_friction = 0.6
+    terrain.restitution = 0.0
+
+    env_cfg.noise.add_noise = False
+    if hasattr(env_cfg.noise, "curriculum"):
+        env_cfg.noise.curriculum = False
+
+    domain_rand = env_cfg.domain_rand
+    for flag_name in _NOMINAL_INFERENCE_DISABLED_FLAGS:
+        if hasattr(domain_rand, flag_name):
+            setattr(domain_rand, flag_name, False)
+
+    mode = configure_inference_armature(env_cfg, armature_mode)
+    print(
+        "[inference] dynamics=nominal plane_friction=0.6 "
+        "domain_randomization=off observation_noise=off"
+    )
     return mode

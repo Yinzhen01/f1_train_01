@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from humanoid.joint_dynamics import (
     armature_values_for_dof_order,
     configure_inference_armature,
+    configure_nominal_inference_environment,
     load_joint_armature_config,
 )
 
@@ -109,6 +110,39 @@ class JointDynamicsConfigTest(unittest.TestCase):
             with self.subTest(mode=mode):
                 with self.assertRaisesRegex(ValueError, "unsupported armature"):
                     configure_inference_armature(self._env_cfg(), mode)
+
+    def test_standard_inference_uses_deterministic_nominal_environment(self):
+        env_cfg = self._env_cfg(randomize=True, use_nominal=False)
+        env_cfg.terrain = SimpleNamespace(
+            mesh_type="trimesh",
+            curriculum=True,
+            measure_heights=True,
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.5,
+        )
+        env_cfg.noise = SimpleNamespace(add_noise=True, curriculum=True)
+        env_cfg.domain_rand.push_robots = True
+        env_cfg.domain_rand.randomize_base_mass = True
+        env_cfg.domain_rand.randomize_coulomb_friction = True
+        env_cfg.domain_rand.add_lag = True
+        env_cfg.domain_rand.enable_delivery = True
+
+        self.assertEqual(
+            "nominal", configure_nominal_inference_environment(env_cfg)
+        )
+        self.assertEqual("plane", env_cfg.terrain.mesh_type)
+        self.assertEqual(0.6, env_cfg.terrain.static_friction)
+        self.assertEqual(0.6, env_cfg.terrain.dynamic_friction)
+        self.assertEqual(0.0, env_cfg.terrain.restitution)
+        self.assertFalse(env_cfg.noise.add_noise)
+        self.assertFalse(env_cfg.domain_rand.push_robots)
+        self.assertFalse(env_cfg.domain_rand.randomize_base_mass)
+        self.assertFalse(env_cfg.domain_rand.randomize_coulomb_friction)
+        self.assertFalse(env_cfg.domain_rand.add_lag)
+        self.assertFalse(env_cfg.domain_rand.enable_delivery)
+        self.assertTrue(env_cfg.domain_rand.use_nominal_joint_armature)
+        self.assertFalse(env_cfg.domain_rand.randomize_joint_armature)
 
 
 if __name__ == "__main__":

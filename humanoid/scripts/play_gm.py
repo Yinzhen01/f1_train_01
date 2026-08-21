@@ -18,7 +18,7 @@ import torch
 from datetime import datetime
 
 from humanoid import LEGGED_GYM_ROOT_DIR
-from humanoid.joint_dynamics import configure_inference_armature
+from humanoid.joint_dynamics import configure_nominal_inference_environment
 from humanoid.envs import *
 from humanoid.utils import get_args, task_registry
 from isaacgym.torch_utils import *
@@ -216,28 +216,10 @@ def play(args):
 
     # Override for playback
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
-    env_cfg.terrain.mesh_type = "plane"
     env_cfg.env.episode_length_s = 1000
-    env_cfg.noise.add_noise = False
-
-    # Disable unrelated domain randomization for clean playback. Armature is
-    # selected independently below.
-    env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.push_robots = False
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_com = False
-    env_cfg.domain_rand.randomize_gains = False
-    env_cfg.domain_rand.randomize_torque = False
-    env_cfg.domain_rand.randomize_link_mass = False
-    env_cfg.domain_rand.randomize_motor_offset = False
-    env_cfg.domain_rand.randomize_joint_friction = False
-    env_cfg.domain_rand.randomize_joint_damping = False
-    env_cfg.domain_rand.randomize_lag_timesteps = False
-    env_cfg.domain_rand.add_lag = False
-    env_cfg.domain_rand.add_dof_lag = False
-    env_cfg.commands.heading_command = False
-    env_cfg.noise.curriculum = False
-    armature_mode = configure_inference_armature(env_cfg, args.armature_mode)
+    armature_mode = configure_nominal_inference_environment(
+        env_cfg, args.armature_mode
+    )
 
     # Enable headless rendering: no viewer but GPU camera sensors work
     env_cfg.env.enable_headless_render = True

@@ -22,6 +22,14 @@ render cannot silently change the evaluation dynamics. Zero-armature playback
 is intentionally unsupported because those checkpoints are excluded from the
 maintained experiment set.
 
+Standard playback also forces the complete deterministic no-DR environment:
+plane friction `0.6`, restitution `0`, observation noise off, pushes off,
+rigid-body/actuator/joint randomization off, action and sensor lag off, and
+ankle delivery randomization off. Both local `play.py` and cloud `play_gm.py`
+use the same helper so a full-DR task cannot leak random settings into a normal
+render. Randomized robustness evaluation must use a separately named task and
+must report its sampled ranges and seed.
+
 The hip and knee nominal value `0.02505` is currently the midpoint of the
 historical training range, not a system-identification result. Replace it when
 identified actuator values become available. No-DR training must still use the
