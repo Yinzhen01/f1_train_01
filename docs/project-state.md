@@ -21,6 +21,25 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   4096 environments。用户确认该阶段无需机械跑满 5000 iterations，任务于
   `2026-08-21 10:09:44` 计划内早停；状态 6 不代表训练失败，最高完整
   checkpoint 为 `model_4700`，作为后续有效恢复源。
+- nominal-armature 课程完整 DR：`TASK_20260821_073`，从有效
+  `TASK_20260821_028/model_6700` 恢复，分支
+  `experiment/nominal-armature-pipeline` / `fcfa166`，4096 environments、
+  seed 5，追加 3000 PPO updates。任务于 `2026-08-21 12:27:29` 正常完成，
+  最终日志为 iteration `9698/9699`，本阶段新增 `294,912,000` timesteps，
+  最高完整 checkpoint 为 `model_9600`。最终单次 reward `110.31`、episode
+  length `2036.58`、vx response `0.8117`、active vx error `0.1627`、foot
+  slip `1.0285`；未发现 NaN/Inf、Traceback、CUDA OOM 或 RuntimeError。
+- 上述完整 DR 最终模型的 deterministic nominal Isaac Gym 推理：
+  `TASK_20260821_121`，源为 `TASK_20260821_073/model_9600`，推理 commit
+  `d8681f3`，使用 L20、`x1_dh_stand_dr_full` 和
+  `--armature_mode=nominal`。日志确认 nominal dynamics、plane friction
+  `0.6`、推理期 DR/观测噪声关闭、12 关节 nominal armature、50 Hz 平滑
+  相机、2000 steps/1000 帧，平均前进速度 `0.347 m/s`（目标 `0.4 m/s`）、
+  平均高度 `0.602 m`，无 Traceback/CUDA OOM/RuntimeError。视频已下载并
+  验证为 1920×1080、50 fps、20 秒、1000 帧，路径为
+  `outputs/isaacgym/TASK_20260821_121/play_output.mp4`。同目录保存 2000 点
+  `isaac_diag.csv`、`torque_summary.csv`、全关节和 hip 扭矩时间曲线；本次
+  最大绝对扭矩为右 hip roll `60.62 N·m`，约为有效上限的 `47.5%`。
 - 直接完整 DR 的 deterministic nominal Isaac Gym 推理：`TASK_20260821_014`，
   使用 `TASK_20260820_201/model_6000`、分支
   `experiment/nominal-armature-pipeline` / `dee653b`。日志确认 nominal 动力学、
@@ -69,15 +88,8 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
-- Stage-1→完整 DR 课程续训：`TASK_20260821_073`，使用 profile
-  `x1-full-dr-20260821`、project `PRO_20260821_007`，从有效
-  `TASK_20260821_028/model_6700` 恢复。任务采用
-  `x1_dh_stand_dr_full`、4096 environments、seed 5，初始追加 3000 PPO
-  updates，预期累计约 `model_9700`。分支
-  `experiment/nominal-armature-pipeline`，创建时分支 commit `fcfa166`；
-  `2026-08-21 11:30:31` 启动请求成功受理，`11:31:04` 开始运行；当前已从
-  完整 DR 切换后的短暂崩溃期持续恢复。旧 profile
-  下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练任务。
+- 旧 profile 下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练
+  任务，也不得作为恢复来源。
 - Stage-1 最终模型扭矩诊断重放：`TASK_20260821_074`，源为
   `TASK_20260821_028/model_6700`，使用 deterministic nominal Isaac Gym、
   50 Hz 平滑相机及已修复的诊断持久化代码。任务将记录 20 秒、100 Hz、
@@ -119,8 +131,9 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 下一步
 
-1. 继续监控完整 DR `TASK_20260821_073`；初始 3000 updates 完成后先做
-   deterministic nominal 推理与扭矩诊断，再按门槛决定是否追加 1000。
+1. 以 `TASK_20260821_073/model_9600` 和 `TASK_20260821_121` 作为本轮完整
+   DR 课程的训练与 nominal 推理结果；结合最近训练窗口与视频复核，再决定
+   是否需要从 `model_9600` 追加 1000 updates，不机械续训。
 2. 监控资源池 A 的 `TASK_20260821_110`，完成后下载视频与 100 Hz 扭矩数据，
    生成 12 关节统计表和时间曲线；原 `TASK_074` 保持不动。
 3. 同时监控资源池 B 的 `TASK_20260821_111`；诊断任务结束后，资源池账号
