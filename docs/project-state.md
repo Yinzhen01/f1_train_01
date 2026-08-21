@@ -40,6 +40,16 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   `outputs/isaacgym/TASK_20260821_121/play_output.mp4`。同目录保存 2000 点
   `isaac_diag.csv`、`torque_summary.csv`、全关节和 hip 扭矩时间曲线；本次
   最大绝对扭矩为右 hip roll `60.62 N·m`，约为有效上限的 `47.5%`。
+- Stage-1 `model_6700` 的最终 nominal 扭矩诊断：资源池任务
+  `TASK_20260821_110` 于 `2026-08-21 12:33:12` 最先完成，原队列任务
+  `TASK_20260821_074` 随后于 `12:38:39` 完成等价重放；两者推理 commit
+  均为 `d8681f3`。日志确认 nominal dynamics、plane friction `0.6`、推理期
+  DR/观测噪声关闭、12 关节 nominal armature、50 Hz 平滑相机、2000 steps/
+  1000 帧，平均前进速度 `0.340 m/s`、平均高度 `0.610 m`，均无
+  Traceback/CUDA OOM/RuntimeError。以最先完成的 `TASK_110` 作为交付源；
+  视频已验证为 1920×1080、50 fps、20 秒、1000 帧，输出位于
+  `outputs/isaacgym/TASK_20260821_110/`。2000 点扭矩数据中最大绝对值为
+  左膝 `111.30 N·m`，最高限幅利用率为右踝 pitch `79.1%`，未触及硬限幅。
 - 直接完整 DR 的 deterministic nominal Isaac Gym 推理：`TASK_20260821_014`，
   使用 `TASK_20260820_201/model_6000`、分支
   `experiment/nominal-armature-pipeline` / `dee653b`。日志确认 nominal 动力学、
@@ -90,17 +100,6 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 - 旧 profile 下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练
   任务，也不得作为恢复来源。
-- Stage-1 最终模型扭矩诊断重放：`TASK_20260821_074`，源为
-  `TASK_20260821_028/model_6700`，使用 deterministic nominal Isaac Gym、
-  50 Hz 平滑相机及已修复的诊断持久化代码。任务将记录 20 秒、100 Hz、
-  2000 点的 12 关节实际施加扭矩，并生成原始 CSV、峰值/RMS 表和时间曲线；
-  当前因完整 DR 训练占用资源而排队，保持等待且不影响训练任务。
-- 独立资源池 A：profile `x1-pool-a-20260821`、project
-  `PRO_20260821_018`。已创建并启动等价 Stage-1 nominal 扭矩诊断
-  `TASK_20260821_110`，源仍为 `TASK_20260821_028/model_6700`，使用
-  `x1_dh_stand_dr_stage1`、`--armature_mode=nominal`、Isaac Gym v19 和
-  1×4090D。该任务用于绕开 `TASK_074` 与完整 DR 共用单 GPU 的排队，不替换
-  或修改原任务；以最先成功产出完整诊断数据的任务作为交付源。
 - 独立资源池 B：profile `x1-pool-b-20260821`、project
   `PRO_20260821_019`。为规避 4090D SKU 的全局排队，已在 1×4090 SKU 上
   创建并启动第二个等价诊断 `TASK_20260821_111`，与资源池 A 的
@@ -134,9 +133,10 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 1. 以 `TASK_20260821_073/model_9600` 和 `TASK_20260821_121` 作为本轮完整
    DR 课程的训练与 nominal 推理结果；结合最近训练窗口与视频复核，再决定
    是否需要从 `model_9600` 追加 1000 updates，不机械续训。
-2. 监控资源池 A 的 `TASK_20260821_110`，完成后下载视频与 100 Hz 扭矩数据，
-   生成 12 关节统计表和时间曲线；原 `TASK_074` 保持不动。
-3. 同时监控资源池 B 的 `TASK_20260821_111`；诊断任务结束后，资源池账号
+2. 以 `TASK_20260821_110` 的视频、100 Hz 扭矩数据和曲线作为 Stage-1 最终
+   nominal 诊断交付；`TASK_074` 仅保留为结果一致的独立重复。
+3. 继续只读监控资源池 B 的 `TASK_20260821_111`；若获得 GPU 则允许自然
+   完成，不主动停止；诊断任务结束后，资源池账号
    继续保留给后续独立推理或追加训练，避免必须等待现有账号 GPU 全部释放。
 
 ## 关键决策
