@@ -28,6 +28,13 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   1000 帧；平均前进速度 `0.349 m/s`（目标 `0.4 m/s`），平均高度 `0.607 m`。
   视频已下载并验证为 1920×1080、50 fps、20 秒，路径为
   `outputs/isaacgym/TASK_20260821_014/play_output.mp4`。
+- 无 DR 最终 checkpoint 的 deterministic nominal Isaac Gym 推理：
+  `TASK_20260821_018`，源为 `TASK_20260821_006/model_4700`，推理 commit
+  `2d60bc3`。日志确认 nominal 动力学、plane friction `0.6`、DR/观测噪声
+  关闭、12 关节 nominal armature、2000 steps/1000 帧；平均前进速度
+  `0.367 m/s`（目标 `0.4 m/s`），平均高度 `0.608 m`。视频已下载并验证为
+  1920×1080、50 fps、20 秒，路径为
+  `outputs/isaacgym/TASK_20260821_018/play_output.mp4`。
 - 在 `refactor/shared-armature-config` / `90d3b5f` 中建立 X1 armature 外部共享配置，并接入 Isaac Gym 训练/推理与 MuJoCo 推理。
 - 为共享 armature 增加 URDF/MJCF 关节一致性测试和 MuJoCo 实际模型加载检查。
 - 无 DR nominal-armature 中间 checkpoint 回放：`TASK_20260821_009`，使用
@@ -39,11 +46,12 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
-- 无 DR 最终 checkpoint 的 deterministic nominal Isaac Gym 推理：
-  `TASK_20260821_018`，源为 `TASK_20260821_006/model_4700`，使用分支
-  `experiment/nominal-armature-pipeline` 和 `--armature_mode=nominal`。
+- 新 Stage-1 DR：`TASK_20260821_028`，源为
+  `TASK_20260821_006/model_4700`，分支 `experiment/nominal-armature-pipeline`，
+  seed 5、4096 environments，初始追加 2000 PPO updates。保留 nominal
+  armature，仅随机 friction `[0.45, 0.80]`、base mass `[-1, 1] kg`、COM
+  各轴 `±0.015 m`、PD gains/torque `[0.95, 1.05]`。
 - 标准 Isaac Gym 推理收敛为 nominal-only；随机 DR 鲁棒性测试使用独立评估流程，不与普通渲染混用。
-- 待 `TASK_20260821_018` 验证后，从 `model_4700` 训练新的 Stage-1 DR，再继续完整 DR。
 
 ## 已作废并退出实验矩阵
 
@@ -55,12 +63,11 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 下一步
 
-1. 完成并下载 `TASK_20260821_018` 的 nominal Isaac Gym 推理视频。
-2. 从 `TASK_20260821_006/model_4700` 启动新的 nominal Stage-1 DR；初始追加
-   2000 PPO updates，达到行为门槛即停止扩展并做 nominal 推理。
-3. 从通过门槛的新 Stage-1 checkpoint 继续完整 DR；初始追加 3000 PPO
+1. 监控 `TASK_20260821_028`；达到行为门槛即停止扩展并做 nominal 推理，
+   否则每次仅追加 1000 PPO updates 后复评。
+2. 从通过门槛的新 Stage-1 checkpoint 继续完整 DR；初始追加 3000 PPO
    updates，按评估结果自适应延长并做 nominal 推理。
-4. 使用 `TASK_20260821_014` 作为直接完整 DR 路线的公平 nominal A/B 对照。
+3. 使用 `TASK_20260821_014` 作为直接完整 DR 路线的公平 nominal A/B 对照。
 
 ## 关键决策
 
