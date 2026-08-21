@@ -15,6 +15,19 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 已完成
 
+- 重定向步态 reference-first smoke：`TASK_20260821_163`，分支
+  `experiment/retarget-walk-imitation` / `d0e17ad`，从随机初始化训练，seed 5、
+  4096 environments、500 PPO updates；使用固定 nominal armature，全部 DR 与
+  观测噪声关闭。运行时确认加载 `walk_12dof.csv` 的 12 个命名关节、149 帧、
+  4.933333 秒闭合片段。任务于 `2026-08-21 15:44:42` 完成，最终 iteration
+  `499/500`、`49,152,000` timesteps，最高 checkpoint 为 `model_500`；reward
+  `158.78`、episode length `2315.50`，value/surrogate/state-estimator loss 为
+  `0.0557/0.0042/0.0033`。参考关节 MAE 从 `0.3111` 降至 `0.1521 rad`，RMSE
+  从 `0.3725` 降至 `0.2081 rad`；vx error `0.0352 m/s`、response `0.8820`、
+  too-slow `0.0034`、lateral drift `0.0221 m/s`、foot slip `0.9913 m/s`。
+  未发现 NaN/Inf、Traceback、CUDA OOM 或 RuntimeError；这些训练指标证明参考
+  轨迹学习已启动，但在 deterministic nominal Isaac Gym 视频回放前不把动作
+  外观判定为通过。
 - 直接完整 DR：`TASK_20260820_201`，从随机初始化训练，并启用包含 armature 在内的完整随机化；该路线保留。
 - 无 DR nominal-armature 基线：`TASK_20260821_006`，分支
   `experiment/no-dr-nominal-armature` / `0c7bfc0`，随机初始化、seed 5、
