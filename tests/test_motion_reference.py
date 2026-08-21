@@ -170,9 +170,15 @@ class MotionReferenceTest(unittest.TestCase):
         rewards = self._nested_class_assignments(
             config, "X1DHStandRetargetWalkVx045Cfg", "rewards"
         )
+        scales = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkVx045Cfg", "rewards", "scales"
+        )
 
         self.assertEqual(ranges["lin_vel_x"], [0.45, 0.45])
         self.assertAlmostEqual(rewards["cycle_time"], 2.799477492696072)
+        self.assertEqual(rewards["target_feet_height"], 0.04)
+        self.assertEqual(rewards["target_feet_height_max"], 0.09)
+        self.assertEqual(scales["feet_clearance"], 3.0)
 
 
 if __name__ == "__main__":

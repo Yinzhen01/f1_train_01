@@ -80,6 +80,21 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
         # original 4.933333 s clip by 1.762234x gives 1.259765 / 0.45.
         cycle_time = 2.799477492696072
 
+        # The first 0.45 m/s rollout kept the reference cadence but used a
+        # shallow swing. Reward accumulated swing-foot clearance in a bounded
+        # 4-9 cm window. The upper bound avoids solving the term with an
+        # unnecessarily high-stepping gait.
+        target_feet_height = 0.04
+        target_feet_height_max = 0.09
+
+        class scales(X1DHStandRetargetWalkCfg.rewards.scales):
+            # This term was intentionally disabled in the original
+            # reference-first experiment. Enable it only for the faster
+            # profile, where its phase-aligned swing mask is now needed to
+            # discourage toe-skimming without re-enabling synthetic contact
+            # or air-time labels.
+            feet_clearance = 3.0
+
 
 class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
     class runner(X1DHStandRetargetWalkCfgPPO.runner):

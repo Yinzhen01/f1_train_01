@@ -96,7 +96,9 @@ python humanoid/scripts/train.py `
   重定向动作得到足端接触/离地标签后重新加入，避免固定 50/50 相位与数据冲突。
 - `retarget_walk_vx045_*` 保留同一 12 关节参考，将 1.259765m 路径的播放时间
   从 4.933333s 压缩到 2.799477s（1.762234 倍速），并同步把前进指令设为
-  0.45m/s；时间轴与速度指令必须配套修改。
+  0.45m/s；时间轴与速度指令必须配套修改。该快速配置单独启用权重为 3 的
+  `feet_clearance`，在摆动相位奖励累计离地高度 4-9cm；接触数和腾空时间项
+  仍关闭，避免重新引入未经重定向数据标定的接触标签。
 - `stage1_from_no_dr` 固定 nominal armature，只启用窄范围 Stage-1 DR。
 - 两种完整 DR 运行都使用 `x1_dh_stand_dr_full`；区别仅为初始化来源和日志实验名。
 - 普通 Isaac Gym 推理仍使用 `--armature_mode=nominal`，并由推理脚本关闭 DR
