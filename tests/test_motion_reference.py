@@ -156,6 +156,24 @@ class MotionReferenceTest(unittest.TestCase):
         ):
             self.assertEqual(scales[disabled_term], 0.0)
 
+    def test_vx045_profile_time_scales_reference_and_command_together(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        ranges = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkVx045Cfg", "commands", "ranges"
+        )
+        rewards = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkVx045Cfg", "rewards"
+        )
+
+        self.assertEqual(ranges["lin_vel_x"], [0.45, 0.45])
+        self.assertAlmostEqual(rewards["cycle_time"], 2.799477492696072)
+
 
 if __name__ == "__main__":
     unittest.main()

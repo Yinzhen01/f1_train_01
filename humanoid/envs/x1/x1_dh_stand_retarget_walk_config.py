@@ -63,3 +63,24 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
 class X1DHStandRetargetWalkCfgPPO(X1DHStandNoDRCfgPPO):
     class runner(X1DHStandNoDRCfgPPO.runner):
         experiment_name = "x1_dh_stand_retarget_walk"
+
+
+class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
+    """Time-scaled reference whose root-path speed is 0.45 m/s."""
+
+    class commands(X1DHStandRetargetWalkCfg.commands):
+        class ranges:
+            lin_vel_x = [0.45, 0.45]
+            lin_vel_y = [0.0, 0.0]
+            ang_vel_yaw = [0.0, 0.0]
+            heading = [0.0, 0.0]
+
+    class rewards(X1DHStandRetargetWalkCfg.rewards):
+        # The selected root path is 1.2597648717 m long. Compressing the
+        # original 4.933333 s clip by 1.762234x gives 1.259765 / 0.45.
+        cycle_time = 2.799477492696072
+
+
+class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
+    class runner(X1DHStandRetargetWalkCfgPPO.runner):
+        experiment_name = "x1_dh_stand_retarget_walk_vx045"

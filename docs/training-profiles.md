@@ -20,6 +20,8 @@ python -m humanoid.training_profiles
 | `full_dr_scratch` | `x1_dh_stand_dr_full` | 随机初始化 | 6000 |
 | `retarget_walk_no_dr` | `x1_dh_stand_retarget_walk` | 12关节重定向参考、随机初始化 | 3000 |
 | `retarget_walk_resume` | `x1_dh_stand_retarget_walk` | 显式重定向训练 checkpoint | 2500 |
+| `retarget_walk_vx045_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 0.45m/s 时间缩放参考、随机初始化 | 3000 |
+| `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
 固定次数。`seed` 和 `num_envs` 的默认值分别为 5 和 4096，也允许显式覆盖。
@@ -65,6 +67,13 @@ python humanoid/scripts/train.py `
   --headless
 
 python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_vx045_resume `
+  --load_run=<retarget-run> `
+  --checkpoint=2000 `
+  --run_name=walk_csv_vx045_adaptation `
+  --headless
+
+python humanoid/scripts/train.py `
   --training_profile=stage1_from_no_dr `
   --load_run=<no-dr-run> `
   --checkpoint=4700 `
@@ -85,6 +94,9 @@ python humanoid/scripts/train.py `
   人工生成的接触数、腾空时间、抬脚高度和 `track_vel_hard` 暂时关闭。防滑、
   碰撞、关节限位、动作平滑和基础姿态稳定约束仍保留。接触类奖励只能在从
   重定向动作得到足端接触/离地标签后重新加入，避免固定 50/50 相位与数据冲突。
+- `retarget_walk_vx045_*` 保留同一 12 关节参考，将 1.259765m 路径的播放时间
+  从 4.933333s 压缩到 2.799477s（1.762234 倍速），并同步把前进指令设为
+  0.45m/s；时间轴与速度指令必须配套修改。
 - `stage1_from_no_dr` 固定 nominal armature，只启用窄范围 Stage-1 DR。
 - 两种完整 DR 运行都使用 `x1_dh_stand_dr_full`；区别仅为初始化来源和日志实验名。
 - 普通 Isaac Gym 推理仍使用 `--armature_mode=nominal`，并由推理脚本关闭 DR

@@ -55,6 +55,8 @@ from .x1.x1_dh_stand_dr_full_config import (
 from .x1.x1_dh_stand_retarget_walk_config import (
     X1DHStandRetargetWalkCfg,
     X1DHStandRetargetWalkCfgPPO,
+    X1DHStandRetargetWalkVx045Cfg,
+    X1DHStandRetargetWalkVx045CfgPPO,
 )
 
 from .x1.x1_dh_stand_env import X1DHStandEnv
@@ -97,4 +99,10 @@ task_registry.register(
     X1DHStandEnv,
     X1DHStandRetargetWalkCfg(),
     X1DHStandRetargetWalkCfgPPO(),
+)
+task_registry.register(
+    "x1_dh_stand_retarget_walk_vx045",
+    X1DHStandEnv,
+    X1DHStandRetargetWalkVx045Cfg(),
+    X1DHStandRetargetWalkVx045CfgPPO(),
 )

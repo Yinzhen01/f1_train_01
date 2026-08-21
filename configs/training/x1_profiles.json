@@ -78,6 +78,32 @@
         "num_envs": 4096,
         "max_iterations": 2500
       }
+    },
+    "retarget_walk_vx045_no_dr": {
+      "description": "No-DR retargeted-walk imitation with the reference time-scaled to 0.45 m/s.",
+      "task": "x1_dh_stand_retarget_walk_vx045",
+      "initialization": "scratch",
+      "experiment_name": "x1_dh_stand_retarget_walk_vx045",
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 3000
+      }
+    },
+    "retarget_walk_vx045_resume": {
+      "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
+      "task": "x1_dh_stand_retarget_walk_vx045",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_retarget_walk_vx045",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 1500
+      }
     }
   }
 }

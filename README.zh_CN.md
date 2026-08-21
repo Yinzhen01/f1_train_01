@@ -43,6 +43,10 @@ python humanoid/scripts/train.py `
 从显式 checkpoint 继续同一模仿任务时，使用 `retarget_walk_resume`，并同时提供
 `--load_run` 和 `--checkpoint`。
 
+需要把同一参考动作按根轨迹速度提高到 0.45m/s 时，使用
+`retarget_walk_vx045_no_dr` 或 `retarget_walk_vx045_resume`。该配置会把参考时间轴
+同步加速 1.762234 倍，而不是只修改速度指令。
+
 该任务只按名称读取左右髋、膝、踝共 12 个关节；CSV 中的浮动基座、腰、手臂、
 颈部和头部不会进入参考动作。默认先在 nominal armature、无域随机化环境中验证
 可训练性。首阶段以关节参考奖励为主，暂不使用未经数据标注的人工接触和抬脚

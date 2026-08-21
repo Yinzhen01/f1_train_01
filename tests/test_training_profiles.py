@@ -36,6 +36,8 @@ class TrainingProfilesTest(unittest.TestCase):
                 "full_dr_scratch",
                 "retarget_walk_no_dr",
                 "retarget_walk_resume",
+                "retarget_walk_vx045_no_dr",
+                "retarget_walk_vx045_resume",
             },
         )
 
@@ -83,6 +85,19 @@ class TrainingProfilesTest(unittest.TestCase):
         self.assertEqual(args.load_run, "gm_resume")
         self.assertEqual(args.checkpoint, 500)
         self.assertEqual(args.max_iterations, 2500)
+
+    def test_retarget_walk_vx045_resume_uses_time_scaled_task(self):
+        args = make_args(
+            training_profile="retarget_walk_vx045_resume",
+            load_run="gm_resume",
+            checkpoint=2000,
+        )
+        apply_training_profile(args)
+
+        self.assertEqual(args.task, "x1_dh_stand_retarget_walk_vx045")
+        self.assertEqual(args.experiment_name, "x1_dh_stand_retarget_walk_vx045")
+        self.assertTrue(args.resume)
+        self.assertEqual(args.max_iterations, 1500)
 
     def test_resume_profile_requires_explicit_source(self):
         args = make_args(training_profile="stage1_from_no_dr")

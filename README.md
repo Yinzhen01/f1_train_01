@@ -42,6 +42,9 @@ python humanoid/scripts/train.py `
 Use `retarget_walk_resume` with explicit `--load_run` and `--checkpoint`
 arguments to continue the same imitation task from a checkpoint.
 
+Use `retarget_walk_vx045_no_dr` or `retarget_walk_vx045_resume` to pair a
+0.45 m/s command with a 1.762234x time-scaled version of the same reference.
+
 Only the named left/right hip, knee, and ankle columns are used. Floating-base,
 waist, arm, neck, and head columns are excluded from the training reference.
 The initial profile uses nominal armature with domain randomization disabled;
