@@ -159,7 +159,12 @@ def package_video_as_pt(video_path, experiment_name="x1_dh_stand"):
 
 def save_diag_data(diag_data, experiment_name="x1_dh_stand"):
     """Save diagnostic trajectory data as model_diag.pt for GM SDK upload"""
-    log_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", experiment_name, "play_output")
+    # The GM SDK only queues policy-style PT artifacts discovered below
+    # exported_data.  Keeping diagnostics beside the mounted checkpoint makes
+    # the raw trajectory downloadable after the ephemeral inference pod exits.
+    log_dir = os.path.join(
+        LEGGED_GYM_ROOT_DIR, "logs", experiment_name, "exported_data", "gm_play"
+    )
     os.makedirs(log_dir, exist_ok=True)
     pt_path = os.path.join(log_dir, "model_diag.pt")
     torch.save(diag_data, pt_path)
@@ -201,7 +206,9 @@ def save_diag_csv(diag_data, experiment_name="x1_dh_stand", num_actions=12, dt=0
 
 def package_csv_as_pt(csv_path, experiment_name="x1_dh_stand"):
     """Package diagnostic CSV as model_isaac_csv.pt for GM SDK auto-upload"""
-    log_dir = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", experiment_name, "gm_play")
+    log_dir = os.path.join(
+        LEGGED_GYM_ROOT_DIR, "logs", experiment_name, "exported_data", "gm_play"
+    )
     os.makedirs(log_dir, exist_ok=True)
     pt_path = os.path.join(log_dir, "model_isaac_csv.pt")
     with open(csv_path, "r", encoding="utf-8") as f:
@@ -440,6 +447,22 @@ def play(args):
     save_diag_data(diag, train_cfg.runner.experiment_name)
     csv_path = save_diag_csv(diag, train_cfg.runner.experiment_name, env_cfg.env.num_actions, env.dt)
     csv_pt_path = package_csv_as_pt(csv_path, train_cfg.runner.experiment_name)
+
+    # Always emit a compact torque summary to stdout as a second durable
+    # record, even if artifact upload is interrupted after simulation exits.
+    torque_history = np.asarray(diag["dof_torque"], dtype=np.float64)
+    peak_abs_torque = np.max(np.abs(torque_history), axis=0)
+    rms_torque = np.sqrt(np.mean(np.square(torque_history), axis=0))
+    torque_limits = env.torque_limits.detach().cpu().numpy()
+    print("[play_gm] === Applied Joint Torque Summary (N*m) ===")
+    for joint_name, peak, rms, limit in zip(
+        env.dof_names, peak_abs_torque, rms_torque, torque_limits
+    ):
+        utilization = peak / limit if limit > 0.0 else float("nan")
+        print(
+            f"[play_gm][torque] {joint_name}: peak_abs={peak:.6f} "
+            f"rms={rms:.6f} limit={limit:.6f} utilization={utilization:.6f}"
+        )
 
     # Print summary
     print("\n[play_gm] === Playback Summary ===")
