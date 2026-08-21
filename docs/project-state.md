@@ -16,6 +16,18 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 ## 已完成
 
 - 直接完整 DR：`TASK_20260820_201`，从随机初始化训练，并启用包含 armature 在内的完整随机化；该路线保留。
+- 无 DR nominal-armature 基线：`TASK_20260821_006`，分支
+  `experiment/no-dr-nominal-armature` / `0c7bfc0`，随机初始化、seed 5、
+  4096 environments。用户确认该阶段无需机械跑满 5000 iterations，任务于
+  `2026-08-21 10:09:44` 计划内早停；状态 6 不代表训练失败，最高完整
+  checkpoint 为 `model_4700`，作为后续有效恢复源。
+- 直接完整 DR 的 deterministic nominal Isaac Gym 推理：`TASK_20260821_014`，
+  使用 `TASK_20260820_201/model_6000`、分支
+  `experiment/nominal-armature-pipeline` / `dee653b`。日志确认 nominal 动力学、
+  plane friction `0.6`、DR/观测噪声关闭、12 关节 nominal armature、2000 steps/
+  1000 帧；平均前进速度 `0.349 m/s`（目标 `0.4 m/s`），平均高度 `0.607 m`。
+  视频已下载并验证为 1920×1080、50 fps、20 秒，路径为
+  `outputs/isaacgym/TASK_20260821_014/play_output.mp4`。
 - 在 `refactor/shared-armature-config` / `90d3b5f` 中建立 X1 armature 外部共享配置，并接入 Isaac Gym 训练/推理与 MuJoCo 推理。
 - 为共享 armature 增加 URDF/MJCF 关节一致性测试和 MuJoCo 实际模型加载检查。
 - 无 DR nominal-armature 中间 checkpoint 回放：`TASK_20260821_009`，使用
@@ -27,13 +39,11 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
-- 无 DR nominal-armature 基线：`TASK_20260821_006`，分支
-  `experiment/no-dr-nominal-armature` / `0c7bfc0`，随机初始化、seed 5、
-  4096 environments、目标 5000 iterations。云端启动日志已确认
-  `[armature] mode=nominal` 并进入 PPO 训练。
+- 无 DR 最终 checkpoint 的 deterministic nominal Isaac Gym 推理：
+  `TASK_20260821_018`，源为 `TASK_20260821_006/model_4700`，使用分支
+  `experiment/nominal-armature-pipeline` 和 `--armature_mode=nominal`。
 - 标准 Isaac Gym 推理收敛为 nominal-only；随机 DR 鲁棒性测试使用独立评估流程，不与普通渲染混用。
-- 准备从 `TASK_20260821_006` 最终 checkpoint 重新训练 Stage-1 DR，再继续完整 DR。
-- 为 `TASK_20260820_201` 和新的有效训练结果建立相同 nominal Isaac Gym 推理对照。
+- 待 `TASK_20260821_018` 验证后，从 `model_4700` 训练新的 Stage-1 DR，再继续完整 DR。
 
 ## 已作废并退出实验矩阵
 
@@ -45,10 +55,12 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 下一步
 
-1. 完成 `TASK_20260821_006`，确认最高最终 checkpoint，并做 nominal Isaac Gym 推理渲染。
-2. 从该最终 checkpoint 启动新的 nominal Stage-1 DR；完成后做 nominal 推理。
-3. 从新的 Stage-1 最终 checkpoint 继续完整 DR；完成后做 nominal 推理，并另做随机鲁棒性评估。
-4. 对保留的直接完整 DR `TASK_20260820_201` 做相同 nominal 推理，形成公平 A/B 对照。
+1. 完成并下载 `TASK_20260821_018` 的 nominal Isaac Gym 推理视频。
+2. 从 `TASK_20260821_006/model_4700` 启动新的 nominal Stage-1 DR；初始追加
+   2000 PPO updates，达到行为门槛即停止扩展并做 nominal 推理。
+3. 从通过门槛的新 Stage-1 checkpoint 继续完整 DR；初始追加 3000 PPO
+   updates，按评估结果自适应延长并做 nominal 推理。
+4. 使用 `TASK_20260821_014` 作为直接完整 DR 路线的公平 nominal A/B 对照。
 
 ## 关键决策
 
@@ -57,6 +69,7 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 - `2026-08-21`：Isaac Gym 训练时的有效动力学参数作为跨模拟器整理基准。
 - `2026-08-21`：armature 由外部 JSON 按关节名称统一读取；无 DR 使用 nominal，DR 使用 train range。
 - `2026-08-21`：常规 Isaac Gym 推理只允许 `nominal`；零 armature 结果退出实验矩阵，随机鲁棒性由独立评估流程承担。
+- `2026-08-21`：nominal 无 DR 以可训练性和稳定行为为阶段目标，不要求固定跑满 5000；`model_4700` 作为本轮有效终点。
 - `2026-08-21`：采用 `AGENTS.md`、专项文档、自动化测试和项目 Skill 分层管理工程规则与状态。
 
 ## 风险与注意事项
