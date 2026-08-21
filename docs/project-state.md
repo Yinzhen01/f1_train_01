@@ -77,6 +77,11 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   `experiment/nominal-armature-pipeline`，创建时分支 commit `fcfa166`；
   `2026-08-21 11:30:31` 启动请求已成功受理，当前等待 GPU 资源。旧 profile
   下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练任务。
+- Stage-1 最终模型扭矩诊断重放：`TASK_20260821_074`，源为
+  `TASK_20260821_028/model_6700`，使用 deterministic nominal Isaac Gym、
+  50 Hz 平滑相机及已修复的诊断持久化代码。任务将记录 20 秒、100 Hz、
+  2000 点的 12 关节实际施加扭矩，并生成原始 CSV、峰值/RMS 表和时间曲线；
+  当前因完整 DR 训练占用资源而排队，保持等待且不影响训练任务。
 - 新 Stage-1 DR：`TASK_20260821_028`，源为
   `TASK_20260821_006/model_4700`，分支 `experiment/nominal-armature-pipeline`，
   seed 5、4096 environments，初始追加 2000 PPO updates。保留 nominal
