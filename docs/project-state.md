@@ -39,6 +39,18 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   的光流分析显示：旧视频 `80.6%` 相邻帧近似静止且每第 5 帧跳变；新版
   每帧连续移动，背景水平运动跳变量的 95 分位由约 `1.050 px` 降至
   `0.038 px`（480×270 分析尺度）。后续以修正版视频替代旧视频做视觉比较。
+- `TASK_20260821_037` 的可复现扭矩诊断重放：`TASK_20260821_055`，仍使用
+  `TASK_20260820_201/model_6000`、deterministic nominal Isaac Gym 和 50 Hz
+  平滑相机，推理 commit `0e904f8`。新旧 MP4 的 SHA-256 完全相同，确认策略
+  轨迹与 `TASK_20260821_037` 一致。以 100 Hz 记录 20 秒、2000 个控制步的
+  12 关节实际施加扭矩；整机最大绝对扭矩为左膝 `105.92 N·m`，左右 hip
+  pitch 峰值分别为 `91.05/93.44 N·m`，左右 hip roll 为
+  `37.34/45.73 N·m`，左右 hip yaw 为 `37.65/55.48 N·m`，均未触及硬限幅。
+  原始数据、统计表和曲线分别保存在
+  `outputs/isaacgym/TASK_20260821_055/isaac_diag.csv`、
+  `torque_summary.csv`、`torque_time_series.png` 和
+  `hip_torque_time_series.png`；对应视频亦已下载并验证为 1920×1080、
+  50 fps、20 秒、1000 帧。
 - 无 DR 最终 checkpoint 的 deterministic nominal Isaac Gym 推理：
   `TASK_20260821_018`，源为 `TASK_20260821_006/model_4700`，推理 commit
   `2d60bc3`。日志确认 nominal 动力学、plane friction `0.6`、DR/观测噪声
