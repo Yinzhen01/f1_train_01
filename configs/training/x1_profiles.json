@@ -123,6 +123,21 @@
         "max_iterations": 3000
       }
     },
+    "retarget_walk_native_geometry_resume": {
+      "description": "Continue the native-rate no-DR stance-geometry task from an explicit compatible checkpoint.",
+      "task": "x1_dh_stand_retarget_walk_native_geometry",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_retarget_walk_periodic_contact_native_geometry",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 2000
+      }
+    },
     "retarget_walk_vx045_resume": {
       "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
       "task": "x1_dh_stand_retarget_walk_vx045",

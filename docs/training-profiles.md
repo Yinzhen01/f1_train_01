@@ -24,6 +24,7 @@ python -m humanoid.training_profiles
 | `retarget_walk_vx045_conservative_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 原始抬脚高度与接触联合掩码、随机初始化 | 3000 |
 | `retarget_walk_vx045_geometry_no_dr` | `x1_dh_stand_retarget_walk_vx045_geometry` | 保守抬脚加站姿几何约束、随机初始化 | 3000 |
 | `retarget_walk_native_geometry_no_dr` | `x1_dh_stand_retarget_walk_native_geometry` | 接触一致原始周期/0.124m/s、保守抬脚加站姿几何约束 | 3000 |
+| `retarget_walk_native_geometry_resume` | `x1_dh_stand_retarget_walk_native_geometry` | 显式原生速度站姿几何 checkpoint | 2000 |
 | `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
@@ -74,6 +75,14 @@ python humanoid/scripts/train.py `
   --load_run=<retarget-run> `
   --checkpoint=2000 `
   --run_name=walk_csv_vx045_adaptation `
+  --headless
+
+python humanoid/scripts/train.py `
+  --training_profile=retarget_walk_native_geometry_resume `
+  --load_run=<native-geometry-run> `
+  --checkpoint=1000 `
+  --max_iterations=2000 `
+  --run_name=walk_csv_native_geometry_continue `
   --headless
 
 python humanoid/scripts/train.py `
