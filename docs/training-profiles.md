@@ -21,6 +21,8 @@ python -m humanoid.training_profiles
 | `retarget_walk_no_dr` | `x1_dh_stand_retarget_walk` | 12关节重定向参考、随机初始化 | 3000 |
 | `retarget_walk_resume` | `x1_dh_stand_retarget_walk` | 显式重定向训练 checkpoint | 2500 |
 | `retarget_walk_vx045_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 0.45m/s 时间缩放参考、随机初始化 | 3000 |
+| `retarget_walk_vx045_conservative_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 原始抬脚高度与接触联合掩码、随机初始化 | 3000 |
+| `retarget_walk_vx045_geometry_no_dr` | `x1_dh_stand_retarget_walk_vx045_geometry` | 保守抬脚加站姿几何约束、随机初始化 | 3000 |
 | `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
@@ -104,9 +106,15 @@ python humanoid/scripts/train.py `
   0.3013507m，因此把周期从 4.866667s 压缩到 1.339336s（约 3.63 倍速），
   并同步把前进指令设为 0.45m/s，对应约 89.6 步/min。该快速配置从正确的
   mesh 脚底点和重建根轨迹得到离地曲线：原始左右峰值约 16.4/13.6cm，训练
-  目标再提高 5%+5mm（约 17.7/14.8cm）。权重为 3 的
-  `ref_feet_clearance` 同时跟踪该曲线并惩罚摆动脚低于目标；接触时序使用同一
-  周期的 `ref_feet_contact`，旧接触数和腾空时间项仍关闭。
+  的保守版本不再放大高度，`ref_feet_clearance` 权重为 2，并要求参考接触和
+  参考高度同时判定为摆动才施加抬脚目标；旧接触数和腾空时间项仍关闭。
+- `retarget_walk_vx045_geometry_no_dr` 在保守抬脚版本上增加逐相位站姿几何：
+  足和膝横向距离来自同一 URDF/CSV 的前向运动学，足距参考下限 12cm、膝距
+  参考下限 14cm；对应奖励权重为 1.0/0.5。足部朝向使用 ankle-roll 局部
+  `+Z` 投影到机身平面，去除左右脚公共偏航后把摆动参考裁剪到 ±10°，接触脚
+  目标为 0°，奖励权重 0.5；另加权重 0.5 的 hip-yaw 专项参考。旧的 XY 总
+  `feet_distance`/`knee_distance` 在该 task 中关闭，避免用前后错位掩盖横向
+  交叉。左右 hip-roll 参考均距物理限位保留 0.02rad 余量。
 - 接触修正后的两条任务分别写入新的 experiment
   `x1_dh_stand_retarget_walk_periodic_contact` 与
   `x1_dh_stand_retarget_walk_periodic_contact_vx045`。旧任务无论使用原始根速度、

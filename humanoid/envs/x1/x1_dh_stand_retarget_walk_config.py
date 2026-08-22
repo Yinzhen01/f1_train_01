@@ -125,3 +125,52 @@ class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
         experiment_name = (
             "x1_dh_stand_retarget_walk_periodic_contact_vx045_conservative"
         )
+
+
+class X1DHStandRetargetWalkVx045GeometryCfg(X1DHStandRetargetWalkVx045Cfg):
+    """Conservative clearance plus phase-aligned stance geometry."""
+
+    class motion_reference(X1DHStandRetargetWalkVx045Cfg.motion_reference):
+        stance_geometry_file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/"
+            "walk_stance_geometry.csv"
+        )
+        foot_lateral_min_target = 0.12
+        knee_lateral_min_target = 0.14
+        foot_heading_max_target = 0.17453292519943295
+        # Keep the clipped imitation target away from the physical hip-roll
+        # boundary; the source left hip roll otherwise saturates at 0.20 rad.
+        joint_limit_margin_by_name = {
+            "left_hip_roll_joint": 0.02,
+            "right_hip_roll_joint": 0.02,
+        }
+
+    class rewards(X1DHStandRetargetWalkVx045Cfg.rewards):
+        ref_foot_lateral_sigma = 200.0
+        ref_knee_lateral_sigma = 200.0
+        ref_foot_heading_sigma = 20.0
+        foot_heading_common_sigma = 20.0
+        ref_hip_yaw_sigma = 20.0
+        foot_lateral_safe_min = 0.10
+        knee_lateral_safe_min = 0.12
+        foot_lateral_shortfall_penalty = 1.0
+        knee_lateral_shortfall_penalty = 1.0
+
+        class scales(X1DHStandRetargetWalkVx045Cfg.rewards.scales):
+            ref_foot_lateral_distance = 1.0
+            ref_knee_lateral_distance = 0.5
+            ref_foot_heading = 0.5
+            ref_hip_yaw = 0.5
+            # These legacy rewards use total XY distance, so fore-aft
+            # separation can hide a crossed or overly narrow stance.
+            feet_distance = 0.0
+            knee_distance = 0.0
+
+
+class X1DHStandRetargetWalkVx045GeometryCfgPPO(
+    X1DHStandRetargetWalkVx045CfgPPO
+):
+    class runner(X1DHStandRetargetWalkVx045CfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_vx045_geometry"
+        )

@@ -119,9 +119,16 @@ class X1DHStandEnv(LeggedRobot):
         self.ref_dof_pos = torch.zeros((self.num_envs, self.num_actions), device=self.device)
         self.ref_feet_clearance = torch.zeros((self.num_envs, 2), device=self.device)
         self.ref_feet_contact = torch.ones((self.num_envs, 2), device=self.device)
+        self.ref_foot_lateral_distance = torch.zeros(self.num_envs, device=self.device)
+        self.ref_knee_lateral_distance = torch.zeros(self.num_envs, device=self.device)
+        self.ref_foot_heading = torch.zeros((self.num_envs, 2), device=self.device)
         self._motion_ref_positions = None
         self._motion_ref_feet_clearance = None
         self._motion_ref_feet_contact = None
+        self._motion_ref_stance_geometry = None
+        self._motion_ref_joint_limit_margin = torch.zeros(
+            self.num_actions, dtype=torch.float, device=self.device
+        )
         self._motion_ref_phase_offset = 0.0
         self._load_motion_reference()
 
@@ -207,6 +214,76 @@ class X1DHStandEnv(LeggedRobot):
                 min=0.0,
                 max=float(getattr(motion_cfg, "clearance_max", 0.20)),
             )
+        geometry_file = getattr(motion_cfg, "stance_geometry_file", "")
+        if geometry_file:
+            configured_geometry_path = str(geometry_file).replace(
+                "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+            )
+            geometry_columns = (
+                "foot_lateral_distance",
+                "knee_lateral_distance",
+                "left_foot_heading",
+                "right_foot_heading",
+            )
+            geometry_table = load_joint_motion_csv(
+                configured_geometry_path,
+                geometry_columns,
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if geometry_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Stance-geometry and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            geometry = torch.as_tensor(
+                geometry_table.positions, dtype=torch.float, device=self.device
+            )
+            geometry[:, 0] = torch.clamp(
+                geometry[:, 0],
+                min=float(getattr(motion_cfg, "foot_lateral_min_target", 0.12)),
+            )
+            geometry[:, 1] = torch.clamp(
+                geometry[:, 1],
+                min=float(getattr(motion_cfg, "knee_lateral_min_target", 0.14)),
+            )
+            # Remove the pair-common heading bias before tracking the source.
+            # Stance feet target zero yaw; swing feet retain only a conservative,
+            # clipped differential component from the retargeted motion.
+            heading = geometry[:, 2:4]
+            common_heading = torch.atan2(
+                torch.sum(torch.sin(heading), dim=1),
+                torch.sum(torch.cos(heading), dim=1),
+            ).unsqueeze(1)
+            heading = torch.remainder(
+                heading - common_heading + torch.pi, 2.0 * torch.pi
+            ) - torch.pi
+            max_heading = float(getattr(motion_cfg, "foot_heading_max_target", 0.174533))
+            heading = torch.clamp(heading, min=-max_heading, max=max_heading)
+            if self._motion_ref_feet_contact is not None:
+                heading = heading * (self._motion_ref_feet_contact < 0.5).float()
+            geometry[:, 2:4] = heading
+            self._motion_ref_stance_geometry = geometry
+            print(
+                "[stance-geometry] "
+                f"file={configured_geometry_path} "
+                f"foot_min={float(torch.min(geometry[:, 0])):.3f}m "
+                f"knee_min={float(torch.min(geometry[:, 1])):.3f}m "
+                f"heading_max={max_heading:.3f}rad",
+                flush=True,
+            )
+        joint_limit_margins = dict(
+            getattr(motion_cfg, "joint_limit_margin_by_name", {})
+        )
+        for joint_name, margin in joint_limit_margins.items():
+            if joint_name not in self.dof_names:
+                raise ValueError(
+                    f"Motion reference joint-limit margin names unknown joint {joint_name!r}"
+                )
+            self._motion_ref_joint_limit_margin[
+                self.dof_names.index(joint_name)
+            ] = float(margin)
         self._motion_ref_phase_offset = float(
             getattr(motion_cfg, "phase_offset", 0.0)
         )
@@ -402,13 +479,28 @@ class X1DHStandEnv(LeggedRobot):
                 self.ref_feet_clearance = lower_clearance + interpolation * (
                     upper_clearance - lower_clearance
                 )
+            if self._motion_ref_stance_geometry is not None:
+                lower_geometry = self._motion_ref_stance_geometry[frame_lower]
+                upper_geometry = self._motion_ref_stance_geometry[frame_upper]
+                geometry = lower_geometry + interpolation * (
+                    upper_geometry - lower_geometry
+                )
+                self.ref_foot_lateral_distance = geometry[:, 0]
+                self.ref_knee_lateral_distance = geometry[:, 1]
+                self.ref_foot_heading = geometry[:, 2:4]
 
             # A retargeted pose can sit just outside the URDF range (the source
             # left hip roll exceeds the X1 limit by about 0.04 rad).  Never ask
             # the policy to imitate an unreachable target.
+            lower_limits = (
+                self.dof_pos_limits[:, 0] + self._motion_ref_joint_limit_margin
+            )
+            upper_limits = (
+                self.dof_pos_limits[:, 1] - self._motion_ref_joint_limit_margin
+            )
             self.ref_dof_pos = torch.maximum(
-                torch.minimum(self.ref_dof_pos, self.dof_pos_limits[:, 1]),
-                self.dof_pos_limits[:, 0],
+                torch.minimum(self.ref_dof_pos, upper_limits),
+                lower_limits,
             )
             self.ref_action = (
                 self.ref_dof_pos - self.default_dof_pos
@@ -815,9 +907,61 @@ class X1DHStandEnv(LeggedRobot):
                     (~foot_contact).float(), target_stance
                 ),
             })
+        if self._motion_ref_stance_geometry is not None:
+            foot_lateral = self._body_lateral_distance(self.feet_indices)
+            knee_lateral = self._body_lateral_distance(self.knee_indices)
+            foot_heading = self._foot_heading_in_base()
+            stance_heading = torch.abs(foot_heading)[foot_contact]
+            metrics.update({
+                "geometry/foot_lateral_distance_mean": torch.mean(foot_lateral),
+                "geometry/foot_lateral_target_mean": torch.mean(
+                    self.ref_foot_lateral_distance
+                ),
+                "geometry/knee_lateral_distance_mean": torch.mean(knee_lateral),
+                "geometry/knee_lateral_target_mean": torch.mean(
+                    self.ref_knee_lateral_distance
+                ),
+                "geometry/stance_foot_heading_abs_mean": (
+                    torch.mean(stance_heading)
+                    if stance_heading.numel() > 0
+                    else torch.zeros((), device=self.device)
+                ),
+                "geometry/foot_heading_common_abs_mean": torch.mean(torch.abs(
+                    torch.atan2(
+                        torch.sum(torch.sin(foot_heading), dim=1),
+                        torch.sum(torch.cos(foot_heading), dim=1),
+                    )
+                )),
+            })
         return metrics
 
 # ================================================ Rewards ================================================== #
+    def _body_lateral_distance(self, body_indices):
+        body_position_world = self.rigid_state[:, body_indices, :3]
+        relative_position_world = body_position_world - self.root_states[:, None, :3]
+        base_quat = self.base_quat[:, None, :].expand(-1, len(body_indices), -1)
+        body_position_base = quat_rotate_inverse(
+            base_quat.reshape(-1, 4), relative_position_world.reshape(-1, 3)
+        ).reshape(self.num_envs, len(body_indices), 3)
+        return torch.abs(body_position_base[:, 1, 1] - body_position_base[:, 0, 1])
+
+    def _foot_heading_in_base(self):
+        foot_quat = self.rigid_state[:, self.feet_indices, 3:7]
+        local_forward = torch.zeros(
+            (self.num_envs, len(self.feet_indices), 3),
+            dtype=torch.float,
+            device=self.device,
+        )
+        local_forward[:, :, 2] = 1.0
+        forward_world = quat_apply(
+            foot_quat.reshape(-1, 4), local_forward.reshape(-1, 3)
+        )
+        base_quat = self.base_quat[:, None, :].expand(-1, len(self.feet_indices), -1)
+        forward_base = quat_rotate_inverse(
+            base_quat.reshape(-1, 4), forward_world
+        ).reshape(self.num_envs, len(self.feet_indices), 3)
+        return torch.atan2(forward_base[:, :, 1], forward_base[:, :, 0])
+
     def _reward_ref_joint_pos(self):
         """
         Calculates the reward based on the difference between the current joint positions and the target joint positions.
@@ -830,6 +974,66 @@ class X1DHStandEnv(LeggedRobot):
         r = torch.exp(-2 * torch.norm(diff, dim=1)) - 0.2 * torch.norm(diff, dim=1).clamp(0, 0.5)
         r[stand_command] = 1.0
         return r
+
+    def _reward_ref_foot_lateral_distance(self):
+        if self._motion_ref_stance_geometry is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        actual = self._body_lateral_distance(self.feet_indices)
+        target = self.ref_foot_lateral_distance
+        tracking = torch.exp(
+            -torch.square(actual - target)
+            * self.cfg.rewards.ref_foot_lateral_sigma
+        )
+        safe_min = float(self.cfg.rewards.foot_lateral_safe_min)
+        shortfall = torch.clamp((safe_min - actual) / safe_min, min=0.0, max=1.0)
+        return tracking - self.cfg.rewards.foot_lateral_shortfall_penalty * shortfall
+
+    def _reward_ref_knee_lateral_distance(self):
+        if self._motion_ref_stance_geometry is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        actual = self._body_lateral_distance(self.knee_indices)
+        target = self.ref_knee_lateral_distance
+        tracking = torch.exp(
+            -torch.square(actual - target)
+            * self.cfg.rewards.ref_knee_lateral_sigma
+        )
+        safe_min = float(self.cfg.rewards.knee_lateral_safe_min)
+        shortfall = torch.clamp((safe_min - actual) / safe_min, min=0.0, max=1.0)
+        return tracking - self.cfg.rewards.knee_lateral_shortfall_penalty * shortfall
+
+    def _reward_ref_foot_heading(self):
+        if self._motion_ref_stance_geometry is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        actual = self._foot_heading_in_base()
+        error = torch.remainder(
+            actual - self.ref_foot_heading + torch.pi, 2.0 * torch.pi
+        ) - torch.pi
+        contact_weight = 0.25 + 0.75 * self.ref_feet_contact
+        individual = torch.sum(
+            torch.exp(-torch.square(error) * self.cfg.rewards.ref_foot_heading_sigma)
+            * contact_weight,
+            dim=1,
+        ) / torch.sum(contact_weight, dim=1)
+        common_heading = torch.atan2(
+            torch.sum(torch.sin(actual), dim=1),
+            torch.sum(torch.cos(actual), dim=1),
+        )
+        common = torch.exp(
+            -torch.square(common_heading)
+            * self.cfg.rewards.foot_heading_common_sigma
+        )
+        return 0.75 * individual + 0.25 * common
+
+    def _reward_ref_hip_yaw(self):
+        indices = [
+            self.dof_names.index("left_hip_yaw_joint"),
+            self.dof_names.index("right_hip_yaw_joint"),
+        ]
+        error = self.dof_pos[:, indices] - self.ref_dof_pos[:, indices]
+        return torch.exp(
+            -torch.sum(torch.square(error), dim=1)
+            * self.cfg.rewards.ref_hip_yaw_sigma
+        )
     
     def _reward_feet_distance(self):
         """

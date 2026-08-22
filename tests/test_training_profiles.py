@@ -38,6 +38,7 @@ class TrainingProfilesTest(unittest.TestCase):
                 "retarget_walk_resume",
                 "retarget_walk_vx045_no_dr",
                 "retarget_walk_vx045_conservative_no_dr",
+                "retarget_walk_vx045_geometry_no_dr",
                 "retarget_walk_vx045_resume",
             },
         )
@@ -105,6 +106,20 @@ class TrainingProfilesTest(unittest.TestCase):
         )
         self.assertTrue(args.resume)
         self.assertEqual(args.max_iterations, 1500)
+
+    def test_retarget_walk_geometry_profile_uses_dedicated_task(self):
+        args = make_args(training_profile="retarget_walk_vx045_geometry_no_dr")
+        apply_training_profile(args)
+
+        self.assertEqual(
+            args.task, "x1_dh_stand_retarget_walk_vx045_geometry"
+        )
+        self.assertFalse(args.resume)
+        self.assertEqual(
+            args.experiment_name,
+            "x1_dh_stand_retarget_walk_periodic_contact_vx045_geometry",
+        )
+        self.assertEqual(args.max_iterations, 3000)
 
     def test_resume_profile_requires_explicit_source(self):
         args = make_args(training_profile="stage1_from_no_dr")

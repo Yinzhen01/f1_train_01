@@ -305,6 +305,12 @@ class DHOnPolicyRunner:
             ("Reference contact agreement", "contact/ref_agreement"),
             ("Reference early touchdown", "contact/ref_early_touchdown_fraction"),
             ("Reference missing stance", "contact/ref_missing_stance_fraction"),
+            ("Foot lateral distance", "geometry/foot_lateral_distance_mean"),
+            ("Foot lateral target", "geometry/foot_lateral_target_mean"),
+            ("Knee lateral distance", "geometry/knee_lateral_distance_mean"),
+            ("Knee lateral target", "geometry/knee_lateral_target_mean"),
+            ("Stance foot |yaw|", "geometry/stance_foot_heading_abs_mean"),
+            ("Common foot |yaw|", "geometry/foot_heading_common_abs_mean"),
         )
         for label, key in debug_fields:
             if key in locs["debug_metrics"]:

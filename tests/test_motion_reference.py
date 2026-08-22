@@ -228,6 +228,67 @@ class MotionReferenceTest(unittest.TestCase):
         self.assertIn("self.ref_feet_contact < 0.5", reward_source)
         self.assertIn("torch.logical_and", reward_source)
 
+    def test_geometry_profile_replaces_legacy_xy_distance_rewards(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        motion = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkVx045GeometryCfg",
+            "motion_reference",
+        )
+        scales = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkVx045GeometryCfg",
+            "rewards",
+            "scales",
+        )
+
+        self.assertIn("walk_stance_geometry.csv", motion["stance_geometry_file"])
+        self.assertEqual(motion["foot_lateral_min_target"], 0.12)
+        self.assertEqual(motion["knee_lateral_min_target"], 0.14)
+        self.assertEqual(
+            motion["joint_limit_margin_by_name"]["left_hip_roll_joint"], 0.02
+        )
+        self.assertEqual(scales["ref_foot_lateral_distance"], 1.0)
+        self.assertEqual(scales["ref_knee_lateral_distance"], 0.5)
+        self.assertEqual(scales["ref_foot_heading"], 0.5)
+        self.assertEqual(scales["ref_hip_yaw"], 0.5)
+        self.assertEqual(scales["feet_distance"], 0.0)
+        self.assertEqual(scales["knee_distance"], 0.0)
+
+    def test_stance_geometry_reference_matches_selected_motion(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "resources"
+            / "motions"
+            / "x1"
+            / "walk_stance_geometry.csv"
+        )
+        names = (
+            "foot_lateral_distance",
+            "knee_lateral_distance",
+            "left_foot_heading",
+            "right_foot_heading",
+        )
+        table = load_joint_motion_csv(
+            source,
+            names,
+            start_time=0.6,
+            end_time=5.466666666666667,
+            close_loop=True,
+        )
+
+        self.assertEqual(table.frame_count, 147)
+        self.assertAlmostEqual(table.duration, 4.866666666666667)
+        self.assertGreater(float(table.positions[:, 0].min()), 0.12)
+        self.assertGreater(float(table.positions[:, 1].min()), 0.14)
+        self.assertGreater(float(np.max(np.abs(table.positions[:, 2:]))), 0.5)
+
     def test_foot_clearance_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]
