@@ -145,6 +145,7 @@ class MotionReferenceTest(unittest.TestCase):
 
         self.assertEqual(rewards["tracking_sigma"], 30.0)
         self.assertEqual(scales["ref_joint_pos"], 6.0)
+        self.assertEqual(scales["ref_feet_contact"], 2.0)
         self.assertEqual(scales["tracking_lin_vel"], 4.0)
         self.assertEqual(scales["low_speed"], 2.0)
         for disabled_term in (
@@ -175,6 +176,8 @@ class MotionReferenceTest(unittest.TestCase):
         )
 
         self.assertIn("walk_12dof_contact_consistent.csv", motion["file"])
+        self.assertEqual(motion["contact_columns"], ("left_contact", "right_contact"))
+        self.assertAlmostEqual(motion["phase_offset"], 26.0 / 146.0)
         self.assertAlmostEqual(motion["end_time"], 5.466666666666667)
         self.assertEqual(ranges["lin_vel_x"], [0.124, 0.124])
         self.assertAlmostEqual(rewards["cycle_time"], 4.866666666666667)
@@ -228,6 +231,38 @@ class MotionReferenceTest(unittest.TestCase):
         self.assertAlmostEqual(table.duration, 4.866666666666667)
         self.assertGreater(float(table.positions[:, 0].max()), 0.15)
         self.assertGreater(float(table.positions[:, 1].max()), 0.11)
+
+    def test_reference_contacts_are_periodic_and_phase_aligned(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "resources"
+            / "motions"
+            / "x1"
+            / "walk_12dof_contact_consistent.csv"
+        )
+        table = load_joint_motion_csv(
+            source,
+            ("left_contact", "right_contact"),
+            start_time=0.6,
+            end_time=5.466666666666667,
+            close_loop=True,
+        )
+        contacts = table.positions[:-1] >= 0.5
+        self.assertEqual(table.frame_count, 147)
+        np.testing.assert_allclose(table.positions[0], table.positions[-1])
+        np.testing.assert_allclose(contacts.mean(axis=0), [0.5410959, 0.5410959])
+        self.assertEqual(int(np.sum(np.all(contacts, axis=1))), 12)
+
+        frame_count = contacts.shape[0]
+        phase = np.arange(frame_count, dtype=np.float64) / frame_count
+        sample_index = (
+            np.arange(frame_count) + 26
+        ) % frame_count
+        sin_phase = np.sin(2.0 * np.pi * phase)
+        stance = np.column_stack((sin_phase >= 0.0, sin_phase < 0.0))
+        stance[np.abs(sin_phase) < 0.1] = True
+        agreement = np.mean(stance == contacts[sample_index])
+        self.assertGreater(agreement, 0.99)
 
 
 if __name__ == "__main__":

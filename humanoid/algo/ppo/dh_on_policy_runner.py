@@ -302,6 +302,9 @@ class DHOnPolicyRunner:
             ("Active vx too-slow fraction", "tracking/vx_too_slow_fraction"),
             ("Straight lateral drift", "tracking/straight_lateral_drift_abs"),
             ("Contact foot slip speed", "contact/foot_slip_speed_mean"),
+            ("Reference contact agreement", "contact/ref_agreement"),
+            ("Reference early touchdown", "contact/ref_early_touchdown_fraction"),
+            ("Reference missing stance", "contact/ref_missing_stance_fraction"),
         )
         for label, key in debug_fields:
             if key in locs["debug_metrics"]:

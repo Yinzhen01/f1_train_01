@@ -91,24 +91,27 @@ python humanoid/scripts/train.py `
   整周期，选用 0.600–5.467 秒周期并线性插值，超出 X1 URDF 的参考角会裁剪到
   实际关节限位。未加速指令使用接触一致速度 0.124m/s，不再采用原始根轨迹的
   0.255m/s。
-  周期并线性插值，超出 X1 URDF 的参考角会裁剪到实际关节限位。
-- `retarget_walk_no_dr` 的首阶段采用 reference-first 奖励：关节参考权重为 6，
-  速度跟踪权重为 4，`tracking_sigma=30`，低速项权重为 2；默认站姿奖励及
-  人工生成的接触数、腾空时间、抬脚高度和 `track_vel_hard` 暂时关闭。防滑、
-  碰撞、关节限位、动作平滑和基础姿态稳定约束仍保留。接触类奖励只能在从
-  重定向动作得到足端接触/离地标签后重新加入，避免固定 50/50 相位与数据冲突。
+- 参考接触表明每脚硬接触占空比约 54.1%，完整周期含 12/146 帧双支撑。相位
+  采样偏移使用 `26/146`，使环境相位掩码与参考接触达到约 99.3% 一致；旧的
+  `0.5` 偏移只有约 36.3% 一致，会让相位观测、基础高度约束与参考动作错位。
+- `retarget_walk_no_dr` 采用 reference-first 奖励：关节参考权重为 6，数据驱动
+  的软接触时序权重为 2，速度跟踪权重为 4，`tracking_sigma=30`，低速项权重
+  为 2。旧 `feet_contact_number` 继续关闭，由 `ref_feet_contact` 替代；旧
+  `feet_air_time` 会在计划支撑开始时即触发而不要求真实落脚，旧
+  `feet_clearance` 只要求 3–6cm 且与 13.6–16.4cm 的参考峰值冲突，因此二者
+  继续关闭。防滑、碰撞、关节限位、动作平滑和基础姿态稳定约束仍保留。
 - `retarget_walk_vx045_*` 保留同一 12 关节参考；每周期两步、平均单步
   0.3013507m，因此把周期从 4.866667s 压缩到 1.339336s（约 3.63 倍速），
   并同步把前进指令设为 0.45m/s，对应约 89.6 步/min。该快速配置从正确的
   mesh 脚底点和重建根轨迹得到离地曲线：原始左右峰值约 16.4/13.6cm，训练
   目标再提高 5%+5mm（约 17.7/14.8cm）。权重为 3 的
-  `ref_feet_clearance`
-  同时跟踪该曲线并惩罚摆动脚低于目标；接触数和腾空时间项仍关闭。
+  `ref_feet_clearance` 同时跟踪该曲线并惩罚摆动脚低于目标；接触时序使用同一
+  周期的 `ref_feet_contact`，旧接触数和腾空时间项仍关闭。
 - 接触修正后的两条任务分别写入新的 experiment
-  `x1_dh_stand_retarget_walk_contact` 与
-  `x1_dh_stand_retarget_walk_contact_vx045`。旧任务使用 0.255m/s 原始根速度和
-  2.799477s 快速周期，其 checkpoint 不作为新配置的等价比较基线；若显式恢复，
-  只能视为重新适应初始化，并必须另做 smoke 验证。
+  `x1_dh_stand_retarget_walk_periodic_contact` 与
+  `x1_dh_stand_retarget_walk_periodic_contact_vx045`。旧任务无论使用原始根速度、
+  旧快速周期或 `phase_offset=0.5`，其 checkpoint 都不作为新配置的等价比较
+  基线；若显式恢复，只能视为重新适应初始化，并必须另做 smoke 验证。
 - `stage1_from_no_dr` 固定 nominal armature，只启用窄范围 Stage-1 DR。
 - 两种完整 DR 运行都使用 `x1_dh_stand_dr_full`；区别仅为初始化来源和日志实验名。
 - 普通 Isaac Gym 推理仍使用 `--armature_mode=nominal`，并由推理脚本关闭 DR

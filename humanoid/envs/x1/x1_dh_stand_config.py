@@ -56,6 +56,7 @@ class X1DHStandCfg(LeggedRobotCfg):
         # Disabled for all existing tasks.  Dedicated imitation configs opt in.
         enabled = False
         file = ""
+        contact_columns = ()
         start_time = None
         end_time = None
         close_loop = True

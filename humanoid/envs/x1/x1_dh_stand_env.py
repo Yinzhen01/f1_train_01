@@ -118,8 +118,10 @@ class X1DHStandEnv(LeggedRobot):
         self.feet_height = torch.zeros((self.num_envs, 2), device=self.device)
         self.ref_dof_pos = torch.zeros((self.num_envs, self.num_actions), device=self.device)
         self.ref_feet_clearance = torch.zeros((self.num_envs, 2), device=self.device)
+        self.ref_feet_contact = torch.ones((self.num_envs, 2), device=self.device)
         self._motion_ref_positions = None
         self._motion_ref_feet_clearance = None
+        self._motion_ref_feet_contact = None
         self._motion_ref_phase_offset = 0.0
         self._load_motion_reference()
 
@@ -146,6 +148,29 @@ class X1DHStandEnv(LeggedRobot):
         self._motion_ref_positions = torch.as_tensor(
             table.positions, dtype=torch.float, device=self.device
         )
+        contact_columns = tuple(getattr(motion_cfg, "contact_columns", ()))
+        if contact_columns:
+            if len(contact_columns) != 2:
+                raise ValueError("Motion reference must define two foot-contact columns")
+            contact_table = load_joint_motion_csv(
+                configured_path,
+                contact_columns,
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if contact_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Foot-contact and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            self._motion_ref_feet_contact = torch.clamp(
+                torch.as_tensor(
+                    contact_table.positions, dtype=torch.float, device=self.device
+                ),
+                min=0.0,
+                max=1.0,
+            )
         clearance_file = getattr(motion_cfg, "clearance_file", "")
         if clearance_file:
             configured_clearance_path = str(clearance_file).replace(
@@ -365,6 +390,12 @@ class X1DHStandEnv(LeggedRobot):
             lower_pose = self._motion_ref_positions[frame_lower]
             upper_pose = self._motion_ref_positions[frame_upper]
             self.ref_dof_pos = lower_pose + interpolation * (upper_pose - lower_pose)
+            if self._motion_ref_feet_contact is not None:
+                lower_contact = self._motion_ref_feet_contact[frame_lower]
+                upper_contact = self._motion_ref_feet_contact[frame_upper]
+                self.ref_feet_contact = lower_contact + interpolation * (
+                    upper_contact - lower_contact
+                )
             if self._motion_ref_feet_clearance is not None:
                 lower_clearance = self._motion_ref_feet_clearance[frame_lower]
                 upper_clearance = self._motion_ref_feet_clearance[frame_upper]
@@ -734,7 +765,7 @@ class X1DHStandEnv(LeggedRobot):
         )
         ref_joint_error = self.dof_pos - self.ref_dof_pos
 
-        return {
+        metrics = {
             "command/moving_fraction": moving.float().mean(),
             "command/stand_fraction": (~moving).float().mean(),
             "command/vx_active_fraction": vx_active.float().mean(),
@@ -766,6 +797,25 @@ class X1DHStandEnv(LeggedRobot):
             "policy/action_rms": torch.sqrt(torch.mean(torch.square(self.actions))),
             "policy/torque_rms": torch.sqrt(torch.mean(torch.square(self.torques))),
         }
+        if self._motion_ref_feet_contact is not None:
+            target_contact = self.ref_feet_contact
+            contact_agreement = torch.where(
+                foot_contact,
+                target_contact,
+                1.0 - target_contact,
+            )
+            target_swing = target_contact < 0.5
+            target_stance = target_contact > 0.5
+            metrics.update({
+                "contact/ref_agreement": torch.mean(contact_agreement),
+                "contact/ref_early_touchdown_fraction": masked_mean(
+                    foot_contact.float(), target_swing
+                ),
+                "contact/ref_missing_stance_fraction": masked_mean(
+                    (~foot_contact).float(), target_stance
+                ),
+            })
+        return metrics
 
 # ================================================ Rewards ================================================== #
     def _reward_ref_joint_pos(self):
@@ -1014,6 +1064,40 @@ class X1DHStandEnv(LeggedRobot):
         return torch.sum(score * swing_mask, dim=1) / torch.clamp(
             torch.sum(swing_mask, dim=1), min=1.0
         )
+
+    def _reward_ref_feet_contact(self):
+        """Match measured contacts to the reference's soft support schedule.
+
+        The contact-consistent motion contains confidence ramps around each
+        support transfer.  A centered agreement score keeps the legacy
+        ``[-1, 1]`` contact-reward range while preserving those double-support
+        transitions instead of imposing a hand-authored 50/50 square wave.
+        """
+        if self._motion_ref_feet_contact is None:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        contact_threshold = float(
+            getattr(self.cfg.motion_reference, "contact_force_threshold", 40.0)
+        )
+        actual_contact = (
+            self.contact_forces[:, self.feet_indices, 2] > contact_threshold
+        )
+        target_contact = self.ref_feet_contact
+        stand_command = (
+            torch.norm(self.commands[:, :3], dim=1)
+            <= self.cfg.commands.stand_com_threshold
+        )
+        target_contact = torch.where(
+            stand_command.unsqueeze(1),
+            torch.ones_like(target_contact),
+            target_contact,
+        )
+        agreement = torch.where(
+            actual_contact,
+            target_contact,
+            1.0 - target_contact,
+        )
+        return 2.0 * torch.mean(agreement, dim=1) - 1.0
 
     def _reward_low_speed(self):
         """

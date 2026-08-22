@@ -18,12 +18,16 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
         # Full-body normalized-pose autocorrelation identifies a 146-frame
         # cycle in the 30 Hz source. The processed file retains only the root,
         # 12 controlled joints, and contact confidence columns.
+        contact_columns = ("left_contact", "right_contact")
+        contact_force_threshold = 40.0
         start_time = 0.6
         end_time = 5.466666666666667
         close_loop = True
-        # In the environment, left swing occupies phase [0.5, 1.0).  The CSV
-        # clip starts at a left-knee swing peak, hence the half-cycle offset.
-        phase_offset = 0.5
+        # A circular search against the reference contacts places the first
+        # support transfer 26 frames into the selected 146-frame cycle. This
+        # makes the environment phase mask and reference contacts agree on
+        # 99.3% of foot/frame pairs; the former 0.5 offset agreed on only 36.3%.
+        phase_offset = 0.1780821917808219
 
     class commands(X1DHStandNoDRCfg.commands):
         curriculum = False
@@ -54,13 +58,18 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
             # Reference-first curriculum: learn the 12-joint trajectory before
             # introducing contact labels or hand-authored swing constraints.
             ref_joint_pos = 6.0
+            # Data-derived replacement for the legacy feet_contact_number
+            # square wave. It retains the old contact reward's [-1, 1] range
+            # while respecting the reference's soft double-support windows.
+            ref_feet_contact = 2.0
             tracking_lin_vel = 4.0
             low_speed = 2.0
 
-            # These inherited terms directly compete with the retargeted joint
-            # targets or rely on a synthetic 50/50 stance mask.  Reintroduce
-            # them only after deriving contact/clearance targets from the
-            # motion itself.
+            # Keep the remaining legacy terms disabled. feet_air_time can
+            # reward a scheduled stance transition even before real contact;
+            # feet_clearance uses a 3-6 cm target instead of the measured
+            # 13.6-16.4 cm peaks; the other terms duplicate or compete with
+            # reference/velocity objectives.
             default_joint_pos = 0.0
             feet_contact_number = 0.0
             feet_air_time = 0.0
@@ -70,7 +79,7 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
 
 class X1DHStandRetargetWalkCfgPPO(X1DHStandNoDRCfgPPO):
     class runner(X1DHStandNoDRCfgPPO.runner):
-        experiment_name = "x1_dh_stand_retarget_walk_contact"
+        experiment_name = "x1_dh_stand_retarget_walk_periodic_contact"
 
 
 class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
@@ -113,4 +122,4 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
 
 class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
     class runner(X1DHStandRetargetWalkCfgPPO.runner):
-        experiment_name = "x1_dh_stand_retarget_walk_contact_vx045"
+        experiment_name = "x1_dh_stand_retarget_walk_periodic_contact_vx045"
