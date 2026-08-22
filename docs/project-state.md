@@ -28,6 +28,19 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
   `x1_dh_stand_retarget_walk_contact*` experiment；此前按 0.255m/s 原始根速度或
   2.799477s 快速周期训练的 checkpoint 不再作为等价基线。
 
+- 接触一致参考的云端 Isaac Gym smoke：`TASK_20260822_079`，分支
+  `experiment/retarget-walk-imitation` / `4199f1b`，从随机初始化运行
+  `retarget_walk_vx045_no_dr`，seed 5、4096 environments、50 PPO updates；
+  nominal armature 固定，DR 与观测噪声关闭。启动日志确认实际加载
+  `walk_12dof_contact_consistent.csv` 的 12 个关节、147 帧和 `4.866667s`
+  周期。任务于 `2026-08-22 14:38:46` 完成，共 `4,915,200` timesteps，
+  最高 checkpoint 为 `model_50`；最终 reward `2.39`、episode length
+  `124.76`，value/surrogate/state-estimator loss 为
+  `0.0047/-0.0009/0.0231`，约 `102,564 steps/s`。未发现 NaN/Inf、
+  Traceback、CUDA OOM 或 RuntimeError。该 smoke 证明新资产、配置、Isaac
+  Gym 环境与 PPO 链路可以运行；短训练仍有明显速度过冲和足滑，不代表已学会
+  稳定步态，后续应进行长训练和 deterministic nominal 推理后再评价动作质量。
+
 - 重定向步态 reference-first smoke：`TASK_20260821_163`，分支
   `experiment/retarget-walk-imitation` / `d0e17ad`，从随机初始化训练，seed 5、
   4096 environments、500 PPO updates；使用固定 nominal armature，全部 DR 与
