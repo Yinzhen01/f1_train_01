@@ -305,6 +305,26 @@ class MotionReferenceTest(unittest.TestCase):
             config,
         )
 
+    def test_cycle_matched_02547_geometry_matches_speed_and_period(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        rewards = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkCycleMatched02547GeometryCfg",
+            "rewards",
+        )
+
+        self.assertAlmostEqual(
+            rewards["cycle_time"],
+            0.6027014 / 0.2547,
+        )
+        self.assertAlmostEqual(rewards["cycle_time"], 2.366318806438948)
+
     def test_stance_geometry_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]

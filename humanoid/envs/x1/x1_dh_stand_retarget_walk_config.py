@@ -227,3 +227,24 @@ class X1DHStandRetargetWalkRawRootSpeedGeometryCfgPPO(
         experiment_name = (
             "x1_dh_stand_retarget_walk_periodic_contact_raw_root_speed_geometry"
         )
+
+
+class X1DHStandRetargetWalkCycleMatched02547GeometryCfg(
+    X1DHStandRetargetWalkRawRootSpeedGeometryCfg
+):
+    """0.2547 m/s command with a kinematically consistent reference cycle."""
+
+    class rewards(X1DHStandRetargetWalkRawRootSpeedGeometryCfg.rewards):
+        # One reconstructed cycle advances 0.6027014 m. Time-scale the same
+        # joint/contact reference so its implied speed matches the command.
+        cycle_time = 2.366318806438948
+
+
+class X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO(
+    X1DHStandRetargetWalkRawRootSpeedGeometryCfgPPO
+):
+    class runner(X1DHStandRetargetWalkRawRootSpeedGeometryCfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_"
+            "cycle_matched_02547_geometry"
+        )

@@ -26,6 +26,7 @@ python -m humanoid.training_profiles
 | `retarget_walk_native_geometry_no_dr` | `x1_dh_stand_retarget_walk_native_geometry` | 接触一致原始周期/0.124m/s、保守抬脚加站姿几何约束 | 3000 |
 | `retarget_walk_native_geometry_resume` | `x1_dh_stand_retarget_walk_native_geometry` | 显式原生速度站姿几何 checkpoint | 2000 |
 | `retarget_walk_raw_root_speed_geometry_no_dr` | `x1_dh_stand_retarget_walk_raw_root_speed_geometry` | 原始根轨迹指令0.2547m/s、原周期站姿几何约束 | 3000 |
+| `retarget_walk_cycle_matched_02547_geometry_no_dr` | `x1_dh_stand_retarget_walk_cycle_matched_02547_geometry` | 0.2547m/s、2.3663s周期匹配站姿几何约束 | 3000 |
 | `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
@@ -135,6 +136,10 @@ python humanoid/scripts/train.py `
   固定前进指令设为原始根轨迹统计值 `0.2547m/s`。该速度约为接触一致速度的
   两倍，预期会与重建步长产生冲突，因此不能把更高训练 reward 直接解释为
   更忠实的重定向动作，必须结合速度误差、支撑脚滑移和推理视频比较。
+- `retarget_walk_cycle_matched_02547_geometry_no_dr` 保留相同的0.2547m/s
+  指令、参考位移、奖励权重、nominal动力学和no-DR边界，只把周期改为
+  `0.6027014/0.2547=2.366319s`。这样每周期的指令位移与重建参考位移一致，
+  可把速度—周期失配从奖励对比中剥离。
 - 接触修正后的两条任务分别写入新的 experiment
   `x1_dh_stand_retarget_walk_periodic_contact` 与
   `x1_dh_stand_retarget_walk_periodic_contact_vx045`。旧任务无论使用原始根速度、
