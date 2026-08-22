@@ -158,6 +158,19 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
+- 重定向步态保守抬脚奖励正式训练：`TASK_20260822_089`，分支
+  `experiment/retarget-walk-clearance-conservative`，训练 commit
+  `ecd12ae435690352766e77123e2f108d81b69ccf`，从随机初始化，seed 5、
+  4096 environments、3000 PPO updates、1×4090D。使用重定向数据的原始足部
+  高度、`ref_feet_clearance=2.0`，且只有“参考非接触且高度超过阈值”时才启用
+  摆动高度奖励；nominal armature 固定，DR 和观测噪声关闭。此前独立 smoke
+  `TASK_20260822_087` 已正常完成 50 updates，最高 checkpoint 为 `model_50`。
+- 当前原版周期接触训练的阶段 checkpoint `TASK_20260822_084/model_2500`
+  已由 `TASK_20260822_086` 完成 deterministic nominal Isaac Gym 推理。
+  日志确认 commit `2516501d7be2edcfeaa102473d38058c8a66f9bc`、nominal
+  armature、plane friction 0.6、DR/噪声关闭；视频已验证为 1920×1080、
+  50 fps、20 秒、1000 帧，位于
+  `F:\robot_f1\worktrees\retarget-walk-imitation\outputs\isaacgym\TASK_20260822_086\play_output.mp4`。
 - 旧 profile 下的 `TASK_20260821_061` 因余额不足未运行，不作为有效训练
   任务，也不得作为恢复来源。
 - 独立资源池 B：profile `x1-pool-b-20260821`、project
