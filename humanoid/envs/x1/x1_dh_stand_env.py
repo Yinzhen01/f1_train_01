@@ -1048,7 +1048,15 @@ class X1DHStandEnv(LeggedRobot):
         swing_threshold = float(
             getattr(self.cfg.motion_reference, "clearance_swing_threshold", 0.02)
         )
-        swing_mask = (target > swing_threshold).float()
+        # Clearance is meaningful only when the same reference labels the foot
+        # as swinging.  Combining both signals prevents a low but still
+        # support-labelled foot near transfer from receiving a lift objective.
+        swing_mask = target > swing_threshold
+        if self._motion_ref_feet_contact is not None:
+            swing_mask = torch.logical_and(
+                swing_mask, self.ref_feet_contact < 0.5
+            )
+        swing_mask = swing_mask.float()
         squared_error = torch.square(actual_clearance - target)
         tracking = torch.exp(
             -squared_error * self.cfg.rewards.ref_feet_clearance_sigma

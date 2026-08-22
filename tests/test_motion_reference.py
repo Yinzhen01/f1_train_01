@@ -205,12 +205,28 @@ class MotionReferenceTest(unittest.TestCase):
 
         self.assertEqual(ranges["lin_vel_x"], [0.45, 0.45])
         self.assertAlmostEqual(rewards["cycle_time"], 1.3393364741639295)
-        self.assertEqual(motion["clearance_scale"], 1.05)
-        self.assertEqual(motion["clearance_lift_offset"], 0.005)
+        self.assertEqual(motion["clearance_scale"], 1.0)
+        self.assertEqual(motion["clearance_lift_offset"], 0.0)
         self.assertEqual(motion["clearance_max"], 0.18)
         self.assertEqual(rewards["ref_feet_clearance_sigma"], 400.0)
         self.assertEqual(rewards["ref_feet_clearance_low_penalty"], 0.5)
-        self.assertEqual(scales["ref_feet_clearance"], 3.0)
+        self.assertEqual(scales["ref_feet_clearance"], 2.0)
+
+    def test_clearance_reward_requires_reference_swing_contact(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_env.py"
+        ).read_text(encoding="utf-8")
+        reward_start = source.index("def _reward_ref_feet_clearance")
+        reward_end = source.index("def _reward_ref_feet_contact", reward_start)
+        reward_source = source[reward_start:reward_end]
+
+        self.assertIn("target > swing_threshold", reward_source)
+        self.assertIn("self.ref_feet_contact < 0.5", reward_source)
+        self.assertIn("torch.logical_and", reward_source)
 
     def test_foot_clearance_reference_matches_selected_motion(self):
         source = (

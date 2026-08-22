@@ -37,6 +37,7 @@ class TrainingProfilesTest(unittest.TestCase):
                 "retarget_walk_no_dr",
                 "retarget_walk_resume",
                 "retarget_walk_vx045_no_dr",
+                "retarget_walk_vx045_conservative_no_dr",
                 "retarget_walk_vx045_resume",
             },
         )

@@ -92,11 +92,11 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
             "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/walk_foot_clearance.csv"
         )
         clearance_swing_threshold = 0.02
-        # Raise the retargeted swing modestly: 5% plus 5 mm. Mesh-derived sole
-        # peaks are about 16.4 cm (left) and 13.6 cm (right), yielding targets
-        # of about 17.7 cm and 14.8 cm after the lift.
-        clearance_scale = 1.05
-        clearance_lift_offset = 0.005
+        # Conservative baseline: track the measured retargeted clearance
+        # without inflating it. Mesh-derived sole peaks remain about 16.4 cm
+        # (left) and 13.6 cm (right).
+        clearance_scale = 1.0
+        clearance_lift_offset = 0.0
         clearance_max = 0.18
 
     class commands(X1DHStandRetargetWalkCfg.commands):
@@ -115,11 +115,13 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
         ref_feet_clearance_low_penalty = 0.5
 
         class scales(X1DHStandRetargetWalkCfg.rewards.scales):
-            # Use reference-derived swing timing instead of the synthetic
-            # single-cycle stance mask used by the legacy feet_clearance term.
-            ref_feet_clearance = 3.0
+            # Start with the same scale as reference contact. The reward also
+            # requires both reference swing contact and clearance > 2 cm.
+            ref_feet_clearance = 2.0
 
 
 class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
     class runner(X1DHStandRetargetWalkCfgPPO.runner):
-        experiment_name = "x1_dh_stand_retarget_walk_periodic_contact_vx045"
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_vx045_conservative"
+        )
