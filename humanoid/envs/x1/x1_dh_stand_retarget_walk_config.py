@@ -174,3 +174,31 @@ class X1DHStandRetargetWalkVx045GeometryCfgPPO(
         experiment_name = (
             "x1_dh_stand_retarget_walk_periodic_contact_vx045_geometry"
         )
+
+
+class X1DHStandRetargetWalkNativeGeometryCfg(
+    X1DHStandRetargetWalkVx045GeometryCfg
+):
+    """Stance-geometry task replayed at the contact-consistent native rate."""
+
+    class commands(X1DHStandRetargetWalkCfg.commands):
+        class ranges:
+            # The contact-consistent periodic reconstruction advances 0.6027014 m
+            # in 4.866667 s. Keep the command aligned with that physical reference
+            # instead of time-scaling it to the former 0.45 m/s experiment.
+            lin_vel_x = [0.124, 0.124]
+            lin_vel_y = [0.0, 0.0]
+            ang_vel_yaw = [0.0, 0.0]
+            heading = [0.0, 0.0]
+
+    class rewards(X1DHStandRetargetWalkVx045GeometryCfg.rewards):
+        cycle_time = 4.866666666666667
+
+
+class X1DHStandRetargetWalkNativeGeometryCfgPPO(
+    X1DHStandRetargetWalkVx045GeometryCfgPPO
+):
+    class runner(X1DHStandRetargetWalkVx045GeometryCfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_native_geometry"
+        )

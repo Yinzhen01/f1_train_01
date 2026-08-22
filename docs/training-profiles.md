@@ -23,6 +23,7 @@ python -m humanoid.training_profiles
 | `retarget_walk_vx045_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 0.45m/s 时间缩放参考、随机初始化 | 3000 |
 | `retarget_walk_vx045_conservative_no_dr` | `x1_dh_stand_retarget_walk_vx045` | 原始抬脚高度与接触联合掩码、随机初始化 | 3000 |
 | `retarget_walk_vx045_geometry_no_dr` | `x1_dh_stand_retarget_walk_vx045_geometry` | 保守抬脚加站姿几何约束、随机初始化 | 3000 |
+| `retarget_walk_native_geometry_no_dr` | `x1_dh_stand_retarget_walk_native_geometry` | 接触一致原始周期/0.124m/s、保守抬脚加站姿几何约束 | 3000 |
 | `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
@@ -115,6 +116,10 @@ python humanoid/scripts/train.py `
   目标为 0°，奖励权重 0.5；另加权重 0.5 的 hip-yaw 专项参考。旧的 XY 总
   `feet_distance`/`knee_distance` 在该 task 中关闭，避免用前后错位掩盖横向
   交叉。左右 hip-roll 参考均距物理限位保留 0.02rad 余量。
+- `retarget_walk_native_geometry_no_dr` 保留同一套抬脚、接触、足/膝横向
+  间距和足朝向奖励，但将周期恢复为接触一致参考的 `4.8667s`，并把
+  前进指令固定为 `0.124m/s`。该速度来自周期重建位移 `0.6027m`，而非
+  会造成支撑脚滑动的原始世界根轨迹速度。
 - 接触修正后的两条任务分别写入新的 experiment
   `x1_dh_stand_retarget_walk_periodic_contact` 与
   `x1_dh_stand_retarget_walk_periodic_contact_vx045`。旧任务无论使用原始根速度、

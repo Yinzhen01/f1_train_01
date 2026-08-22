@@ -39,6 +39,7 @@ class TrainingProfilesTest(unittest.TestCase):
                 "retarget_walk_vx045_no_dr",
                 "retarget_walk_vx045_conservative_no_dr",
                 "retarget_walk_vx045_geometry_no_dr",
+                "retarget_walk_native_geometry_no_dr",
                 "retarget_walk_vx045_resume",
             },
         )
@@ -118,6 +119,20 @@ class TrainingProfilesTest(unittest.TestCase):
         self.assertEqual(
             args.experiment_name,
             "x1_dh_stand_retarget_walk_periodic_contact_vx045_geometry",
+        )
+        self.assertEqual(args.max_iterations, 3000)
+
+    def test_retarget_walk_native_geometry_profile_uses_native_rate_task(self):
+        args = make_args(training_profile="retarget_walk_native_geometry_no_dr")
+        apply_training_profile(args)
+
+        self.assertEqual(
+            args.task, "x1_dh_stand_retarget_walk_native_geometry"
+        )
+        self.assertFalse(args.resume)
+        self.assertEqual(
+            args.experiment_name,
+            "x1_dh_stand_retarget_walk_periodic_contact_native_geometry",
         )
         self.assertEqual(args.max_iterations, 3000)
 

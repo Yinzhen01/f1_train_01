@@ -261,6 +261,29 @@ class MotionReferenceTest(unittest.TestCase):
         self.assertEqual(scales["feet_distance"], 0.0)
         self.assertEqual(scales["knee_distance"], 0.0)
 
+    def test_native_geometry_profile_matches_reference_speed_and_period(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        ranges = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkNativeGeometryCfg",
+            "commands",
+            "ranges",
+        )
+        rewards = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkNativeGeometryCfg",
+            "rewards",
+        )
+
+        self.assertEqual(ranges["lin_vel_x"], [0.124, 0.124])
+        self.assertAlmostEqual(rewards["cycle_time"], 4.866666666666667)
+
     def test_stance_geometry_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]
