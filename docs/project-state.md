@@ -158,6 +158,19 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 正在进行
 
+- 重定向步态站姿几何修正正式训练：`TASK_20260822_095`，分支
+  `experiment/retarget-walk-stance-geometry`，实际训练 commit
+  `0797292b4b4465bf90a45927400c785f847d7b5b`，从随机初始化，seed 5、
+  4096 environments、3000 PPO updates、1×4090D。该任务基于保守抬脚版本，
+  新增机身坐标系下的足横向间距、膝横向间距、足朝向和 hip yaw 参考奖励，
+  权重分别为 `1.0/0.5/0.5/0.5`；关闭旧的足/膝 XY 总距离奖励。足横向参考
+  下限/安全下限为 `0.12/0.10 m`，膝横向为 `0.14/0.12 m`；摆动足参考朝向
+  限制在 `±10°`，支撑足目标为 `0°`。nominal armature 固定，DR 和观测噪声
+  关闭。云端 smoke `TASK_20260822_092` 已完成 50 updates，未发现 NaN/Inf、
+  Traceback、CUDA OOM 或 RuntimeError；正式任务启动日志已确认加载 147 帧周期
+  参考和新几何目标。初期 `77/3000` 时足横向 `0.1883 m`（目标 `0.1855 m`）、
+  膝横向 `0.1695 m`（目标 `0.1914 m`）、支撑足绝对 yaw `0.1294 rad`；这些
+  仍是 scratch 早期诊断值，不作为最终步态结论。
 - 重定向步态保守抬脚奖励正式训练：`TASK_20260822_089`，分支
   `experiment/retarget-walk-clearance-conservative`，训练 commit
   `ecd12ae435690352766e77123e2f108d81b69ccf`，从随机初始化，seed 5、
