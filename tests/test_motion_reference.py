@@ -284,6 +284,27 @@ class MotionReferenceTest(unittest.TestCase):
         self.assertEqual(ranges["lin_vel_x"], [0.124, 0.124])
         self.assertAlmostEqual(rewards["cycle_time"], 4.866666666666667)
 
+    def test_raw_root_speed_geometry_changes_only_command_speed(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        ranges = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkRawRootSpeedGeometryCfg",
+            "commands",
+            "ranges",
+        )
+
+        self.assertEqual(ranges["lin_vel_x"], [0.2547, 0.2547])
+        self.assertIn(
+            "X1DHStandRetargetWalkNativeGeometryCfg",
+            config,
+        )
+
     def test_stance_geometry_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]

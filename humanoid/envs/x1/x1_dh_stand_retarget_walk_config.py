@@ -202,3 +202,28 @@ class X1DHStandRetargetWalkNativeGeometryCfgPPO(
         experiment_name = (
             "x1_dh_stand_retarget_walk_periodic_contact_native_geometry"
         )
+
+
+class X1DHStandRetargetWalkRawRootSpeedGeometryCfg(
+    X1DHStandRetargetWalkNativeGeometryCfg
+):
+    """Native-cycle geometry task commanded at the raw root-track speed."""
+
+    class commands(X1DHStandRetargetWalkCfg.commands):
+        class ranges:
+            # Deliberate A/B condition: the uncorrected root trajectory reports
+            # 0.254696 m/s, while the contact-consistent reconstruction advances
+            # only about 0.124 m/s at this 4.866667 s joint cycle.
+            lin_vel_x = [0.2547, 0.2547]
+            lin_vel_y = [0.0, 0.0]
+            ang_vel_yaw = [0.0, 0.0]
+            heading = [0.0, 0.0]
+
+
+class X1DHStandRetargetWalkRawRootSpeedGeometryCfgPPO(
+    X1DHStandRetargetWalkNativeGeometryCfgPPO
+):
+    class runner(X1DHStandRetargetWalkNativeGeometryCfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_raw_root_speed_geometry"
+        )

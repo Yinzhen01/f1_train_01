@@ -25,6 +25,7 @@ python -m humanoid.training_profiles
 | `retarget_walk_vx045_geometry_no_dr` | `x1_dh_stand_retarget_walk_vx045_geometry` | 保守抬脚加站姿几何约束、随机初始化 | 3000 |
 | `retarget_walk_native_geometry_no_dr` | `x1_dh_stand_retarget_walk_native_geometry` | 接触一致原始周期/0.124m/s、保守抬脚加站姿几何约束 | 3000 |
 | `retarget_walk_native_geometry_resume` | `x1_dh_stand_retarget_walk_native_geometry` | 显式原生速度站姿几何 checkpoint | 2000 |
+| `retarget_walk_raw_root_speed_geometry_no_dr` | `x1_dh_stand_retarget_walk_raw_root_speed_geometry` | 原始根轨迹指令0.2547m/s、原周期站姿几何约束 | 3000 |
 | `retarget_walk_vx045_resume` | `x1_dh_stand_retarget_walk_vx045` | 显式重定向 checkpoint | 1500 |
 
 默认更新数用于初始评估，可通过 `--max_iterations` 覆盖；不要求任何阶段机械跑满
@@ -129,6 +130,11 @@ python humanoid/scripts/train.py `
   间距和足朝向奖励，但将周期恢复为接触一致参考的 `4.8667s`，并把
   前进指令固定为 `0.124m/s`。该速度来自周期重建位移 `0.6027m`，而非
   会造成支撑脚滑动的原始世界根轨迹速度。
+- `retarget_walk_raw_root_speed_geometry_no_dr` 是独立 scratch A/B：保持
+  `4.8667s` 关节/接触周期、站姿几何奖励和 nominal no-DR 动力学不变，仅把
+  固定前进指令设为原始根轨迹统计值 `0.2547m/s`。该速度约为接触一致速度的
+  两倍，预期会与重建步长产生冲突，因此不能把更高训练 reward 直接解释为
+  更忠实的重定向动作，必须结合速度误差、支撑脚滑移和推理视频比较。
 - 接触修正后的两条任务分别写入新的 experiment
   `x1_dh_stand_retarget_walk_periodic_contact` 与
   `x1_dh_stand_retarget_walk_periodic_contact_vx045`。旧任务无论使用原始根速度、

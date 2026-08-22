@@ -41,6 +41,7 @@ class TrainingProfilesTest(unittest.TestCase):
                 "retarget_walk_vx045_geometry_no_dr",
                 "retarget_walk_native_geometry_no_dr",
                 "retarget_walk_native_geometry_resume",
+                "retarget_walk_raw_root_speed_geometry_no_dr",
                 "retarget_walk_vx045_resume",
             },
         )
@@ -156,6 +157,22 @@ class TrainingProfilesTest(unittest.TestCase):
             "x1_dh_stand_retarget_walk_periodic_contact_native_geometry",
         )
         self.assertEqual(args.max_iterations, 2000)
+
+    def test_raw_root_speed_geometry_profile_is_independent_scratch_task(self):
+        args = make_args(
+            training_profile="retarget_walk_raw_root_speed_geometry_no_dr"
+        )
+        apply_training_profile(args)
+
+        self.assertEqual(
+            args.task, "x1_dh_stand_retarget_walk_raw_root_speed_geometry"
+        )
+        self.assertFalse(args.resume)
+        self.assertEqual(
+            args.experiment_name,
+            "x1_dh_stand_retarget_walk_periodic_contact_raw_root_speed_geometry",
+        )
+        self.assertEqual(args.max_iterations, 3000)
 
     def test_resume_profile_requires_explicit_source(self):
         args = make_args(training_profile="stage1_from_no_dr")
