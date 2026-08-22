@@ -54,10 +54,10 @@
       }
     },
     "retarget_walk_no_dr": {
-      "description": "No-DR phase-conditioned imitation of the 12 controlled leg joints from walk.csv.",
+      "description": "No-DR phase-conditioned imitation of the contact-consistent 12-joint walk reference.",
       "task": "x1_dh_stand_retarget_walk",
       "initialization": "scratch",
-      "experiment_name": "x1_dh_stand_retarget_walk",
+      "experiment_name": "x1_dh_stand_retarget_walk_contact",
       "defaults": {
         "seed": 5,
         "num_envs": 4096,
@@ -65,10 +65,10 @@
       }
     },
     "retarget_walk_resume": {
-      "description": "Continue the no-DR retargeted-walk imitation task from an explicit checkpoint.",
+      "description": "Continue the contact-consistent no-DR retargeted-walk task from an explicit compatible checkpoint.",
       "task": "x1_dh_stand_retarget_walk",
       "initialization": "resume",
-      "experiment_name": "x1_dh_stand_retarget_walk",
+      "experiment_name": "x1_dh_stand_retarget_walk_contact",
       "required_args": [
         "load_run",
         "checkpoint"
@@ -83,7 +83,7 @@
       "description": "No-DR retargeted-walk imitation with the reference time-scaled to 0.45 m/s.",
       "task": "x1_dh_stand_retarget_walk_vx045",
       "initialization": "scratch",
-      "experiment_name": "x1_dh_stand_retarget_walk_vx045",
+      "experiment_name": "x1_dh_stand_retarget_walk_contact_vx045",
       "defaults": {
         "seed": 5,
         "num_envs": 4096,
@@ -94,7 +94,7 @@
       "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
       "task": "x1_dh_stand_retarget_walk_vx045",
       "initialization": "resume",
-      "experiment_name": "x1_dh_stand_retarget_walk_vx045",
+      "experiment_name": "x1_dh_stand_retarget_walk_contact_vx045",
       "required_args": [
         "load_run",
         "checkpoint"

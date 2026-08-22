@@ -156,6 +156,29 @@ class MotionReferenceTest(unittest.TestCase):
         ):
             self.assertEqual(scales[disabled_term], 0.0)
 
+    def test_retarget_profile_uses_contact_consistent_period_and_speed(self):
+        config = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        motion = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkCfg", "motion_reference"
+        )
+        ranges = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkCfg", "commands", "ranges"
+        )
+        rewards = self._nested_class_assignments(
+            config, "X1DHStandRetargetWalkCfg", "rewards"
+        )
+
+        self.assertIn("walk_12dof_contact_consistent.csv", motion["file"])
+        self.assertAlmostEqual(motion["end_time"], 5.466666666666667)
+        self.assertEqual(ranges["lin_vel_x"], [0.124, 0.124])
+        self.assertAlmostEqual(rewards["cycle_time"], 4.866666666666667)
+
     def test_vx045_profile_time_scales_reference_and_command_together(self):
         config = (
             Path(__file__).resolve().parents[1]
@@ -178,7 +201,7 @@ class MotionReferenceTest(unittest.TestCase):
         )
 
         self.assertEqual(ranges["lin_vel_x"], [0.45, 0.45])
-        self.assertAlmostEqual(rewards["cycle_time"], 2.799477492696072)
+        self.assertAlmostEqual(rewards["cycle_time"], 1.3393364741639295)
         self.assertEqual(motion["clearance_scale"], 1.05)
         self.assertEqual(motion["clearance_lift_offset"], 0.005)
         self.assertEqual(motion["clearance_max"], 0.18)
@@ -198,11 +221,11 @@ class MotionReferenceTest(unittest.TestCase):
             source,
             ("left_foot_clearance", "right_foot_clearance"),
             start_time=0.6,
-            end_time=5.533333333333333,
+            end_time=5.466666666666667,
             close_loop=True,
         )
-        self.assertEqual(table.frame_count, 149)
-        self.assertAlmostEqual(table.duration, 4.933333333333333)
+        self.assertEqual(table.frame_count, 147)
+        self.assertAlmostEqual(table.duration, 4.866666666666667)
         self.assertGreater(float(table.positions[:, 0].max()), 0.15)
         self.assertGreater(float(table.positions[:, 1].max()), 0.11)
 

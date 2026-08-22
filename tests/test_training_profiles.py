@@ -67,7 +67,7 @@ class TrainingProfilesTest(unittest.TestCase):
 
         self.assertEqual(args.task, "x1_dh_stand_retarget_walk")
         self.assertFalse(args.resume)
-        self.assertEqual(args.experiment_name, "x1_dh_stand_retarget_walk")
+        self.assertEqual(args.experiment_name, "x1_dh_stand_retarget_walk_contact")
         self.assertEqual(args.seed, 5)
         self.assertEqual(args.num_envs, 4096)
         self.assertEqual(args.max_iterations, 3000)
@@ -95,7 +95,9 @@ class TrainingProfilesTest(unittest.TestCase):
         apply_training_profile(args)
 
         self.assertEqual(args.task, "x1_dh_stand_retarget_walk_vx045")
-        self.assertEqual(args.experiment_name, "x1_dh_stand_retarget_walk_vx045")
+        self.assertEqual(
+            args.experiment_name, "x1_dh_stand_retarget_walk_contact_vx045"
+        )
         self.assertTrue(args.resume)
         self.assertEqual(args.max_iterations, 1500)
 

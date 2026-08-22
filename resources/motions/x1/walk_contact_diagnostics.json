@@ -1,0 +1,66 @@
+{
+  "source_file": "walk.csv",
+  "source_sha256": "377ff20b7d217c4b001decd8c4c83d06cdab6b71f3d35a2904d81946c2b3e47c",
+  "urdf_file": "X1_12DOF.urdf",
+  "urdf_sha256": "a9023ae4ac95318ce8b16dfa70a3cd95dfe270732de48376dca960693c72fcbf",
+  "frame_count": 415,
+  "sample_rate_hz": 30.000000000000107,
+  "cycle_frames": 146,
+  "cycle_seconds": 4.866666666666649,
+  "half_cycle_seconds": 2.4333333333333247,
+  "cadence_steps_per_min": 24.65753424657543,
+  "switch_frames": [
+    45,
+    118,
+    191,
+    264,
+    337,
+    410
+  ],
+  "switch_times_seconds": [
+    1.5,
+    3.933333333333333,
+    6.366666666666666,
+    8.8,
+    11.233333333333333,
+    13.666666666666666
+  ],
+  "sole_points_in_ankle_roll_link": {
+    "left": [
+      -1.9164755940437317e-05,
+      -0.040800001472234726,
+      0.0050142258405685425
+    ],
+    "right": [
+      1.1781230568885803e-05,
+      0.040800001472234726,
+      0.005014877766370773
+    ]
+  },
+  "forward_step_lengths_m": [
+    0.3235024792108582,
+    0.29309641728372393,
+    0.28462712260906203,
+    0.24323673931080678,
+    0.3370380874866861,
+    0.3266033942201678
+  ],
+  "mean_forward_step_length_m": 0.30135070668688413,
+  "std_forward_step_length_m": 0.03195578498515441,
+  "raw_root_speed_mps": 0.2546962731841831,
+  "reconstructed_root_speed_mps": 0.1224659969011121,
+  "raw": {
+    "stance_slip_rms_mps": 0.13920887921740482,
+    "stance_slip_p95_mps": 0.3123251387994148
+  },
+  "reconstructed": {
+    "stance_slip_rms_mps": 0.049400566387004456,
+    "stance_slip_p95_mps": 0.005474504614174152
+  },
+  "slip_rms_reduction_fraction": 0.6451335096962114,
+  "ground_height_m": 0.010848461997014613,
+  "reconstructed_root_z_range_m": [
+    0.5936826371598638,
+    0.6305376391857195
+  ]
+}

@@ -31,7 +31,8 @@
 - 训练好的模型会存`/log/<experiment_name>/exported_data/<date_time><run_name>/model_<iteration>.pt` 其中 `<experiment_name>` 在config文件中定义.
 ![](doc/train.gif)
 
-使用仓库内 `resources/motions/x1/walk_12dof.csv` 的重定向步态进行 12 关节模仿训练：
+使用仓库内经过周期接触修正的
+`resources/motions/x1/walk_12dof_contact_consistent.csv` 进行 12 关节模仿训练：
 
 ```powershell
 python humanoid/scripts/train.py `
@@ -43,9 +44,9 @@ python humanoid/scripts/train.py `
 从显式 checkpoint 继续同一模仿任务时，使用 `retarget_walk_resume`，并同时提供
 `--load_run` 和 `--checkpoint`。
 
-需要把同一参考动作按根轨迹速度提高到 0.45m/s 时，使用
-`retarget_walk_vx045_no_dr` 或 `retarget_walk_vx045_resume`。该配置会把参考时间轴
-同步加速 1.762234 倍，而不是只修改速度指令；同时跟踪由同一动作和 X1 URDF
+需要把同一参考动作提高到 0.45m/s 时，使用
+`retarget_walk_vx045_no_dr` 或 `retarget_walk_vx045_resume`。该配置会依据接触一致
+步长把参考时间轴同步加速约 3.63 倍，而不是只修改速度指令；同时跟踪由同一动作和 X1 URDF
 前向运动学得到的足底离地曲线，并在原曲线上提高 5%+5mm，但仍关闭接触数和
 腾空时间奖励。
 
@@ -54,6 +55,12 @@ python humanoid/scripts/train.py `
 可训练性。首阶段以关节参考奖励为主，暂不使用未经数据标注的人工接触和抬脚
 相位奖励；0.45m/s 快速配置是上述抬脚高度奖励的显式例外。配置细节见
 `docs/training-profiles.md`。
+
+原始浮动基座平移不直接作为速度真值。运行
+`python -m humanoid.scripts.reconstruct_motion_root` 可从 URDF mesh 自动识别正确
+脚底中心、按全身关节周期建立左右支撑相位，并全局求解低滑移基座轨迹。仓库诊断
+结果为 146 帧整周期、平均前向步长约 0.301m、未加速的接触一致速度约
+0.124m/s，详见 `resources/motions/x1/walk_contact_diagnostics.json`。
 
 #### Play:
 ```python /scripts/play.py --task=x1_dh_stand --load_run=<date_time><run_name>```

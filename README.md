@@ -29,8 +29,9 @@ This project is about the reinforcement learning training code used by AgiBot X1
 - The trained model will be saved in `/log/<experiment_name>/exported_data/<date_time><run_name>/model_<iteration>.pt`, where `<experiment_name>` is defined in the config file.
 ![](doc/train.gif)
 
-To train a phase-conditioned 12-joint policy from the retargeted walk data in
-`resources/motions/x1/walk_12dof.csv`:
+To train a phase-conditioned 12-joint policy from the contact-corrected
+retargeted walk data in
+`resources/motions/x1/walk_12dof_contact_consistent.csv`:
 
 ```powershell
 python humanoid/scripts/train.py `
@@ -43,10 +44,18 @@ Use `retarget_walk_resume` with explicit `--load_run` and `--checkpoint`
 arguments to continue the same imitation task from a checkpoint.
 
 Use `retarget_walk_vx045_no_dr` or `retarget_walk_vx045_resume` to pair a
-0.45 m/s command with a 1.762234x time-scaled version of the same reference.
+0.45 m/s command with a 3.63x time-scaled version of the same reference.
 The faster profile also tracks FK-derived swing-foot clearance from the same
 motion with a modest 5% + 5 mm lift; synthetic contact-count and air-time
 rewards stay off.
+
+The source root translation is not trusted directly. Run
+`python -m humanoid.scripts.reconstruct_motion_root` to infer a periodic
+support schedule, derive the true sole centers from the URDF meshes, and solve
+a globally contact-consistent root trajectory. The checked-in diagnostic gives
+a 146-frame cycle, 0.301 m mean forward step, and about 0.124 m/s unscaled
+contact-consistent speed; see
+`resources/motions/x1/walk_contact_diagnostics.json`.
 
 Only the named left/right hip, knee, and ankle columns are used. Floating-base,
 waist, arm, neck, and head columns are excluded from the training reference.

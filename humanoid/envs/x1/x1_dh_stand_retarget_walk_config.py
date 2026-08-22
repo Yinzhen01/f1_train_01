@@ -11,11 +11,15 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
 
     class motion_reference(X1DHStandNoDRCfg.motion_reference):
         enabled = True
-        file = "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/walk_12dof.csv"
-        # Consecutive left-knee swing peaks delimit a clean, nearly periodic
-        # cycle in the 30 Hz source (0.600 s -> 5.533 s).
+        file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/"
+            "walk_12dof_contact_consistent.csv"
+        )
+        # Full-body normalized-pose autocorrelation identifies a 146-frame
+        # cycle in the 30 Hz source. The processed file retains only the root,
+        # 12 controlled joints, and contact confidence columns.
         start_time = 0.6
-        end_time = 5.533333333333333
+        end_time = 5.466666666666667
         close_loop = True
         # In the environment, left swing occupies phase [0.5, 1.0).  The CSV
         # clip starts at a left-knee swing peak, hence the half-cycle offset.
@@ -29,17 +33,21 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
         sw_switch = False
 
         class ranges:
-            # The source root travels 3.52 m over 13.8 s (about 0.255 m/s).
-            lin_vel_x = [0.255, 0.255]
+            # Periodic, contact-consistent reconstruction gives a mean 0.301 m
+            # forward step every 2.433 s (about 0.124 m/s). The original raw
+            # root trajectory was rejected because it made the stance foot
+            # slide at about 0.14 m/s RMS.
+            lin_vel_x = [0.124, 0.124]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
 
     class rewards(X1DHStandNoDRCfg.rewards):
-        cycle_time = 4.933333333333333
-        # The first imitation stage should clearly distinguish walking from
-        # standing still.  At vx=0 the inherited sigma=5 kernel would still
-        # award 72% of the maximum 0.255 m/s tracking reward.
+        cycle_time = 4.866666666666667
+        # The first imitation stage should distinguish walking from standing.
+        # At vx=0 the inherited sigma=5 kernel would award 92.6% of the maximum
+        # 0.124 m/s tracking reward; sigma=30 lowers that to about 63%, while
+        # the low_speed term supplies the explicit standing penalty.
         tracking_sigma = 30.0
 
         class scales(X1DHStandNoDRCfg.rewards.scales):
@@ -62,11 +70,11 @@ class X1DHStandRetargetWalkCfg(X1DHStandNoDRCfg):
 
 class X1DHStandRetargetWalkCfgPPO(X1DHStandNoDRCfgPPO):
     class runner(X1DHStandNoDRCfgPPO.runner):
-        experiment_name = "x1_dh_stand_retarget_walk"
+        experiment_name = "x1_dh_stand_retarget_walk_contact"
 
 
 class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
-    """Time-scaled reference whose root-path speed is 0.45 m/s."""
+    """Time-scaled contact-consistent 0.45 m/s reference."""
 
     class motion_reference(X1DHStandRetargetWalkCfg.motion_reference):
         # FK-derived foot-bottom clearance from the same source frames. Only
@@ -75,9 +83,9 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
             "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/walk_foot_clearance.csv"
         )
         clearance_swing_threshold = 0.02
-        # Raise the retargeted swing modestly: 5% plus 5 mm. Raw FK peaks are
-        # about 15.5 cm (left) and 11.8 cm (right), yielding targets of about
-        # 16.8 cm and 12.9 cm after lifting.
+        # Raise the retargeted swing modestly: 5% plus 5 mm. Mesh-derived sole
+        # peaks are about 16.4 cm (left) and 13.6 cm (right), yielding targets
+        # of about 17.7 cm and 14.8 cm after the lift.
         clearance_scale = 1.05
         clearance_lift_offset = 0.005
         clearance_max = 0.18
@@ -90,9 +98,9 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
             heading = [0.0, 0.0]
 
     class rewards(X1DHStandRetargetWalkCfg.rewards):
-        # The selected root path is 1.2597648717 m long. Compressing the
-        # original 4.933333 s clip by 1.762234x gives 1.259765 / 0.45.
-        cycle_time = 2.799477492696072
+        # Two 0.3013507 m steps per cycle give 0.6027014 m. Replaying that
+        # geometry in 1.339336 s yields 0.45 m/s and about 89.6 steps/min.
+        cycle_time = 1.3393364741639295
 
         ref_feet_clearance_sigma = 400.0
         ref_feet_clearance_low_penalty = 0.5
@@ -105,4 +113,4 @@ class X1DHStandRetargetWalkVx045Cfg(X1DHStandRetargetWalkCfg):
 
 class X1DHStandRetargetWalkVx045CfgPPO(X1DHStandRetargetWalkCfgPPO):
     class runner(X1DHStandRetargetWalkCfgPPO.runner):
-        experiment_name = "x1_dh_stand_retarget_walk_vx045"
+        experiment_name = "x1_dh_stand_retarget_walk_contact_vx045"

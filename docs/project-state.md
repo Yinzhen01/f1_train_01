@@ -15,6 +15,19 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 已完成
 
+- 重定向根轨迹接触一致性复核：旧分析错误地把 ankle-roll 局部 `z` 当作竖直
+  方向；实际 mesh/URDF 显示左右脚底分别位于局部 `-y/+y`，正确脚底中心约为
+  `[0,-0.0408,0.005]` 与 `[0,+0.0408,0.005]`。新预处理按 146 帧全身关节周期、
+  半周期左右换脚和 5 帧软双支撑窗口，全局最小二乘求解基座平移。415 帧数据
+  的平均前向步长为 `0.30135m`，接触一致速度为 `0.12247m/s`；原始根轨迹为
+  `0.25470m/s`。支撑脚水平滑移 P95 从 `0.31233m/s` 降到 `0.00547m/s`，RMS
+  从 `0.13921m/s` 降到 `0.04940m/s`。派生资产和完整指标位于
+  `resources/motions/x1/walk_12dof_contact_consistent.csv` 与
+  `walk_contact_diagnostics.json`；本地 33 项单元测试通过。该结果是运动学接触
+  一致性证据，不替代 Isaac Gym 动力学训练或真机验证。后续训练使用新的
+  `x1_dh_stand_retarget_walk_contact*` experiment；此前按 0.255m/s 原始根速度或
+  2.799477s 快速周期训练的 checkpoint 不再作为等价基线。
+
 - 重定向步态 reference-first smoke：`TASK_20260821_163`，分支
   `experiment/retarget-walk-imitation` / `d0e17ad`，从随机初始化训练，seed 5、
   4096 environments、500 PPO updates；使用固定 nominal armature，全部 DR 与
