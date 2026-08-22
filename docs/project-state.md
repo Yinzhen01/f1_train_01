@@ -15,6 +15,27 @@ X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出�
 
 ## 已完成
 
+- 重定向步态周期与奖励重新对齐：`walk.csv` 的 12 关节自相关在 146 帧
+  （4.866667s）处达到完整周期，73 帧为左右半周期；每脚硬接触占空比约
+  `54.1%`，每周期 `12/146` 帧为双支撑。原 `phase_offset=0.5` 与参考接触仅
+  `36.3%` 一致，改为 `26/146=0.178082` 后达到约 `99.3%`，使相位观测、
+  基础高度约束和参考动作统一。新增 `ref_feet_contact`（权重 2）直接跟踪 CSV
+  的软接触置信度，并记录接触一致率、提前落脚和缺失支撑；旧
+  `feet_contact_number`、`feet_air_time` 和 3–6cm `feet_clearance` 继续关闭，
+  参考足底高度与防滑奖励保留。实现提交为 `b8fb0ea`，分支
+  `experiment/retarget-walk-imitation`。
+
+- 上述周期奖励的 Isaac Gym smoke：`TASK_20260822_082`，4090D、随机初始化、
+  seed 5、4096 environments、50 PPO updates，实际 commit
+  `b8fb0ea8aed7874490be7cd3f7766322d0ffe0c0`。运行时确认 nominal armature、
+  DR/噪声关闭、147 帧参考、4.866667s 源周期及 `phase_offset=0.178`。任务自然
+  完成 `4,915,200` timesteps，最高 checkpoint `model_50`；最终 reward `2.01`、
+  episode length `124.42`、value/surrogate/state-estimator loss
+  `0.0066/0.0034/0.0328`。接触一致率由 iteration 0 的 `0.4787` 增至最终
+  `0.6018`，提前落脚由 `0.2563` 降至 `0.1887`，缺失支撑由 `0.7367` 降至
+  `0.5806`；未发现 NaN/Inf、Traceback、CUDA OOM 或 RuntimeError。该结果证明
+  新奖励和诊断链路可运行且早期方向正确，不代表 50 次更新已经得到稳定步态。
+
 - 重定向根轨迹接触一致性复核：旧分析错误地把 ankle-roll 局部 `z` 当作竖直
   方向；实际 mesh/URDF 显示左右脚底分别位于局部 `-y/+y`，正确脚底中心约为
   `[0,-0.0408,0.005]` 与 `[0,+0.0408,0.005]`。新预处理按 146 帧全身关节周期、
