@@ -65,6 +65,8 @@ from .x1.x1_dh_stand_retarget_walk_config import (
     X1DHStandRetargetWalkRawRootSpeedGeometryCfgPPO,
     X1DHStandRetargetWalkCycleMatched02547GeometryCfg,
     X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO,
+    X1DHStandRetargetWalkKeypointsPosture02547Cfg,
+    X1DHStandRetargetWalkKeypointsPosture02547CfgPPO,
 )
 
 from .x1.x1_dh_stand_env import X1DHStandEnv
@@ -137,4 +139,10 @@ task_registry.register(
     X1DHStandEnv,
     X1DHStandRetargetWalkCycleMatched02547GeometryCfg(),
     X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO(),
+)
+task_registry.register(
+    "x1_dh_stand_retarget_walk_keypoints_posture_02547",
+    X1DHStandEnv,
+    X1DHStandRetargetWalkKeypointsPosture02547Cfg(),
+    X1DHStandRetargetWalkKeypointsPosture02547CfgPPO(),
 )

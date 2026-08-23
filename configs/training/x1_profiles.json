@@ -160,6 +160,17 @@
         "max_iterations": 3000
       }
     },
+    "retarget_walk_keypoints_posture_02547_no_dr": {
+      "description": "No-DR 0.2547 m/s cycle-matched walk with phase-aligned heel/toe keypoints, reference base posture, forward-only speed tracking, and gentle lateral-displacement control.",
+      "task": "x1_dh_stand_retarget_walk_keypoints_posture_02547",
+      "initialization": "scratch",
+      "experiment_name": "x1_dh_stand_retarget_walk_periodic_contact_keypoints_posture_02547",
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 3000
+      }
+    },
     "retarget_walk_vx045_resume": {
       "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
       "task": "x1_dh_stand_retarget_walk_vx045",

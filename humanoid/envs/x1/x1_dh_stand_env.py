@@ -122,10 +122,15 @@ class X1DHStandEnv(LeggedRobot):
         self.ref_foot_lateral_distance = torch.zeros(self.num_envs, device=self.device)
         self.ref_knee_lateral_distance = torch.zeros(self.num_envs, device=self.device)
         self.ref_foot_heading = torch.zeros((self.num_envs, 2), device=self.device)
+        self.ref_foot_keypoints = torch.zeros((self.num_envs, 2, 2, 2), device=self.device)
+        self.ref_base_posture = torch.zeros((self.num_envs, 2), device=self.device)
         self._motion_ref_positions = None
         self._motion_ref_feet_clearance = None
         self._motion_ref_feet_contact = None
         self._motion_ref_stance_geometry = None
+        self._motion_ref_foot_keypoints = None
+        self._motion_ref_base_posture = None
+        self._foot_keypoint_offsets = None
         self._motion_ref_joint_limit_margin = torch.zeros(
             self.num_actions, dtype=torch.float, device=self.device
         )
@@ -273,6 +278,68 @@ class X1DHStandEnv(LeggedRobot):
                 f"heading_max={max_heading:.3f}rad",
                 flush=True,
             )
+        keypoint_file = getattr(motion_cfg, "foot_keypoint_file", "")
+        if keypoint_file:
+            configured_keypoint_path = str(keypoint_file).replace(
+                "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+            )
+            keypoint_columns = (
+                "left_heel_x",
+                "left_heel_y",
+                "left_toe_x",
+                "left_toe_y",
+                "right_heel_x",
+                "right_heel_y",
+                "right_toe_x",
+                "right_toe_y",
+            )
+            keypoint_table = load_joint_motion_csv(
+                configured_keypoint_path,
+                keypoint_columns,
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if keypoint_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Foot-keypoint and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            self._motion_ref_foot_keypoints = torch.as_tensor(
+                keypoint_table.positions, dtype=torch.float, device=self.device
+            ).reshape(-1, 2, 2, 2)
+            offsets = getattr(motion_cfg, "foot_keypoint_offsets", ())
+            if len(offsets) != 2 or any(len(foot) != 2 for foot in offsets):
+                raise ValueError("foot_keypoint_offsets must define heel/toe for two feet")
+            self._foot_keypoint_offsets = torch.as_tensor(
+                offsets, dtype=torch.float, device=self.device
+            )
+            print(
+                f"[foot-keypoints] file={configured_keypoint_path} "
+                f"sigma={float(self.cfg.rewards.ref_foot_keypoint_sigma):.1f}",
+                flush=True,
+            )
+        posture_file = getattr(motion_cfg, "base_posture_file", "")
+        if posture_file:
+            configured_posture_path = str(posture_file).replace(
+                "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+            )
+            posture_table = load_joint_motion_csv(
+                configured_posture_path,
+                ("projected_gravity_x", "projected_gravity_y"),
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if posture_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Base-posture and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            self._motion_ref_base_posture = torch.as_tensor(
+                posture_table.positions, dtype=torch.float, device=self.device
+            )
+            print(f"[base-posture] file={configured_posture_path}", flush=True)
         joint_limit_margins = dict(
             getattr(motion_cfg, "joint_limit_margin_by_name", {})
         )
@@ -488,6 +555,19 @@ class X1DHStandEnv(LeggedRobot):
                 self.ref_foot_lateral_distance = geometry[:, 0]
                 self.ref_knee_lateral_distance = geometry[:, 1]
                 self.ref_foot_heading = geometry[:, 2:4]
+            if self._motion_ref_foot_keypoints is not None:
+                lower_keypoints = self._motion_ref_foot_keypoints[frame_lower]
+                upper_keypoints = self._motion_ref_foot_keypoints[frame_upper]
+                keypoint_interpolation = interpolation.reshape(-1, 1, 1, 1)
+                self.ref_foot_keypoints = lower_keypoints + keypoint_interpolation * (
+                    upper_keypoints - lower_keypoints
+                )
+            if self._motion_ref_base_posture is not None:
+                lower_posture = self._motion_ref_base_posture[frame_lower]
+                upper_posture = self._motion_ref_base_posture[frame_upper]
+                self.ref_base_posture = lower_posture + interpolation * (
+                    upper_posture - lower_posture
+                )
 
             # A retargeted pose can sit just outside the URDF range (the source
             # left hip roll exceeds the X1 limit by about 0.04 rad).  Never ask
@@ -933,6 +1013,20 @@ class X1DHStandEnv(LeggedRobot):
                     )
                 )),
             })
+        if self._motion_ref_foot_keypoints is not None:
+            keypoint_error = self._foot_keypoints_in_base()[:, :, :, :2] - self.ref_foot_keypoints
+            metrics.update({
+                "geometry/foot_keypoint_rmse": torch.sqrt(
+                    torch.mean(torch.square(keypoint_error))
+                ),
+                "geometry/lateral_displacement_abs": torch.mean(torch.abs(
+                    self.root_states[:, 1] - self.env_origins[:, 1]
+                )),
+            })
+        if self._motion_ref_base_posture is not None:
+            metrics["posture/projected_gravity_xy_rmse"] = torch.sqrt(torch.mean(
+                torch.square(self.projected_gravity[:, :2] - self.ref_base_posture)
+            ))
         return metrics
 
 # ================================================ Rewards ================================================== #
@@ -961,6 +1055,22 @@ class X1DHStandEnv(LeggedRobot):
             base_quat.reshape(-1, 4), forward_world
         ).reshape(self.num_envs, len(self.feet_indices), 3)
         return torch.atan2(forward_base[:, :, 1], forward_base[:, :, 0])
+
+    def _foot_keypoints_in_base(self):
+        if self._foot_keypoint_offsets is None:
+            return torch.zeros((self.num_envs, 2, 2, 3), device=self.device)
+        foot_quat = self.rigid_state[:, self.feet_indices, 3:7]
+        foot_pos = self.rigid_state[:, self.feet_indices, :3]
+        offsets = self._foot_keypoint_offsets.unsqueeze(0).expand(self.num_envs, -1, -1, -1)
+        expanded_quat = foot_quat.unsqueeze(2).expand(-1, -1, 2, -1)
+        keypoints_world = foot_pos.unsqueeze(2) + quat_apply(
+            expanded_quat.reshape(-1, 4), offsets.reshape(-1, 3)
+        ).reshape(self.num_envs, 2, 2, 3)
+        relative_world = keypoints_world - self.root_states[:, None, None, :3]
+        expanded_base_quat = self.base_quat[:, None, None, :].expand(-1, 2, 2, -1)
+        return quat_rotate_inverse(
+            expanded_base_quat.reshape(-1, 4), relative_world.reshape(-1, 3)
+        ).reshape(self.num_envs, 2, 2, 3)
 
     def _reward_ref_joint_pos(self):
         """
@@ -1033,6 +1143,37 @@ class X1DHStandEnv(LeggedRobot):
         return torch.exp(
             -torch.sum(torch.square(error), dim=1)
             * self.cfg.rewards.ref_hip_yaw_sigma
+        )
+
+    def _reward_ref_foot_keypoints(self):
+        if self._motion_ref_foot_keypoints is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        actual = self._foot_keypoints_in_base()[:, :, :, :2]
+        squared_error = torch.sum(torch.square(actual - self.ref_foot_keypoints), dim=3)
+        contact_weight = (0.5 + 0.5 * self.ref_feet_contact).unsqueeze(2)
+        mean_error = torch.sum(squared_error * contact_weight, dim=(1, 2)) / torch.clamp(
+            2.0 * torch.sum(contact_weight, dim=(1, 2)), min=1.0
+        )
+        return torch.exp(-mean_error * self.cfg.rewards.ref_foot_keypoint_sigma)
+
+    def _reward_ref_base_posture(self):
+        if self._motion_ref_base_posture is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        error = self.projected_gravity[:, :2] - self.ref_base_posture
+        return torch.exp(
+            -torch.sum(torch.square(error), dim=1)
+            * self.cfg.rewards.ref_base_posture_sigma
+        )
+
+    def _reward_tracking_forward_vel(self):
+        error = self.commands[:, 0] - self.base_lin_vel[:, 0]
+        return torch.exp(-torch.square(error) * self.cfg.rewards.tracking_sigma)
+
+    def _reward_lateral_displacement(self):
+        lateral_displacement = self.root_states[:, 1] - self.env_origins[:, 1]
+        return torch.exp(
+            -torch.square(lateral_displacement)
+            * self.cfg.rewards.lateral_displacement_sigma
         )
     
     def _reward_feet_distance(self):

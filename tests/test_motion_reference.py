@@ -325,6 +325,69 @@ class MotionReferenceTest(unittest.TestCase):
         )
         self.assertAlmostEqual(rewards["cycle_time"], 2.366318806438948)
 
+    def test_keypoint_posture_profile_uses_decoupled_rewards(self):
+        config_path = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        )
+        config = config_path.read_text(encoding="utf-8")
+        rewards = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkKeypointsPosture02547Cfg",
+            "rewards",
+        )
+        scales = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkKeypointsPosture02547Cfg",
+            "rewards",
+            "scales",
+        )
+
+        self.assertEqual(rewards["ref_foot_keypoint_sigma"], 100.0)
+        self.assertEqual(rewards["ref_base_posture_sigma"], 50.0)
+        self.assertEqual(scales["ref_foot_keypoints"], 1.5)
+        self.assertEqual(scales["ref_foot_heading"], 0.0)
+        self.assertEqual(scales["tracking_lin_vel"], 0.0)
+        self.assertEqual(scales["tracking_forward_vel"], 4.0)
+        self.assertEqual(scales["lateral_displacement"], 0.5)
+
+    def test_keypoint_and_posture_references_match_selected_motion(self):
+        root = Path(__file__).resolve().parents[1] / "resources" / "motions" / "x1"
+        keypoints = load_joint_motion_csv(
+            root / "walk_foot_keypoints.csv",
+            (
+                "left_heel_x",
+                "left_heel_y",
+                "left_toe_x",
+                "left_toe_y",
+                "right_heel_x",
+                "right_heel_y",
+                "right_toe_x",
+                "right_toe_y",
+            ),
+            start_time=0.6,
+            end_time=5.466666666666667,
+            close_loop=True,
+        )
+        posture = load_joint_motion_csv(
+            root / "walk_base_posture.csv",
+            ("projected_gravity_x", "projected_gravity_y"),
+            start_time=0.6,
+            end_time=5.466666666666667,
+            close_loop=True,
+        )
+
+        self.assertEqual(keypoints.frame_count, 147)
+        self.assertEqual(posture.frame_count, 147)
+        self.assertAlmostEqual(keypoints.duration, 4.866666666666667)
+        self.assertAlmostEqual(posture.duration, 4.866666666666667)
+        self.assertTrue(np.all(np.isfinite(keypoints.positions)))
+        self.assertTrue(np.all(np.isfinite(posture.positions)))
+        self.assertLess(float(np.max(np.abs(posture.positions))), 0.15)
+
     def test_stance_geometry_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]

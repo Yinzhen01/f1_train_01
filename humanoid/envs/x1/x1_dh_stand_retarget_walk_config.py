@@ -248,3 +248,57 @@ class X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO(
             "x1_dh_stand_retarget_walk_periodic_contact_"
             "cycle_matched_02547_geometry"
         )
+
+
+class X1DHStandRetargetWalkKeypointsPosture02547Cfg(
+    X1DHStandRetargetWalkCycleMatched02547GeometryCfg
+):
+    """Cycle-matched walk with sole keypoints and reference base posture."""
+
+    class motion_reference(
+        X1DHStandRetargetWalkCycleMatched02547GeometryCfg.motion_reference
+    ):
+        foot_keypoint_file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/"
+            "walk_foot_keypoints.csv"
+        )
+        base_posture_file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/"
+            "walk_base_posture.csv"
+        )
+        # Mesh-derived heel/toe sole points in each ankle-roll link frame.
+        foot_keypoint_offsets = (
+            ((-0.000019165, -0.0408, -0.08498578), (-0.000019165, -0.0408, 0.09501423)),
+            ((0.00001178, 0.0408, -0.08498404), (0.00001178, 0.0408, 0.0950138)),
+        )
+
+    class rewards(X1DHStandRetargetWalkCycleMatched02547GeometryCfg.rewards):
+        ref_foot_keypoint_sigma = 100.0
+        ref_base_posture_sigma = 50.0
+        lateral_displacement_sigma = 4.0
+
+        class scales(
+            X1DHStandRetargetWalkCycleMatched02547GeometryCfg.rewards.scales
+        ):
+            # Replace quaternion-only foot yaw with phase-aligned heel/toe points.
+            ref_foot_heading = 0.0
+            ref_foot_keypoints = 1.5
+            # The 12-DOF asset has a fixed upper body; root posture is its
+            # controllable waist/torso proxy. Avoid conflicting with flat-only pose.
+            orientation = 0.0
+            ref_base_posture = 1.0
+            # Track only commanded forward speed here. A gentle displacement
+            # objective limits net drift without suppressing natural lateral sway.
+            tracking_lin_vel = 0.0
+            tracking_forward_vel = 4.0
+            lateral_displacement = 0.5
+
+
+class X1DHStandRetargetWalkKeypointsPosture02547CfgPPO(
+    X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO
+):
+    class runner(X1DHStandRetargetWalkCycleMatched02547GeometryCfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_"
+            "keypoints_posture_02547"
+        )
