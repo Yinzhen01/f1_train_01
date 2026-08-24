@@ -32,9 +32,16 @@
 # Copyright (c) 2024, AgiBot Inc. All rights reserved.
 
 
+from gm_startup_diagnostics import install as install_startup_diagnostics
+
+install_startup_diagnostics()
+print("[gm-startup] event=training_imports_start", flush=True)
+
 from humanoid.envs import *
 from humanoid.training_profiles import apply_training_profile
 from humanoid.utils import get_args, task_registry
+
+print("[gm-startup] event=training_imports_complete", flush=True)
 
 def train(args):
     print(f"[gradmotion-smoke] creating environment: task={args.task}", flush=True)
