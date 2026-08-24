@@ -186,6 +186,21 @@
         "max_iterations": 1000
       }
     },
+    "retarget_walk_torso_keypoints_02547_resume": {
+      "description": "Resume the 0.2547 m/s smooth keypoint policy with heading-frame shoulder/chest/head tracking, torso-jitter suppression, and per-term reward diagnostics.",
+      "task": "x1_dh_stand_retarget_walk_torso_keypoints_02547",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_retarget_walk_periodic_contact_torso_keypoints_02547",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 1000
+      }
+    },
     "retarget_walk_vx045_resume": {
       "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
       "task": "x1_dh_stand_retarget_walk_vx045",

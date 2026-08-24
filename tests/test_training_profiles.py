@@ -45,6 +45,7 @@ class TrainingProfilesTest(unittest.TestCase):
                 "retarget_walk_cycle_matched_02547_geometry_no_dr",
                 "retarget_walk_keypoints_posture_02547_no_dr",
                 "retarget_walk_keypoints_posture_smooth001_02547_resume",
+                "retarget_walk_torso_keypoints_02547_resume",
                 "retarget_walk_vx045_resume",
             },
         )
@@ -237,6 +238,30 @@ class TrainingProfilesTest(unittest.TestCase):
             "x1_dh_stand_retarget_walk_periodic_contact_"
             "keypoints_posture_smooth001_02547",
         )
+        self.assertEqual(args.max_iterations, 1000)
+
+    def test_torso_keypoints_resume_uses_explicit_checkpoint(self):
+        args = make_args(
+            training_profile="retarget_walk_torso_keypoints_02547_resume",
+            load_run="gm_resume",
+            checkpoint=3000,
+        )
+        apply_training_profile(args)
+
+        self.assertEqual(
+            args.task,
+            "x1_dh_stand_retarget_walk_torso_keypoints_02547",
+        )
+        self.assertTrue(args.resume)
+        self.assertEqual(args.load_run, "gm_resume")
+        self.assertEqual(args.checkpoint, 3000)
+        self.assertEqual(
+            args.experiment_name,
+            "x1_dh_stand_retarget_walk_periodic_contact_"
+            "torso_keypoints_02547",
+        )
+        self.assertEqual(args.seed, 5)
+        self.assertEqual(args.num_envs, 4096)
         self.assertEqual(args.max_iterations, 1000)
 
     def test_resume_profile_requires_explicit_source(self):

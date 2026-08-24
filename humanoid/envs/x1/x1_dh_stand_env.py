@@ -124,18 +124,28 @@ class X1DHStandEnv(LeggedRobot):
         self.ref_foot_heading = torch.zeros((self.num_envs, 2), device=self.device)
         self.ref_foot_keypoints = torch.zeros((self.num_envs, 2, 2, 2), device=self.device)
         self.ref_base_posture = torch.zeros((self.num_envs, 2), device=self.device)
+        self.ref_torso_keypoints = torch.zeros((self.num_envs, 4, 3), device=self.device)
         self._motion_ref_positions = None
         self._motion_ref_feet_clearance = None
         self._motion_ref_feet_contact = None
         self._motion_ref_stance_geometry = None
         self._motion_ref_foot_keypoints = None
         self._motion_ref_base_posture = None
+        self._motion_ref_torso_keypoints = None
         self._foot_keypoint_offsets = None
+        self._torso_keypoint_offsets = None
+        self._torso_keypoint_acc_rms = torch.zeros((), device=self.device)
+        self.last_torso_keypoints = torch.zeros((self.num_envs, 4, 3), device=self.device)
+        self.last_last_torso_keypoints = torch.zeros_like(self.last_torso_keypoints)
         self._motion_ref_joint_limit_margin = torch.zeros(
             self.num_actions, dtype=torch.float, device=self.device
         )
         self._motion_ref_phase_offset = 0.0
         self._load_motion_reference()
+        if self._torso_keypoint_offsets is not None:
+            current_torso_keypoints = self._torso_keypoints_in_heading()
+            self.last_torso_keypoints.copy_(current_torso_keypoints)
+            self.last_last_torso_keypoints.copy_(current_torso_keypoints)
 
     def _load_motion_reference(self):
         motion_cfg = getattr(self.cfg, "motion_reference", None)
@@ -340,6 +350,44 @@ class X1DHStandEnv(LeggedRobot):
                 posture_table.positions, dtype=torch.float, device=self.device
             )
             print(f"[base-posture] file={configured_posture_path}", flush=True)
+        torso_keypoint_file = getattr(motion_cfg, "torso_keypoint_file", "")
+        if torso_keypoint_file:
+            configured_torso_path = str(torso_keypoint_file).replace(
+                "{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR
+            )
+            torso_columns = tuple(
+                f"{name}_{axis}"
+                for name in ("left_shoulder", "right_shoulder", "chest", "head")
+                for axis in "xyz"
+            )
+            torso_table = load_joint_motion_csv(
+                configured_torso_path,
+                torso_columns,
+                start_time=getattr(motion_cfg, "start_time", None),
+                end_time=getattr(motion_cfg, "end_time", None),
+                close_loop=getattr(motion_cfg, "close_loop", True),
+            )
+            if torso_table.frame_count != table.frame_count:
+                raise ValueError(
+                    "Torso-keypoint and joint motion references must have the "
+                    "same number of selected frames"
+                )
+            self._motion_ref_torso_keypoints = torch.as_tensor(
+                torso_table.positions, dtype=torch.float, device=self.device
+            ).reshape(-1, 4, 3)
+            torso_offsets = getattr(motion_cfg, "torso_keypoint_offsets", ())
+            if len(torso_offsets) != 4 or any(len(point) != 3 for point in torso_offsets):
+                raise ValueError(
+                    "torso_keypoint_offsets must define four three-dimensional points"
+                )
+            self._torso_keypoint_offsets = torch.as_tensor(
+                torso_offsets, dtype=torch.float, device=self.device
+            )
+            print(
+                f"[torso-keypoints] file={configured_torso_path} "
+                f"sigma={float(self.cfg.rewards.ref_torso_keypoint_sigma):.1f}",
+                flush=True,
+            )
         joint_limit_margins = dict(
             getattr(motion_cfg, "joint_limit_margin_by_name", {})
         )
@@ -567,6 +615,13 @@ class X1DHStandEnv(LeggedRobot):
                 upper_posture = self._motion_ref_base_posture[frame_upper]
                 self.ref_base_posture = lower_posture + interpolation * (
                     upper_posture - lower_posture
+                )
+            if self._motion_ref_torso_keypoints is not None:
+                lower_torso = self._motion_ref_torso_keypoints[frame_lower]
+                upper_torso = self._motion_ref_torso_keypoints[frame_upper]
+                torso_interpolation = interpolation.reshape(-1, 1, 1)
+                self.ref_torso_keypoints = lower_torso + torso_interpolation * (
+                    upper_torso - lower_torso
                 )
 
             # A retargeted pose can sit just outside the URDF range (the source
@@ -864,6 +919,10 @@ class X1DHStandEnv(LeggedRobot):
         self.base_ang_vel[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.root_states[env_ids, 10:13])
         self.feet_quat = self.rigid_state[:, self.feet_indices, 3:7]
         self.feet_euler_xyz = get_euler_xyz_tensor(self.feet_quat)
+        if getattr(self, "_torso_keypoint_offsets", None) is not None:
+            current_torso_keypoints = self._torso_keypoints_in_heading()[env_ids]
+            self.last_torso_keypoints[env_ids] = current_torso_keypoints
+            self.last_last_torso_keypoints[env_ids] = current_torso_keypoints
         
         # clear obs history buffer and privileged obs buffer
         for i in range(self.obs_history.maxlen):
@@ -1027,6 +1086,15 @@ class X1DHStandEnv(LeggedRobot):
             metrics["posture/projected_gravity_xy_rmse"] = torch.sqrt(torch.mean(
                 torch.square(self.projected_gravity[:, :2] - self.ref_base_posture)
             ))
+        if self._motion_ref_torso_keypoints is not None:
+            torso_error = self._torso_keypoints_in_heading() - self.ref_torso_keypoints
+            metrics.update({
+                "posture/torso_keypoint_rmse": torch.sqrt(
+                    torch.mean(torch.square(torso_error))
+                ),
+                "posture/torso_keypoint_acc_rms": self._torso_keypoint_acc_rms,
+            })
+        metrics.update(getattr(self, "reward_step_metrics", {}))
         return metrics
 
 # ================================================ Rewards ================================================== #
@@ -1071,6 +1139,24 @@ class X1DHStandEnv(LeggedRobot):
         return quat_rotate_inverse(
             expanded_base_quat.reshape(-1, 4), relative_world.reshape(-1, 3)
         ).reshape(self.num_envs, 2, 2, 3)
+
+    def _torso_keypoints_in_heading(self):
+        """Return fixed torso landmarks in a yaw-neutral world heading frame."""
+
+        offsets = self._torso_keypoint_offsets.unsqueeze(0).expand(
+            self.num_envs, -1, -1
+        )
+        expanded_quat = self.base_quat[:, None, :].expand(-1, 4, -1)
+        points_world = quat_apply(
+            expanded_quat.reshape(-1, 4), offsets.reshape(-1, 3)
+        ).reshape(self.num_envs, 4, 3)
+        base_forward_world = quat_apply(self.base_quat, self.forward_vec)
+        yaw = torch.atan2(base_forward_world[:, 1], base_forward_world[:, 0])
+        cosine = torch.cos(yaw).unsqueeze(1)
+        sine = torch.sin(yaw).unsqueeze(1)
+        x_heading = cosine * points_world[:, :, 0] + sine * points_world[:, :, 1]
+        y_heading = -sine * points_world[:, :, 0] + cosine * points_world[:, :, 1]
+        return torch.stack((x_heading, y_heading, points_world[:, :, 2]), dim=2)
 
     def _reward_ref_joint_pos(self):
         """
@@ -1164,6 +1250,28 @@ class X1DHStandEnv(LeggedRobot):
             -torch.sum(torch.square(error), dim=1)
             * self.cfg.rewards.ref_base_posture_sigma
         )
+
+    def _reward_ref_torso_keypoints(self):
+        if self._motion_ref_torso_keypoints is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        error = self._torso_keypoints_in_heading() - self.ref_torso_keypoints
+        mean_error = torch.mean(torch.square(error), dim=(1, 2))
+        return torch.exp(
+            -mean_error * self.cfg.rewards.ref_torso_keypoint_sigma
+        )
+
+    def _reward_torso_keypoint_acc(self):
+        if self._motion_ref_torso_keypoints is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        current = self._torso_keypoints_in_heading()
+        acceleration = (
+            current - 2.0 * self.last_torso_keypoints + self.last_last_torso_keypoints
+        ) / (self.dt * self.dt)
+        squared_acceleration = torch.mean(torch.square(acceleration), dim=(1, 2))
+        self._torso_keypoint_acc_rms = torch.sqrt(torch.mean(squared_acceleration))
+        self.last_last_torso_keypoints.copy_(self.last_torso_keypoints)
+        self.last_torso_keypoints.copy_(current)
+        return squared_acceleration
 
     def _reward_tracking_forward_vel(self):
         error = self.commands[:, 0] - self.base_lin_vel[:, 0]

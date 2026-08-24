@@ -354,19 +354,29 @@ class LeggedRobot(BaseTask):
             adds each terms to the episode sums and to the total reward
         """
         self.rew_buf[:] = 0.
+        self.reward_step_metrics = {}
 
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
-            rew = self.reward_functions[i]() * self.reward_scales[name]
+            raw_rew = self.reward_functions[i]()
+            rew = raw_rew * self.reward_scales[name]
             self.rew_buf += rew
             self.episode_sums[name] += rew
+            self.reward_step_metrics[f"reward/raw/{name}"] = raw_rew.mean()
+            self.reward_step_metrics[f"reward/weighted/{name}"] = rew.mean()
+        self.reward_step_metrics["reward/total_before_clip"] = self.rew_buf.mean()
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
+        self.reward_step_metrics["reward/total_after_clip"] = self.rew_buf.mean()
         # add termination reward after clipping
         if "termination" in self.reward_scales:
-            rew = self._reward_termination() * self.reward_scales["termination"]
+            raw_rew = self._reward_termination()
+            rew = raw_rew * self.reward_scales["termination"]
             self.rew_buf += rew
             self.episode_sums["termination"] += rew
+            self.reward_step_metrics["reward/raw/termination"] = raw_rew.mean()
+            self.reward_step_metrics["reward/weighted/termination"] = rew.mean()
+        self.reward_step_metrics["reward/total_final"] = self.rew_buf.mean()
 
     def set_camera(self, position, lookat):
         """ Set camera position and direction

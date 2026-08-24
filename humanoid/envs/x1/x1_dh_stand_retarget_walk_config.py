@@ -323,3 +323,48 @@ class X1DHStandRetargetWalkKeypointsPostureSmooth00102547CfgPPO(
             "x1_dh_stand_retarget_walk_periodic_contact_"
             "keypoints_posture_smooth001_02547"
         )
+
+
+class X1DHStandRetargetWalkTorsoKeypoints02547Cfg(
+    X1DHStandRetargetWalkKeypointsPostureSmooth00102547Cfg
+):
+    """Add heading-frame upper-body landmarks and suppress torso jitter."""
+
+    class motion_reference(
+        X1DHStandRetargetWalkKeypointsPostureSmooth00102547Cfg.motion_reference
+    ):
+        torso_keypoint_file = (
+            "{LEGGED_GYM_ROOT_DIR}/resources/motions/x1/"
+            "walk_torso_keypoints.csv"
+        )
+        # Fixed-upper-body virtual landmarks in the base frame: left/right
+        # shoulder, chest center, and head center. The 12-DOF asset has no
+        # independently actuated neck or waist joints.
+        torso_keypoint_offsets = (
+            (0.002456633, 0.1458, 0.412034034),
+            (0.002443367, -0.1458, 0.412034034),
+            (0.00245, 0.0, 0.412034034),
+            (-0.016912551, 0.000401484, 0.59178155),
+        )
+
+    class rewards(X1DHStandRetargetWalkKeypointsPostureSmooth00102547Cfg.rewards):
+        ref_torso_keypoint_sigma = 40.0
+
+        class scales(
+            X1DHStandRetargetWalkKeypointsPostureSmooth00102547Cfg.rewards.scales
+        ):
+            # Split posture supervision between the original gravity proxy and
+            # spatial upper-body landmarks, avoiding a doubled posture weight.
+            ref_base_posture = 0.5
+            ref_torso_keypoints = 0.5
+            torso_keypoint_acc = -0.001
+
+
+class X1DHStandRetargetWalkTorsoKeypoints02547CfgPPO(
+    X1DHStandRetargetWalkKeypointsPostureSmooth00102547CfgPPO
+):
+    class runner(X1DHStandRetargetWalkKeypointsPostureSmooth00102547CfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_"
+            "torso_keypoints_02547"
+        )

@@ -388,6 +388,62 @@ class MotionReferenceTest(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(posture.positions)))
         self.assertLess(float(np.max(np.abs(posture.positions))), 0.15)
 
+    def test_torso_keypoint_profile_and_reference_match_selected_motion(self):
+        root = Path(__file__).resolve().parents[1]
+        config = (
+            root
+            / "humanoid"
+            / "envs"
+            / "x1"
+            / "x1_dh_stand_retarget_walk_config.py"
+        ).read_text(encoding="utf-8")
+        rewards = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkTorsoKeypoints02547Cfg",
+            "rewards",
+        )
+        scales = self._nested_class_assignments(
+            config,
+            "X1DHStandRetargetWalkTorsoKeypoints02547Cfg",
+            "rewards",
+            "scales",
+        )
+        self.assertEqual(rewards["ref_torso_keypoint_sigma"], 40.0)
+        self.assertEqual(scales["ref_base_posture"], 0.5)
+        self.assertEqual(scales["ref_torso_keypoints"], 0.5)
+        self.assertEqual(scales["torso_keypoint_acc"], -0.001)
+
+        names = tuple(
+            f"{name}_{axis}"
+            for name in ("left_shoulder", "right_shoulder", "chest", "head")
+            for axis in "xyz"
+        )
+        table = load_joint_motion_csv(
+            root / "resources" / "motions" / "x1" / "walk_torso_keypoints.csv",
+            names,
+            start_time=0.6,
+            end_time=5.466666666666667,
+            close_loop=True,
+        )
+        self.assertEqual(table.frame_count, 147)
+        self.assertAlmostEqual(table.duration, 4.866666666666667)
+        self.assertTrue(np.all(np.isfinite(table.positions)))
+        np.testing.assert_allclose(table.positions[0], table.positions[-1])
+        self.assertGreater(float(table.positions[:, 11].mean()), 0.5)
+
+    def test_training_logs_each_active_reward_term_per_iteration(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "humanoid"
+            / "envs"
+            / "base"
+            / "legged_robot.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('f"reward/raw/{name}"', source)
+        self.assertIn('f"reward/weighted/{name}"', source)
+        self.assertIn('"reward/total_before_clip"', source)
+        self.assertIn('"reward/total_final"', source)
+
     def test_stance_geometry_reference_matches_selected_motion(self):
         source = (
             Path(__file__).resolve().parents[1]
