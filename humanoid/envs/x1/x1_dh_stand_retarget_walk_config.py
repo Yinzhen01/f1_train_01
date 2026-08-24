@@ -302,3 +302,24 @@ class X1DHStandRetargetWalkKeypointsPosture02547CfgPPO(
             "x1_dh_stand_retarget_walk_periodic_contact_"
             "keypoints_posture_02547"
         )
+
+
+class X1DHStandRetargetWalkKeypointsPostureSmooth00102547Cfg(
+    X1DHStandRetargetWalkKeypointsPosture02547Cfg
+):
+    """Keypoint/posture walk with stronger action-target smoothing."""
+
+    class rewards(X1DHStandRetargetWalkKeypointsPosture02547Cfg.rewards):
+        class scales(X1DHStandRetargetWalkKeypointsPosture02547Cfg.rewards.scales):
+            # Reduce the high-frequency target changes observed in the right leg.
+            action_smoothness = -0.01
+
+
+class X1DHStandRetargetWalkKeypointsPostureSmooth00102547CfgPPO(
+    X1DHStandRetargetWalkKeypointsPosture02547CfgPPO
+):
+    class runner(X1DHStandRetargetWalkKeypointsPosture02547CfgPPO.runner):
+        experiment_name = (
+            "x1_dh_stand_retarget_walk_periodic_contact_"
+            "keypoints_posture_smooth001_02547"
+        )

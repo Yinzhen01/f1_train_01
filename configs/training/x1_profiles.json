@@ -171,6 +171,21 @@
         "max_iterations": 3000
       }
     },
+    "retarget_walk_keypoints_posture_smooth001_02547_resume": {
+      "description": "Resume the 0.2547 m/s keypoint/posture policy with action smoothness increased from -0.002 to -0.01.",
+      "task": "x1_dh_stand_retarget_walk_keypoints_posture_smooth001_02547",
+      "initialization": "resume",
+      "experiment_name": "x1_dh_stand_retarget_walk_periodic_contact_keypoints_posture_smooth001_02547",
+      "required_args": [
+        "load_run",
+        "checkpoint"
+      ],
+      "defaults": {
+        "seed": 5,
+        "num_envs": 4096,
+        "max_iterations": 1000
+      }
+    },
     "retarget_walk_vx045_resume": {
       "description": "Adapt an explicit retargeted-walk checkpoint to the 0.45 m/s time-scaled reference.",
       "task": "x1_dh_stand_retarget_walk_vx045",
