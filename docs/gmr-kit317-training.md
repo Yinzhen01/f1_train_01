@@ -67,6 +67,17 @@ python humanoid/scripts/train.py --task=x1_gmr_clip --headless --num_envs=4096 -
 Formal execution must use a registered Gradmotion task, 1x4090D 24 GB
 (`ESKU000001`), after smoke training succeeds. Existing tasks are not stopped.
 
+Cloud smoke `TASK_20260910_176` completed successfully at commit `a658295`:
+16 environments, 5 updates, GPU PhysX, the expected 139-frame reference and
+12-DOF URDF hash; `model_0.pt` and `model_5.pt` uploaded. The follow-up diagnostic
+fix overrides the inherited slip log (which incorrectly reads angular velocity)
+with actual-contact horizontal sole velocity. Reward math is unchanged; CPU
+tensor tests cover zero slip, translation, swing masking and perfect tracking.
+All 30 local tests pass. Dense 100 Hz FK checks 461 samples and finds minimum
+collision-mesh height 0.509 mm; peak interpolated joint speed is 7.891 rad/s.
+Piecewise-linear samples retain peak finite-difference acceleration around
+498 rad/s^2, so dynamic feasibility and smooth policy behavior remain open.
+
 ## Validation boundary
 
 CPU tests and reference FK do not prove dynamic stability, friction feasibility,

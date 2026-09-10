@@ -148,14 +148,22 @@ class X1GMRClipEnv(X1DHStandEnv):
         return torch.exp(-linear / .25 - angular / 2.)
 
     def _reward_gmr_slip(self):
-        foot = self.rigid_state[:, self.feet_indices]
-        lever = self._sole_positions() - foot[:, :, :3]
-        velocity = foot[:, :, 7:10] + torch.cross(foot[:, :, 10:13], lever, dim=-1)
+        velocity = self._sole_velocities()
         contact = (self.contact_forces[:, self.feet_indices, 2] > 5.).float()
         return torch.sum(velocity[:, :, :2].square().sum(dim=-1) * contact, dim=1)
 
+    def _sole_velocities(self):
+        foot = self.rigid_state[:, self.feet_indices]
+        lever = self._sole_positions() - foot[:, :, :3]
+        return foot[:, :, 7:10] + torch.cross(foot[:, :, 10:13], lever, dim=-1)
+
     def get_command_tracking_debug(self):
         result = super().get_command_tracking_debug()
+        contact = (self.contact_forces[:, self.feet_indices, 2] > 5.).float()
+        speed = torch.linalg.vector_norm(self._sole_velocities()[:, :, :2], dim=-1)
+        # Legacy base debug indexes angular velocity [10:12] as "foot slip".
+        # Override that metric with actual-contact horizontal sole speed in m/s.
+        result["contact/foot_slip_speed_mean"] = torch.sum(speed * contact) / torch.sum(contact).clamp_min(1.)
         result.update({"gmr_joint_rmse_rad": torch.sqrt(torch.mean((self.dof_pos - self.ref_dof_pos).square())),
                        "gmr_phase": torch.mean(self.motion_time() / self.motion.duration),
                        "gmr_contact_match": torch.mean(self._reward_gmr_contact())})
