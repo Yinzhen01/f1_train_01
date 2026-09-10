@@ -637,9 +637,9 @@
   </joint>
   <link name="left_knee_pitch_link">
     <inertial>
-      <mass value="1.51225735" />
-      <origin xyz="-0.00473541 0.02155185 0.02796879" rpy="0 0 0" />
-      <inertia ixx="0.00175833" ixy="-0.00138630" ixz="0.00003669" iyy="0.00174565" iyz="-0.00016124" izz="0.00194748" />
+      <mass value="1.5122608" />
+      <origin xyz="-0.0047354 -0.13101324 0.0279688" rpy="0 0 0" />
+      <inertia ixx="0.00806663" ixy="-5.703e-05" ixz="3.669e-05" iyy="0.00174565" iyz="0.00090864" izz="0.00825577" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -933,9 +933,9 @@
   </joint>
   <link name="right_knee_pitch_link">
     <inertial>
-      <mass value="1.51225735" />
-      <origin xyz="0.00473541 0.02155185 0.02796879" rpy="0 0 0" />
-      <inertia ixx="0.00175833" ixy="0.0013863" ixz="-3.669e-05" iyy="0.00174565" iyz="-0.00016124" izz="0.00194748" />
+      <mass value="1.50954" />
+      <origin xyz="0.00477062 -0.13172342 0.02793834" rpy="0 0 0" />
+      <inertia ixx="0.0080222" ixy="3.758e-05" ixz="-3.424e-05" iyy="0.00174185" iyz="0.00090582" izz="0.00821165" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />

@@ -4,6 +4,11 @@
 
 ## 当前阶段
 
+此独立副本于 2026-09-10 接入 GMR KIT317 足底修正后的 12 关节非循环动作跟踪。
+实验定义、源数据、模型差异、验证边界见 `docs/gmr-kit317-training.md`。
+从随机策略开始 nominal 无 DR 训练；不继承下方历史 checkpoint。下方内容保留为
+源仓库历史，不代表本实验实时状态。
+
 X1 nominal-armature 可训练性正在验证，旧零 armature 实验已退出管理矩阵；后续从干净 nominal 基线重新建立 Stage-1→完整 DR 路线。
 
 ## 当前目标
