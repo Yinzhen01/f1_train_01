@@ -74,7 +74,7 @@ def capture(env, valid=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument('--checkpoint-file', required=True)
     parser.add_argument('--checkpoint-sha256', required=True)
     parser.add_argument('--source-task', required=True)
