@@ -128,7 +128,9 @@ def main():
         env.compute_observations()
         obs = env.get_observations()
         samples = [capture(env, valid=False)]
-        with torch.inference_mode():
+        # The environment replaces persistent tensors during stepping and resets
+        # them between episodes. no_grad permits those out-of-context mutations.
+        with torch.no_grad():
             for step in range(int(round(env.motion.duration / env.dt)) + 2):
                 actions = policy.act_inference(obs)
                 if not torch.isfinite(actions).all():
