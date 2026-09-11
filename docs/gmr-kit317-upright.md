@@ -6,8 +6,8 @@
 `F:\robot_f1\x1-training-gmr-upright`，分支：
 `experiment/gmr-kit317-upright-12dof`，基于 `133a85b`。
 本地修改完成后，用户于 2026-09-11 授权提交/推送本实验分支，并先进行
-512 环境、20 次更新的 Gradmotion smoke。以下本地指标不代表该云端验证已通过；
-云端结果须关联实际 commit 与 task ID 单独记录。
+512 环境、20 次更新的 Gradmotion smoke。训练代码已发布为 `770a0fc`；
+云端 `TASK_20260911_007` 正常完成，实际 commit 与参考哈希均已核对，详见下方云端记录。
 旧工作区、旧 `x1_gmr_clip` 任务、参考数据和 checkpoint 均保留。
 
 本实验修改参考和奖励定义，不修改 URDF、腰部自由度、关节限制、PD、armature、
@@ -103,10 +103,36 @@ SHA-256：`d625efc73972b4f4952587ac6391543b6d747b404184703361a394e0b6bca4fb`。
 
 本地 `unittest` 共 48 项通过，包括实际奖励张量数学、yaw 不变性、错误参考拒绝、
 旧系数继承、参考哈希、速度上下限，以及独立 URDF FK 的局部足底标签和 100 Hz mesh 检查。
-Python 编译检查通过。未做 Isaac Gym 运行验证，未验证力矩、摩擦锥或动态平衡。
+Python 编译检查通过。随后通过下述 Isaac Gym 短训练；仍未验证策略收敛、力矩可行性、
+摩擦锥、动态平衡或真机安全。
 
 对照图位于 `outputs/upright_comparison/`：`reference_poses.png` 与
 `reference_curves.png`。它们仅展示新旧参考，不是新训练策略视频。
+
+## 云端短训练记录（2026-09-11）
+
+- 代码：`770a0fc3d42660293cd4abfaff04cae8aa93e8c7`，已推送 `publish` 新实验分支。
+- 有效任务：`TASK_20260911_007`，项目 `PRO_20260820_014`，状态 `5`（正常完成）。
+- 平台最终时间：北京时间 `09:10:55–09:13:13`；PPO 循环日志耗时 `15.16 s`。
+- 1×4090D 24GB `ESKU000001`，镜像 `BJX00000001/V000124`。
+- 随机初始化，512 environments，seed 5；完成 20 次更新、245,760 timesteps。
+- 运行日志确认 139 帧/4.6 秒、12 关节、nominal 无 DR、正确 URDF/参考哈希，
+  `upright_chest_v1`、倾角奖励权重 1.0 / sigma 0.1。
+- 检查 53,486 字符日志，未发现 Traceback、RuntimeError、CUDA OOM、NaN 或
+  loss/reward/std 非有限值；平台已上传 `model_0.pt` 和 `model_20.pt`。
+- 新增 3 个躯干姿态 debug 指标和 `Episode/rew_gmr_trunk_tilt` 均出现在图表 API，
+  所取样本为有限值。
+
+原项目账号的 `TASK_20260911_006` 因余额不足未能启动，草稿保留。
+按照既有账号池规则使用另一现有账号完成短训练，没有新注册、购买或启动长训练。
+临时环境变量仅用于该命令，不修改全局默认 profile。账号来源与失败尝试记录在
+本地忽略目录 `outputs/gradmotion-upright-smoke/run-record.json`，不含凭据。
+
+末次训练批次：mean reward 5.05、mean episode length 105.50 steps、
+接触足底水平速度 0.1019 m/s、躯干倾角误差约 11.97°。
+这些是随机参考起点、带探索动作的短训练统计，不是完整 4.6 秒确定性推理；
+**只通过运行链路验证，尚不能判定后倾改善或足滑优于旧策略**。
+本地另保存 `metrics.json` 与 `training-excerpt.log`。
 
 ## 复现与下一步
 
@@ -125,8 +151,8 @@ python humanoid/scripts/inspect_gmr_upright.py --baseline resources/motions/gmr_
 python humanoid/scripts/train.py --task=x1_gmr_upright --num_envs=512 --max_iterations=20 --seed=5 --run_name=gmr_upright_smoke --headless
 ```
 
-检查环境加载、新参考哈希、奖励项、日志连续增长与 NaN/Inf/Traceback/OOM。
-通过后再从随机初始化开展正式训练；本配置继承 5000 次迭代，但本轮没有启动该训练。
+上述环境、哈希、奖励、有限值与上传检查已经通过。
+下一步需用户授权后再从随机初始化开展正式训练；本配置继承 5000 次迭代，但本轮没有启动该训练。
 验收必须比较固定从 0 秒开始的完整推理：完成率、躯干倾角误差、实际足滑、穿透、
 关节跟踪和扭矩限幅，而不是只比较总奖励。
 
