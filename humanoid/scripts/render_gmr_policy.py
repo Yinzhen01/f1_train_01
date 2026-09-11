@@ -176,7 +176,8 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
                 panels.append(frame)
             frame = np.concatenate(panels, axis=1)
             cv2.rectangle(frame, (0, 610), (1600, 720), (25, 30, 37), -1)
-            label(frame, 'GMR KIT317 | model_5000 | DETERMINISTIC ISAAC GYM POLICY', 22, 644, scale=.72)
+            variant = 'UPRIGHT' if meta.get('task') == 'x1_gmr_upright' else 'BASELINE'
+            label(frame, 'GMR KIT317 %s | model_5000 | ISAAC GYM POLICY' % variant, 22, 644, scale=.72)
             label(frame, 't = %.2f / 4.60 s | 1x speed | MuJoCo visualization (no resimulation)' % data['time'][i], 22, 678)
             forces = data['foot_force'][i, :, 2]
             speed = np.linalg.norm(data['sole_velocity'][i, :, :2], axis=-1)

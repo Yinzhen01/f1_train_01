@@ -19,6 +19,7 @@ import torch
 from humanoid import LEGGED_GYM_ROOT_DIR
 from humanoid.envs import *
 from humanoid.algo.ppo.actor_critic_dh import ActorCriticDH
+from humanoid.gmr_inference_identity import validate_identity
 from humanoid.gmr_rollout_metrics import summarize_rollout
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict
@@ -82,12 +83,18 @@ def main():
     extra, remaining = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining
     args = get_args()
-    if args.task != 'x1_gmr_clip' or args.num_envs != 1 or args.checkpoint != 5000:
-        raise ValueError('This entry point requires x1_gmr_clip, one environment, checkpoint 5000')
+    if args.num_envs != 1 or args.checkpoint != 5000:
+        raise ValueError('This entry point requires one environment and checkpoint 5000')
     if not 1 <= extra.episodes <= 10:
         raise ValueError('episodes must be between 1 and 10')
-    checkpoint = locate_checkpoint(extra.checkpoint_file, extra.checkpoint_sha256, args.checkpoint)
     cfg, train_cfg = task_registry.get_cfgs(args.task)
+    identity = validate_identity(args.task, extra.source_task, extra.checkpoint_sha256,
+                                 cfg.motion_reference.sha256)
+    checkpoint = locate_checkpoint(extra.checkpoint_file, identity['checkpoint_sha256'], args.checkpoint)
+    motion_path = Path(cfg.motion_reference.file.replace('{LEGGED_GYM_ROOT_DIR}', LEGGED_GYM_ROOT_DIR))
+    if sha(motion_path) != identity['motion_sha256']:
+        raise ValueError('Reference file differs from the verified inference identity')
+    print('[gmr-inference] identity=' + json.dumps(identity), flush=True)
     # The training task is already nominal/no-DR. Do not rewrite its dynamics.
     cfg.env.num_envs = 1
     cfg.seed = args.seed if args.seed is not None else 5
@@ -111,6 +118,8 @@ def main():
     print('[gmr-inference] exact checkpoint loaded; deterministic=True from_time=0; no learning', flush=True)
     output = Path(LEGGED_GYM_ROOT_DIR) / 'logs' / train_cfg.runner.experiment_name / 'exported_data' / 'gmr_inference'
     output.mkdir(parents=True, exist_ok=True)
+    if (output / 'model_gmr_rollout.pt').exists():
+        raise FileExistsError('Refusing to overwrite an existing inference artifact')
     original_termination = env.check_termination
     samples = []
 
@@ -162,7 +171,9 @@ def main():
         'stored_zero_based_iteration': stored_iteration,
         'checkpoint_sha256': sha(checkpoint),
         'inference_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=LEGGED_GYM_ROOT_DIR).decode().strip(),
-        'training_commit': '181f8034e62105f4138b90ebb560f63c0d1640a4',
+        'training_commit': identity['training_commit'],
+        'task': args.task, 'verified_identity': identity,
+        'inference_entry_sha256': sha(__file__),
         'urdf_lf_sha256': hashlib.sha256(asset_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest(),
         'motion_sha256': cfg.motion_reference.sha256, 'control_dt': env.dt,
         'torch_version': torch.__version__, 'gpu': torch.cuda.get_device_name(),
