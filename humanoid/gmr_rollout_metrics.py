@@ -59,6 +59,11 @@ def summarize_rollout(data, duration):
         'max_abs_torque_Nm': float(np.max(np.abs(data['torque']))),
         'notes': 'Contact sole-center horizontal speed includes rolling; not a pure slip distance. Initial FK/contact sample excluded. Not a robustness test.',
     }
-    result.update(trunk_metrics(np.asarray(data['root_state'])[:, 3:7],
-                                np.asarray(data['reference_root_quat'])))
+    result.update(trunk_metrics(np.asarray(data.get('trunk_quat', np.asarray(data['root_state'])[:, 3:7]))[valid],
+                                np.asarray(data.get('reference_trunk_quat', data['reference_root_quat']))[valid]))
+    # Only physics samples from this episode; never differentiate across reset.
+    for key, label in (('action', 'action_delta_rms'), ('torque', 'torque_delta_rms_nm')):
+        if key in data:
+            delta = np.diff(np.asarray(data[key])[valid], axis=0)
+            result[label] = float(np.sqrt(np.mean(delta ** 2))) if delta.size else None
     return result

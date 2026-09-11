@@ -13,6 +13,7 @@ import sys
 import time
 
 from isaacgym import gymapi  # Must precede torch imports.
+from isaacgym.torch_utils import quat_mul
 import numpy as np
 import torch
 
@@ -54,7 +55,15 @@ def capture(env, valid=True):
         env.contact_forces[:, env.termination_contact_indices, :], dim=-1) > 1., dim=1)
     tilt_failure = torch.any(torch.abs(env.base_euler_xyz[:, :2]) > 1.5, dim=1)
     failure = contact_failure | tilt_failure | (env.root_states[:, 2] < .3)
+    # A movable waist makes base_link and the chest different bodies.
+    if hasattr(env, 'tracking_body_ids'):
+        trunk = array(env.rigid_state[:, env.tracking_body_ids[0], 3:7])
+        target_trunk = array(quat_mul(env.reference['root_quat'],
+                                      env.reference['body_quat_base'][:, 0]))
+    else:
+        trunk, target_trunk = root[3:7].copy(), array(env.reference['root_quat'])
     return {
+        'trunk_quat': trunk, 'reference_trunk_quat': target_trunk,
         'time': float(env.motion_time()[0]), 'root_state': root,
         'dof_pos': array(env.dof_pos), 'dof_vel': array(env.dof_vel),
         'torque': array(env.torques), 'action': array(env.actions),
@@ -83,13 +92,19 @@ def main():
     extra, remaining = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining
     args = get_args()
-    if args.num_envs != 1 or args.checkpoint != 5000:
-        raise ValueError('This entry point requires one environment and checkpoint 5000')
+    if args.num_envs != 1:
+        raise ValueError('This entry point requires one environment')
     if not 1 <= extra.episodes <= 10:
         raise ValueError('episodes must be between 1 and 10')
     cfg, train_cfg = task_registry.get_cfgs(args.task)
     identity = validate_identity(args.task, extra.source_task, extra.checkpoint_sha256,
-                                 cfg.motion_reference.sha256)
+                                 cfg.motion_reference.sha256, checkpoint=args.checkpoint)
+    asset_path = Path(cfg.asset.file.replace('{LEGGED_GYM_ROOT_DIR}', LEGGED_GYM_ROOT_DIR))
+    asset_digest = hashlib.sha256(asset_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+    if 'urdf_lf_sha256' in identity and asset_digest != identity['urdf_lf_sha256']:
+        raise ValueError('Inference URDF differs from verified training asset')
+    if cfg.env.num_actions != identity.get('num_actions', 12):
+        raise ValueError('Inference action dimension differs from verified checkpoint')
     checkpoint = locate_checkpoint(extra.checkpoint_file, identity['checkpoint_sha256'], args.checkpoint)
     motion_path = Path(cfg.motion_reference.file.replace('{LEGGED_GYM_ROOT_DIR}', LEGGED_GYM_ROOT_DIR))
     if sha(motion_path) != identity['motion_sha256']:
@@ -113,6 +128,8 @@ def main():
     if stored_iteration != args.checkpoint - 1:
         raise ValueError('Checkpoint iteration mismatch')
     policy.load_state_dict(state['model_state_dict'], strict=True)
+    if not all(torch.isfinite(value).all() for value in state['model_state_dict'].values()):
+        raise ValueError('Nonfinite checkpoint tensor')
     policy.eval()
     del state
     print('[gmr-inference] exact checkpoint loaded; deterministic=True from_time=0; no learning', flush=True)
@@ -173,6 +190,7 @@ def main():
         'inference_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=LEGGED_GYM_ROOT_DIR).decode().strip(),
         'training_commit': identity['training_commit'],
         'task': args.task, 'verified_identity': identity,
+        'trunk_body': env.motion.tracking_body_names[0] if hasattr(env, 'tracking_body_ids') else 'base_link',
         'inference_entry_sha256': sha(__file__),
         'urdf_lf_sha256': hashlib.sha256(asset_path.read_bytes().replace(b'\r\n', b'\n')).hexdigest(),
         'motion_sha256': cfg.motion_reference.sha256, 'control_dt': env.dt,

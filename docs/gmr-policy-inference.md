@@ -1,5 +1,25 @@
 # Finite GMR policy inference
 
+## 2026-09-11 final checkpoint evaluation
+
+The new evaluation on this branch is bound to `TASK_20260911_112/model_5000.pt`
+(stored iteration 4999), SHA256 `e528971d23a2d8d693389eaf857f927a120814e94a955234de68eb84ad92d7cf`.
+Training finished normally at 2026-09-11 16:02:52 Asia/Shanghai and the final
+artifact was downloaded and checked (33 finite network tensors).
+The identity allowlist binds source task, checkpoint number/hash, action dimension,
+reference hash and training URDF hash. Evaluation preserves the training environment,
+uses one environment, seed 5, three deterministic episodes from time zero, and
+performs no learning updates. Physical failures remain visible in terminal frames.
+
+The recorder now logs the chest quaternion separately when the waist is movable;
+pelvis rotation is not a chest tilt metric for the 29-DOF model. Action and torque
+differences exclude the reset sample. MuJoCo labels and filenames use the actual
+checkpoint number, and named joints must cover the rendering model exactly.
+Local validation: 73 tests passed; exact training URDF loaded and rendered
+in MuJoCo. These checks are not a completed cloud inference result.
+
+The sections below describe the original protocol and historical checkpoint.
+
 This is a deterministic evaluation of `TASK_20260910_187/model_5000.pt`, not
 another training run or kinematic playback of the target reference. The source
 training commit is `181f8034e62105f4138b90ebb560f63c0d1640a4`. Checkpoint SHA256:
