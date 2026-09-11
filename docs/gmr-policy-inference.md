@@ -18,6 +18,26 @@ checkpoint number, and named joints must cover the rendering model exactly.
 Local validation: 73 tests passed; exact training URDF loaded and rendered
 in MuJoCo. These checks are not a completed cloud inference result.
 
+### Verified cloud result
+
+Registered inference `TASK_20260911_127` completed normally at 16:16:26
+Asia/Shanghai with code `bdad6c2cf89ab395e75ba4579df45b56e1d4e0d1`. The three recordings
+have identical root/joint trajectories, each 461 samples at 100 Hz, without
+physical termination. Repeated identical deterministic episodes are not independent
+robustness trials. Artifact identity, iteration, timeline and URDF were checked.
+PD, effective torque limits, armature, passive damping/friction, action scale and
+control period match the corresponding training startup runtime log.
+
+三次完整 4.6 秒 deterministic rollout 均未触发物理失败，但策略基本原地站立：实际水平位移约 0.0132 m，目标约 1.74 m；双脚接触时间占比分别 99.8%/99.6%。根部位置 RMSE 1.003 m。接触足底速度仅 0.00458 m/s，不能解释为行走地滑优于 12 DOF，因为它没有完成所需行走。胸部倾角误差均值 4.46°。肩、肘和颈部的部分关节在 100 Hz 记录中触及力矩限幅。
+
+Output directory: `outputs/policy_videos/gmr_29dof_task112_model5000/`.
+Delivery MP4: `wholebody_29dof_model5000.mp4`; preview: `wholebody_29dof_model5000_preview.gif`.
+Both views are rendered at 1600x720, 50 fps, 231 frames (4.62 seconds including
+the final t=4.60 sample). First, middle and terminal frames were visually checked.
+MuJoCo/Isaac sole FK discrepancy is below 1 micrometer.
+The NPZ and manifest are actual policy dynamics from Isaac Gym, not target playback.
+MuJoCo visualizes those states and does not rerun their dynamics.
+
 The sections below describe the original protocol and historical checkpoint.
 
 This is a deterministic evaluation of `TASK_20260910_187/model_5000.pt`, not
