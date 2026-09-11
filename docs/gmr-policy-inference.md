@@ -1,5 +1,26 @@
 # Finite GMR policy inference
 
+## 2026-09-12 swing checkpoint inference preparation
+
+Training `TASK_20260911_171` completed normally at 2026-09-11 17:13:28
+Asia/Shanghai. Final `model_8000.pt` (model record 3922306) is 10,323,330 bytes,
+SHA256 `4c865c178a12a4796013b6b138972becb875301d7198543a6909c9a76ef7fe50`.
+The downloaded checkpoint contains iteration 7999 and 33 finite network tensors.
+Its training commit is `a92dfe6346bcd1e853a1c923fec33667e9b601bb`.
+
+The `x1_gmr_swing` identity entry binds this final checkpoint to the unchanged
+12-DOF URDF and upright reference. Inference uses the existing one-environment,
+seed-5, three-episode, deterministic t=0 protocol, with no learning updates.
+Only identity validation and the video label are adapted; training rewards,
+observations, policy weights and dynamics are not modified.
+
+Planned output: `outputs/policy_videos/gmr_swing_task171_model8000/`.
+The comparison baseline is the verified task116/model7000 inference below.
+At this preparation stage no cloud inference or improvement is claimed.
+Local checks passed: 89 unit tests, strict loading of all 33 model tensors,
+finite actor/critic forward outputs, and exact-URDF MuJoCo rendering backend.
+User approved publication of this inference-only adaptation on 2026-09-12.
+
 ## 2026-09-11 final checkpoint evaluation
 
 The new evaluation on this branch is bound to `TASK_20260911_116/model_7000.pt`

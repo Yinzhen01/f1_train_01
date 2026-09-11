@@ -180,7 +180,8 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
                 panels.append(frame)
             frame = np.concatenate(panels, axis=1)
             cv2.rectangle(frame, (0, 610), (1600, 720), (25, 30, 37), -1)
-            variant = {'x1_gmr_upright': 'UPRIGHT 12DOF', 'x1_gmr_smooth': 'SMOOTH 12DOF',
+            variant = {'x1_gmr_swing': 'SWING 12DOF',
+                       'x1_gmr_upright': 'UPRIGHT 12DOF', 'x1_gmr_smooth': 'SMOOTH 12DOF',
                        'x1_gmr_29dof': 'F1 V1.4 29DOF'}.get(meta.get('task'), 'BASELINE 12DOF')
             label(frame, 'GMR KIT317 %s | model_%d | ISAAC GYM POLICY' %
                   (variant, meta['checkpoint']), 22, 644, scale=.65)

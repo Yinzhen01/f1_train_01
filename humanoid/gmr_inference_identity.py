@@ -1,6 +1,15 @@
 """Verified finite-clip checkpoints; refuse cross-experiment playback."""
 
 PROFILES = {
+    'x1_gmr_swing': {
+        'source_task': 'TASK_20260911_171',
+        'training_commit': 'a92dfe6346bcd1e853a1c923fec33667e9b601bb',
+        'checkpoint': 8000,
+        'num_actions': 12,
+        'checkpoint_sha256': '4c865c178a12a4796013b6b138972becb875301d7198543a6909c9a76ef7fe50',
+        'motion_sha256': 'd625efc73972b4f4952587ac6391543b6d747b404184703361a394e0b6bca4fb',
+        'urdf_lf_sha256': '9fb3d6efa623576a964aef9a3e2db2f96ca2296a85f2e0ade6bfe0ecf043ba15',
+    },
     'x1_gmr_smooth': {
         'source_task': 'TASK_20260911_116',
         'training_commit': '21788f6da04cc578925343a09a77aab5e8a10511',

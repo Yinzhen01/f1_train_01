@@ -48,6 +48,28 @@ class InferenceIdentityTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'checkpoint_sha256'):
             self.check('x1_gmr_smooth', checkpoint_sha256=PROFILES['x1_gmr_upright']['checkpoint_sha256'])
 
+    def test_swing_final_checkpoint_identity(self):
+        p = PROFILES['x1_gmr_swing']
+        result = validate_identity('x1_gmr_swing', p['source_task'], p['checkpoint_sha256'],
+                                   p['motion_sha256'], checkpoint=8000)
+        self.assertEqual(result['num_actions'], 12)
+        self.assertEqual(result['source_task'], 'TASK_20260911_171')
+        self.assertEqual(result['training_commit'], 'a92dfe6346bcd1e853a1c923fec33667e9b601bb')
+        self.assertEqual(result['urdf_lf_sha256'], PROFILES['x1_gmr_smooth']['urdf_lf_sha256'])
+
+    def test_swing_rejects_source_policy_or_smoke_iteration(self):
+        p = PROFILES['x1_gmr_swing']
+        for checkpoint in (7000, 7020, 7900):
+            with self.subTest(checkpoint=checkpoint), self.assertRaisesRegex(ValueError, 'checkpoint number'):
+                validate_identity('x1_gmr_swing', p['source_task'], p['checkpoint_sha256'],
+                                  p['motion_sha256'], checkpoint=checkpoint)
+
+    def test_swing_rejects_previous_model_and_source(self):
+        with self.assertRaisesRegex(ValueError, 'checkpoint_sha256'):
+            self.check('x1_gmr_swing', checkpoint_sha256=PROFILES['x1_gmr_smooth']['checkpoint_sha256'])
+        with self.assertRaisesRegex(ValueError, 'source_task'):
+            self.check('x1_gmr_swing', source_task='TASK_20260911_116')
+
 
 if __name__ == '__main__':
     unittest.main()
