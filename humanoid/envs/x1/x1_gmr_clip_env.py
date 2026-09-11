@@ -18,7 +18,8 @@ class X1GMRClipEnv(X1DHStandEnv):
     def _init_buffers(self):
         super()._init_buffers()
         path = self.cfg.motion_reference.file.replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
-        self.motion = GMRMotion(path, self.dof_names, self.device, self.cfg.motion_reference.sha256)
+        self.motion = GMRMotion(path, self.dof_names, self.device, self.cfg.motion_reference.sha256,
+                                expected_dofs=self.cfg.env.num_actions)
         asset_path = self.cfg.asset.file.replace("{LEGGED_GYM_ROOT_DIR}", LEGGED_GYM_ROOT_DIR)
         # Git checkouts normalize newlines; match canonical XML bytes, not platform EOL.
         with open(asset_path, "rb") as stream:

@@ -10,7 +10,7 @@ class GMRMotion:
     temporal_keys = ("dof_pos", "dof_vel", "root_pos", "root_quat", "root_vel", "root_ang_vel",
                      "foot_pos_base", "foot_quat_base", "foot_contact")
 
-    def __init__(self, path, dof_names, device="cpu", expected_sha256=None):
+    def __init__(self, path, dof_names, device="cpu", expected_sha256=None, expected_dofs=12):
         if expected_sha256:
             with open(path, "rb") as stream:
                 digest = hashlib.sha256(stream.read()).hexdigest()
@@ -19,8 +19,10 @@ class GMRMotion:
         with np.load(path, allow_pickle=False) as archive:
             self.metadata = json.loads(str(archive["metadata_json"]))
             names = archive["joint_names"].astype(str).tolist()
-            if len(names) != 12 or len(set(names)) != 12 or set(names) != set(dof_names) or len(dof_names) != 12:
-                raise ValueError("GMR reference and robot require the same 12 named joints")
+            if expected_dofs not in (12, 29):
+                raise ValueError("Supported GMR joint counts are 12 and 29")
+            if len(names) != expected_dofs or len(set(names)) != expected_dofs or set(names) != set(dof_names) or len(dof_names) != expected_dofs:
+                raise ValueError("GMR reference and robot require the same %d named joints" % expected_dofs)
             order = [names.index(name) for name in dof_names]
             self.fps = float(archive["fps"])
             self.frames = len(archive["dof_pos"])
@@ -29,11 +31,16 @@ class GMRMotion:
             if self.metadata.get("cyclic") is not False or self.metadata.get("quaternion_order") != "xyzw":
                 raise ValueError("Only noncyclic xyzw reference files are supported")
             self.duration = (self.frames - 1) / self.fps
-            shapes = {"dof_pos": (12,), "dof_vel": (12,), "root_pos": (3,), "root_quat": (4,),
+            shapes = {"dof_pos": (expected_dofs,), "dof_vel": (expected_dofs,), "root_pos": (3,), "root_quat": (4,),
                       "root_vel": (3,), "root_ang_vel": (3,), "foot_pos_base": (2, 3),
                       "foot_quat_base": (2, 4), "foot_contact": (2,)}
+            self.tracking_body_names = self.metadata.get("tracking_body_names", [])
+            if expected_dofs == 29:
+                if self.tracking_body_names != ["lumbar_pitch_link", "left_wrist_pitch_link", "right_wrist_pitch_link"]:
+                    raise ValueError("Whole-body reference requires ordered chest and wrist targets")
+                shapes.update(body_pos_base=(3, 3), body_quat_base=(3, 4))
             self.data = {}
-            for key in self.temporal_keys:
+            for key in shapes:
                 value = archive[key].copy()
                 if value.shape != (self.frames,) + shapes[key] or not np.isfinite(value).all():
                     raise ValueError("Invalid reference field " + key)

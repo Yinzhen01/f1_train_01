@@ -58,11 +58,14 @@ from .x1.x1_gmr_clip_env import X1GMRClipEnv
 from .x1.x1_gmr_clip_config import X1GMRClipCfg, X1GMRClipCfgPPO
 from .x1.x1_gmr_upright_env import X1GMRUprightEnv
 from .x1.x1_gmr_upright_config import X1GMRUprightCfg, X1GMRUprightCfgPPO
+from .x1.x1_gmr_29dof_env import X1GMR29DOFEnv
+from .x1.x1_gmr_29dof_config import X1GMR29DOFCfg, X1GMR29DOFCfgPPO
 
 from humanoid.utils.task_registry import task_registry
 
 task_registry.register("x1_gmr_clip", X1GMRClipEnv, X1GMRClipCfg(), X1GMRClipCfgPPO())
 task_registry.register("x1_gmr_upright", X1GMRUprightEnv, X1GMRUprightCfg(), X1GMRUprightCfgPPO())
+task_registry.register("x1_gmr_29dof", X1GMR29DOFEnv, X1GMR29DOFCfg(), X1GMR29DOFCfgPPO())
 
 task_registry.register( "x1_dh_stand", X1DHStandEnv, X1DHStandCfg(), X1DHStandCfgPPO() )
 task_registry.register(
