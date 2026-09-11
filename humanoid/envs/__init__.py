@@ -62,6 +62,8 @@ from .x1.x1_gmr_smooth_env import X1GMRSmoothEnv
 from .x1.x1_gmr_smooth_config import X1GMRSmoothCfg, X1GMRSmoothCfgPPO
 from .x1.x1_gmr_swing_env import X1GMRSwingEnv
 from .x1.x1_gmr_swing_config import X1GMRSwingCfg, X1GMRSwingCfgPPO
+from .x1.x1_gmr_accel_env import X1GMRAccelEnv
+from .x1.x1_gmr_accel_config import X1GMRAccel1Cfg, X1GMRAccel3Cfg, X1GMRAccel10Cfg, X1GMRAccelCfgPPO
 
 from humanoid.utils.task_registry import task_registry
 
@@ -69,6 +71,9 @@ task_registry.register("x1_gmr_clip", X1GMRClipEnv, X1GMRClipCfg(), X1GMRClipCfg
 task_registry.register("x1_gmr_upright", X1GMRUprightEnv, X1GMRUprightCfg(), X1GMRUprightCfgPPO())
 task_registry.register("x1_gmr_smooth", X1GMRSmoothEnv, X1GMRSmoothCfg(), X1GMRSmoothCfgPPO())
 task_registry.register("x1_gmr_swing", X1GMRSwingEnv, X1GMRSwingCfg(), X1GMRSwingCfgPPO())
+task_registry.register("x1_gmr_accel_1x", X1GMRAccelEnv, X1GMRAccel1Cfg(), X1GMRAccelCfgPPO())
+task_registry.register("x1_gmr_accel_3x", X1GMRAccelEnv, X1GMRAccel3Cfg(), X1GMRAccelCfgPPO())
+task_registry.register("x1_gmr_accel_10x", X1GMRAccelEnv, X1GMRAccel10Cfg(), X1GMRAccelCfgPPO())
 
 task_registry.register( "x1_dh_stand", X1DHStandEnv, X1DHStandCfg(), X1DHStandCfgPPO() )
 task_registry.register(
