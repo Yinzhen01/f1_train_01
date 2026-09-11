@@ -1,6 +1,15 @@
 """Verified finite-clip checkpoints; refuse cross-experiment playback."""
 
 PROFILES = {
+    'x1_gmr_smooth': {
+        'source_task': 'TASK_20260911_116',
+        'training_commit': '21788f6da04cc578925343a09a77aab5e8a10511',
+        'checkpoint': 7000,
+        'num_actions': 12,
+        'checkpoint_sha256': 'ccaf51ecb069e6ecb80ee9fe07eda4a63dab627e4592d15b4240b5d024701857',
+        'motion_sha256': 'd625efc73972b4f4952587ac6391543b6d747b404184703361a394e0b6bca4fb',
+        'urdf_lf_sha256': '9fb3d6efa623576a964aef9a3e2db2f96ca2296a85f2e0ade6bfe0ecf043ba15',
+    },
     'x1_gmr_clip': {
         'source_task': 'TASK_20260910_187',
         'training_commit': '181f8034e62105f4138b90ebb560f63c0d1640a4',
@@ -16,10 +25,12 @@ PROFILES = {
 }
 
 
-def validate_identity(task, source_task, checkpoint_sha256, motion_sha256):
+def validate_identity(task, source_task, checkpoint_sha256, motion_sha256, checkpoint=None):
     if task not in PROFILES:
         raise ValueError('Unsupported finite GMR inference task: ' + task)
     expected = PROFILES[task]
+    if checkpoint is not None and checkpoint != expected.get('checkpoint', 5000):
+        raise ValueError('GMR inference identity mismatch: checkpoint number')
     actual = dict(source_task=source_task, checkpoint_sha256=checkpoint_sha256.lower(),
                   motion_sha256=motion_sha256.lower())
     for key, value in actual.items():

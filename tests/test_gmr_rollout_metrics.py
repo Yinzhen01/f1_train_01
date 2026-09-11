@@ -39,6 +39,23 @@ class RolloutMetricsTest(unittest.TestCase):
         q = np.array([[0., 0., 0., 1.]])
         np.testing.assert_allclose(rotation_error(q, -q), 0.)
 
+    def test_movable_chest_not_confused_with_pelvis(self):
+        data = self.fixture()
+        angle = np.deg2rad(10.) / 2
+        data['trunk_quat'] = np.tile([0., np.sin(angle), 0., np.cos(angle)], (3, 1))
+        data['reference_trunk_quat'] = data['reference_root_quat'].copy()
+        result = summarize_rollout(data, .02)
+        self.assertAlmostEqual(result['root_rotation_mean_deg'], 0.)
+        self.assertAlmostEqual(result['trunk_tilt_error_mean_deg'], 10.)
+
+    def test_smoothness_excludes_reset_sample(self):
+        data = self.fixture()
+        data['action'] = np.tile(np.array([100., 1., 3.])[:, None], (1, 12))
+        data['torque'] = np.tile(np.array([100., 2., 5.])[:, None], (1, 12))
+        result = summarize_rollout(data, .02)
+        self.assertAlmostEqual(result['action_delta_rms'], 2.)
+        self.assertAlmostEqual(result['torque_delta_rms_nm'], 3.)
+
     def test_trunk_pitch_and_error(self):
         angles = np.deg2rad(np.array([-10., 0., 5.]))
         q = np.column_stack((np.zeros(3), np.sin(angles / 2), np.zeros(3), np.cos(angles / 2)))

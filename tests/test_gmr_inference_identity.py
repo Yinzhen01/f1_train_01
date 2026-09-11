@@ -35,6 +35,19 @@ class InferenceIdentityTest(unittest.TestCase):
         result['source_task'] = 'wrong'
         self.assertEqual(self.check('x1_gmr_upright')['source_task'], 'TASK_20260911_008')
 
+    def test_final_checkpoint_number_is_bound_to_profile(self):
+        p = PROFILES['x1_gmr_smooth']
+        result = validate_identity('x1_gmr_smooth', p['source_task'], p['checkpoint_sha256'],
+                                   p['motion_sha256'], checkpoint=7000)
+        self.assertEqual(result['checkpoint'], 7000)
+        with self.assertRaisesRegex(ValueError, 'checkpoint number'):
+            validate_identity('x1_gmr_smooth', p['source_task'], p['checkpoint_sha256'],
+                              p['motion_sha256'], checkpoint=6900)
+
+    def test_final_checkpoint_cannot_use_previous_upright_weights(self):
+        with self.assertRaisesRegex(ValueError, 'checkpoint_sha256'):
+            self.check('x1_gmr_smooth', checkpoint_sha256=PROFILES['x1_gmr_upright']['checkpoint_sha256'])
+
 
 if __name__ == '__main__':
     unittest.main()

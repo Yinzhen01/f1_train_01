@@ -90,6 +90,10 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
     model, scene = make_scene(urdf, output)
     mjdata = mujoco.MjData(model)
     addresses = [int(model.joint(name).qposadr[0]) for name in joint_names]
+    if len(set(addresses)) != len(joint_names) or model.nq != len(joint_names) + 7:
+        raise ValueError('Recorded joints must exactly cover the rendering model')
+    if joint_names != meta['dof_names'] or data['dof_pos'].shape[1] != len(joint_names):
+        raise ValueError('Joint ordering differs from inference manifest')
     feet = [model.body(name).id for name in names]
     meshes = foot_meshes(urdf, names)
     root_adr = int(model.joint('render_root').qposadr[0])
@@ -144,7 +148,7 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
         cam.elevation = -17
         cam.distance = 2.6
         cameras.append(cam)
-    path = output / 'gmr_model5000_policy_dual_view.mp4'
+    path = output / ('gmr_model%d_policy_dual_view.mp4' % meta['checkpoint'])
     if path.exists():
         raise FileExistsError('Will not overwrite existing video: ' + str(path))
     writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'mp4v'), 50., (1600, 720))
@@ -176,8 +180,10 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
                 panels.append(frame)
             frame = np.concatenate(panels, axis=1)
             cv2.rectangle(frame, (0, 610), (1600, 720), (25, 30, 37), -1)
-            variant = 'UPRIGHT' if meta.get('task') == 'x1_gmr_upright' else 'BASELINE'
-            label(frame, 'GMR KIT317 %s | model_5000 | ISAAC GYM POLICY' % variant, 22, 644, scale=.72)
+            variant = {'x1_gmr_upright': 'UPRIGHT 12DOF', 'x1_gmr_smooth': 'SMOOTH 12DOF',
+                       'x1_gmr_29dof': 'F1 V1.4 29DOF'}.get(meta.get('task'), 'BASELINE 12DOF')
+            label(frame, 'GMR KIT317 %s | model_%d | ISAAC GYM POLICY' %
+                  (variant, meta['checkpoint']), 22, 644, scale=.65)
             label(frame, 't = %.2f / 4.60 s | 1x speed | MuJoCo visualization (no resimulation)' % data['time'][i], 22, 678)
             forces = data['foot_force'][i, :, 2]
             speed = np.linalg.norm(data['sole_velocity'][i, :, :2], axis=-1)
