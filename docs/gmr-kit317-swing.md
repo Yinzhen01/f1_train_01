@@ -106,3 +106,33 @@ No improvement claim is made before deterministic inference of the new model.
   The 3.50 s event is intentionally almost excluded because it is near an
   off-contact boundary. This experiment does not supervise every contact
   transient; touchdown/late-toe-off handling remains a separate future stage.
+
+## Registered smoke verification
+
+- Code `a92dfe6346bcd1e853a1c923fec33667e9b601bb` published to the isolated branch.
+- `TASK_20260911_168`, owner 4190, status 5, Beijing 16:46:32--16:47:43.
+  Exactly indices 7000..7019 ran. Source task/hash, reference hash, actual
+  code commit, all 33 tensors and fixed 1e-5 learning rate match the plan.
+- Runtime PD, armature, effective torque limits, passive damping/friction,
+  action scale and control dt exactly match task116's saved runtime manifest.
+  All old reward scales exactly match; only the two new -1 terms are added.
+- Geometry SHA256 `db1ad11fb11cea2704494ce14a7e1c94899fe83822cbc9195b6b83237ab9dd47`.
+  Active reference samples before height gating: 35 left / 38 right.
+- Both new episode reward terms are nonzero. No NaN, Inf, Traceback,
+  RuntimeError or CUDA OOM found. Final smoke reward 45.65 / episode length
+  412.39 are stochastic training aggregates, not a deterministic improvement.
+- `model_7020.pt` upload is confirmed by SDK and model list. Local download
+  failed due DNS resolution / HTTPS routing; its contents are NOT locally
+  verified. Cloud smoke completion and upload gates are satisfied. Formal
+  training still uses locally hash-verified ORIGINAL model7000, not model7020.
+- Formal `TASK_20260911_171` run accepted at Beijing 16:51:50, instance
+  start 16:52:06; 4096 environments, 1000 additional updates, same code/inputs.
+  Actual PPO startup was verified through index 7055/8000 (56 new updates).
+  Code/source/reference, 33 loaded tensors, fresh optimizers, 4096 environments,
+  fixed 1e-5 learning rate and both new nonzero terms match the approved plan.
+  Runtime dynamics and reward weights exactly equal the smoke configuration.
+  No numeric/error markers found in the startup log. Last ten iteration times
+  average 1.08 s; approximately 17 minutes of PPO remained at that snapshot,
+  excluding completion/upload overhead. This is not a convergence estimate.
+- Logs and source/run provenance are in ignored `outputs/gradmotion-swing/`.
+  Creation payloads were removed after successful task creation.
