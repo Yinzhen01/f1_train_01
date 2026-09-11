@@ -56,10 +56,13 @@ from .x1.x1_dh_stand_dr_full_config import (
 from .x1.x1_dh_stand_env import X1DHStandEnv
 from .x1.x1_gmr_clip_env import X1GMRClipEnv
 from .x1.x1_gmr_clip_config import X1GMRClipCfg, X1GMRClipCfgPPO
+from .x1.x1_gmr_upright_env import X1GMRUprightEnv
+from .x1.x1_gmr_upright_config import X1GMRUprightCfg, X1GMRUprightCfgPPO
 
 from humanoid.utils.task_registry import task_registry
 
 task_registry.register("x1_gmr_clip", X1GMRClipEnv, X1GMRClipCfg(), X1GMRClipCfgPPO())
+task_registry.register("x1_gmr_upright", X1GMRUprightEnv, X1GMRUprightCfg(), X1GMRUprightCfgPPO())
 
 task_registry.register( "x1_dh_stand", X1DHStandEnv, X1DHStandCfg(), X1DHStandCfgPPO() )
 task_registry.register(

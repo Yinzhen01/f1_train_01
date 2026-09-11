@@ -1,0 +1,81 @@
+{
+  "source_sha256": "8458117d35eaf773c2986c30d104446e56197cb39dd4980a0809b818bbec9ddd",
+  "training_urdf_lf_sha256": "9fb3d6efa623576a964aef9a3e2db2f96ca2296a85f2e0ade6bfe0ecf043ba15",
+  "source_name": "KIT_317_walking_medium08_f1_v1_4_foot_flat.npz",
+  "frames": 139,
+  "fps": 30.0,
+  "duration_s": 4.6,
+  "cyclic": false,
+  "joint_names": [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_pitch_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_pitch_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint"
+  ],
+  "foot_names": [
+    "left_ankle_roll_link",
+    "right_ankle_roll_link"
+  ],
+  "quaternion_order": "xyzw",
+  "units": "meters, radians, seconds",
+  "foot_mesh_sha256": {
+    "left_ankle_roll_link": "6346fce8cc33295fa00d61852c7415e356dabf634b99eb8a4f10b9d41e66f901",
+    "right_ankle_roll_link": "90f21155cc0a6ef73b551676530fd0de4a32a7fa6b714fad5cc60c61453ba44f"
+  },
+  "baseline_sha256": "a3ae41e54909455d477cefa662bdcbbee8a1852564ef547ebeb455f275a0be02",
+  "source_model_sha256": "a785662d46decd9be24f25c4754224a2ada89e74620a492d9469aa318a658d2e",
+  "reference_variant": "upright_chest_v1",
+  "walking_tilt_scale": 0.6,
+  "reconstruction_settings": {
+    "root_smoothing_window": 21,
+    "root_smoothing_polyorder": 3,
+    "root_smoothing_passes": 3,
+    "root_hint_weight": 40.0,
+    "foot_position_weight": 1000.0,
+    "foot_rotation_weight": 300.0,
+    "walking_tilt_adjustment_per_axis_deg": 1.0,
+    "speed_limit_fraction": 0.98
+  },
+  "target_definition": "Quiet standing roll/pitch=0; walking scaled smoothed 29DOF chest tilt; original pelvis yaw. C2 transitions 1.0..1.5 and 3.7..4.2 s.",
+  "limit_fit": {
+    "max_ankle_position_change_m": 0.0008256241168036647,
+    "max_ankle_rotation_change_rad": 0.0016141626542888594,
+    "max_root_translation_change_m": 0.044314175119211534,
+    "max_target_rotation_adjustment_deg": 1.4142045873760132,
+    "method": "bounded root translation, walking roll/pitch adjustment <=1 degree per axis, and 12 joints with interframe hard speed bounds; preserve old world ankles"
+  },
+  "samples": 461,
+  "minimum_foot_mesh_z_m": 0.0004999999999999588,
+  "standing_max_sole_tilt_deg": 0.004743071315973216,
+  "max_dense_sole_position_change_m": 0.0012422408281399719,
+  "max_joint_speed_rad_s": 8.470010335124046,
+  "max_segment_joint_speed_rad_s": 8.722,
+  "max_joint_acceleration_rad_s2": 119.33963904753523,
+  "max_root_speed_m_s": 0.9471126636705208,
+  "max_root_acceleration_m_s2": 11.709253376848485,
+  "contact_frames": [
+    96.0,
+    89.0
+  ],
+  "extra_clearance_lift_max_m": 0.0003834297220496742,
+  "source_chest_aligned_rpy_mean_deg": [
+    1.2992584832764795,
+    10.553824512745368,
+    147.44705945609385
+  ],
+  "new_root_tilt_mean_deg": [
+    0.5692745076436602,
+    4.505621682233226
+  ],
+  "max_root_pitch_deg": 12.162294186076004,
+  "boundary": "Kinematic reconstruction only; changed reference and reward require new Isaac Gym smoke and training. No policy or dynamics validation.",
+  "output_sha256": "d625efc73972b4f4952587ac6391543b6d747b404184703361a394e0b6bca4fb"
+}
