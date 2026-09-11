@@ -13,8 +13,14 @@ and state-estimator dimensions are incompatible. No partial weight transfer is
 implemented or claimed. The previously proposed 12-DOF smoothness continuation
 has not been launched.
 
-Local implementation and tests are preparation only. No 29-DOF Isaac Gym smoke
-or Gradmotion training has been run, and these changes are not committed/pushed.
+User approved submission on 2026-09-11. Implementation commit
+`9688e5ae4d0548ec5b4d8ba49cb57b9983168671` is pushed to
+`Yinzhen01/f1_train_01`, branch `experiment/gmr-kit317-29dof`.
+Registered Isaac Gym smoke `TASK_20260911_111` completed successfully;
+formal task `TASK_20260911_112` was accepted for startup at 14:04:44 Asia/Shanghai.
+At 14:09:13 it is actually running PPO: log iteration 23/5000, 1,179,648
+timesteps. Task `commitId`, model/reference hashes, 2048 environments and all
+runtime dynamics match the smoke-validated code. Query Gradmotion for newer state.
 All 69 local tests pass, including the real 29-action network forward/backward,
 actual observation builder and critic velocity slice, name-mapped PD/armature,
 body-target FK, dense 100 Hz foot-mesh clearance and reset-safe reward formulas.
@@ -70,8 +76,9 @@ default. Neither is a new system-identification result.
 PD Kp/Kd (Nm/rad, Nm s/rad): inherited legs 30/3, 40/3, 35/4, 100/8,
 35/1.5, 35/1.5; waist 100/4; shoulders/elbows 40/2; wrists/neck 5/0.5.
 Upper-body PD values are initial simulation tuning choices, not verified
-hardware settings. Inspect saturation and early falls during smoke before
-authorizing/starting a long run. MuJoCo is used only for offline model/FK checks;
+hardware settings. The smoke read back positive PD/armature on all 29 joints;
+its last-substep ankle saturation metric was zero across all 20 updates.
+Continue inspecting saturation and early falls in the longer run. MuJoCo is used only for offline model/FK checks;
 an aligned 29-DOF sim2sim deployment asset/pipeline is not delivered here.
 
 ## Rewards
@@ -93,7 +100,8 @@ approximated by pelvis orientation.
   NOT all 1000 Hz torque samples. This penalty alone cannot rule out substep chatter.
 
 The new temporal penalty weights are starting choices for this new 29-DOF
-experiment; they have not been cloud-validated or shown to reduce video jitter.
+experiment. Cloud smoke confirmed both reward functions execute with nonzero
+penalties, but has not demonstrated improved deterministic video smoothness.
 Debug scalars capture action/torque differences BEFORE history overwrite and
 reset, plus ankle saturation and contact-force peaks. Compare group RMSE,
 completion/fall rate, slip and these physical metrics, not total reward against
@@ -107,10 +115,10 @@ python humanoid/scripts/train.py --task=x1_gmr_29dof --headless --num_envs=128 -
 python humanoid/scripts/train.py --task=x1_gmr_29dof --headless --num_envs=2048 --max_iterations=5000 --seed=5 --run_name=kit317_29dof_baseline
 ```
 
-5000 updates / 2048 environments are a proposed initial baseline, not a running
-job or a convergence guarantee. Before cloud submission: explicit commit/push
-approval, exact remote/branch verification, resource readback for 4090D 24 GB
-ESKU000001 and compatible image, then registered smoke. Check actual commit,
+5000 updates / 2048 environments are the initial baseline, not a convergence
+guarantee. Cloud submission requires explicit commit/push approval, exact
+remote/branch verification, resource readback for 4090D 24 GB ESKU000001 and a
+compatible image, then registered smoke. Check actual commit,
 29-joint mapping, reference/asset hash, nonzero PD/armature for all joints,
 active rewards, finite increasing PPO logs, checkpoint upload and final status.
 Start formal training only after smoke passes. No SSH/background training bypass.
@@ -119,3 +127,46 @@ The URDF importer reports duplicate unnamed visual/collision geometry warnings
 in MuJoCo; model loading and independent FK still pass. Retain source collision
 coverage instead of inventing new collision bodies. This is not a whole-body
 self-collision certification; verify PhysX import/contact behavior during smoke.
+
+## Registered cloud validation (2026-09-11, Asia/Shanghai)
+
+- Owner user ID `4190`, project `PRO_20260820_014`, resource `ESKU000001`
+  confirmed as 1 x 4090D 24GB; image `BJX00000001/V000124`.
+- Smoke `TASK_20260911_111`: scratch, 128 environments, 20 PPO updates,
+  seed 5. Task status 5, end time 14:01:08. Platform `commitId` matches
+  `9688e5ae4d0548ec5b4d8ba49cb57b9983168671`; no resume fields are populated.
+- Logs contain iterations 0 through 19, 61,440 timesteps, and training-completed
+  marker without NaN/Inf, Traceback, RuntimeError or CUDA OOM. Runtime logs
+  verify 29 ordered joints, 98/141 frame dimensions, all PD and actual PhysX
+  armature values, effective torque limits, and all active reward weights.
+- Actual URDF SHA256:
+  `79a51ab2e8e111c0cd0e1167b203ef7df02cdcc504a52ae7a117e07f06d03be0`.
+  Reference SHA256:
+  `08730ae2264bc4598332a1f0e5adb572442662192e3bad564870350f0969c3b6`.
+- `model_20.pt` uploaded at 14:01:19, model record `3919718`, SHA256
+  `b804e92d5f43197a10a8c63dadd54f45cce2cd0d37e6fd2d15febb120fda2321`.
+  Downloaded checkpoint has 33 finite model tensors, actor output 29 and critic
+  input 423. Its saved internal iteration is 19 (runner convention), not a
+  missing twentieth update.
+- Last smoke log mean reward 23.31, mean episode length 287.16 control steps
+  (about 2.87 s). These are stochastic training aggregates, not deterministic
+  full-clip success; random phase resets and early termination affect them.
+- Twenty-update diagnostic means: action-difference RMS 0.70675 action units,
+  torque-difference RMS 17.99 Nm. Exploration std is still approximately 0.5.
+  Last-substep ankle saturation fraction is zero in all twenty logged points.
+  Maximum logged contact-force-peak metric is 1953.12 N; this metric averages
+  per-step maxima within each update and is NOT the absolute physics peak.
+- Formal `TASK_20260911_112`: scratch, 2048 environments, 5000 updates, seed 5,
+  same branch/model/reference/rewards and 4090D image; no 12-DOF weight reuse.
+  At 14:09:13, status 3, actual `commitId` is `9688e5a`, log iteration 23/5000
+  with 1,179,648 timesteps and finite losses. Runtime PD, armature, passive
+  dynamics, torque limits and action scale exactly match the smoke runtime.
+  Worker: `rl-prod-4190-task-20260911-112-r7j69-run-rl-prod-3562545292`.
+  Initial log ETA approximately 2.1 hours is provisional, not a completion time.
+- Ignored local artifacts: `outputs/gradmotion-29dof/` contains smoke/startup logs,
+  smoke checkpoint and `run-provenance.json`. Temporary task-creation JSON files were
+  removed immediately after successful creation; credentials are not copied.
+
+This closes the runtime smoke gate only. It does not establish convergence,
+reduced jitter, whole-body self-collision safety, sim2sim equivalence or hardware
+readiness. The 12-DOF smoothness continuation remains unstarted and untouched.
