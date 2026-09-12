@@ -71,5 +71,35 @@ The existing contact-force and action/torque diagnostics remain available.
 except the selected acceleration weight and all PPO fields except the log name.
 The real model8000 restored all 33 tensors; next update is 8000, both optimizers
 are empty, and actor/critic forward outputs are finite. Syntax checks passed.
-No cloud task or improvement claimed at this stage. Run records and logs belong
-in ignored `outputs/gradmotion-accel/`.
+Training code was published as `eccd14eed21ffe980c90abd7dc740d043e01fcaf`.
+All three registered smoke jobs completed normally and uploaded model8020 and
+the full configuration manifest. Local validation confirmed stored iter8019,
+33 finite strictly loadable tensors, all 33 updated from source, finite actor /
+critic outputs, identical effective source dynamics and all other reward scales.
+Downloaded manifests differ only in the intended weight and run-name metadata.
+This verifies execution and comparison setup, not better motion quality.
+
+| Group | Passed smoke | Formal training | Snapshot at 2026-09-12 08:42 CST |
+|---|---|---|---|
+| 1x | TASK_20260912_030 | TASK_20260912_033 | Running; 80 / 1000 new updates |
+| 3x | TASK_20260912_031 | TASK_20260912_034 | Running; 60 / 1000 new updates |
+| 10x | TASK_20260912_032 | TASK_20260912_035 | Running; 60 / 1000 new updates |
+
+All formal jobs actually entered PPO with the exact training commit, original
+model8000 hash, 4096 environments and intended weights. No numerical error was
+found in this startup snapshot. Re-query for current status. All are owned by
+user4190 under PRO_20260820_014, with one 4090D each. Personal-storage mounting
+must be empty on this resource; source checkpoint mounting is separate and
+verified. The first smoke start was rejected before execution for the optional
+personal mount; only that field was repaired, then the same task ran normally.
+
+The existing thread heartbeat `gmr` now checks every 20 minutes, quietly while
+normal, then validates final models and performs the approved identical inference
+comparison. No final result or motion improvement is claimed yet. Keep the host
+and app running for local follow-ups. Inference must record actual Isaac Gym
+states; MuJoCo visualization of those states is not a Sim2Sim test.
+
+Run records, sanitized logs, manifests, checksums and validation reports belong
+in ignored `outputs/gradmotion-accel/`. `smoke-verification.json` and
+`train-start-verification.json` preserve the completed gates. Source code is
+frozen at the training commit; later documentation commits are not training code.
