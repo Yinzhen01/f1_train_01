@@ -1,12 +1,17 @@
 """Regression math + mocked REAL physics-loop ordering, not Isaac Gym smoke."""
+import argparse
 import ast
 import contextlib
 import io
+import hashlib
 import json
 import math
 from pathlib import Path
 from types import SimpleNamespace
+import sys
+import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 import torch
 
@@ -98,7 +103,80 @@ class SmokeEntryTest(unittest.TestCase):
         entry = (ROOT / "humanoid/scripts/train_gmr_phase_smoke.py").read_text()
         self.assertLess(entry.index("from isaacgym"), entry.index("import torch"))
         self.assertLess(entry.index("identity = warm_start_runner"), entry.index("runner.learn("))
-        self.assertIn("num_learning_iterations=20", entry)
+        self.assertIn("num_learning_iterations=additional", entry)
+        self.assertIn("additional = args.max_iterations", entry)
+
+    def test_formal_requires_exact_budget_and_original_source(self):
+        self.args.num_envs, self.args.max_iterations = 4096, 1000
+        self.validate_request(self.args, self.extra, "exact", mode="formal")
+        for key, value in (("num_envs", 512), ("max_iterations", 20), ("max_iterations", 5000),
+                           ("checkpoint", 8020), ("checkpoint", 9000), ("seed", 6),
+                           ("resume", False), ("load_run", "latest"), ("training_profile", "scratch")):
+            args = SimpleNamespace(**vars(self.args))
+            setattr(args, key, value)
+            with self.assertRaises(ValueError):
+                self.validate_request(args, self.extra, "exact", mode="formal")
+        for key, value in (("source_task", "TASK_20260912_076"), ("checkpoint_sha256", "bad"),
+                           ("expected_commit", "wrong")):
+            extra = SimpleNamespace(**vars(self.extra))
+            setattr(extra, key, value)
+            with self.assertRaises(ValueError):
+                self.validate_request(self.args, extra, "exact", mode="formal")
+        with self.assertRaises(ValueError):
+            self.validate_request(self.args, self.extra, "exact", mode="unbounded")
+
+    def test_formal_entry_explicitly_selects_shared_pipeline(self):
+        path = ROOT / "humanoid/scripts/train_gmr_phase.py"
+        entry = path.read_text()
+        self.assertLess(entry.index("from isaacgym"), entry.index("from humanoid.scripts"))
+        self.assertIn("from humanoid.scripts.train_gmr_phase_smoke import main", entry)
+        self.assertIn('main(mode="formal")', entry)
+
+    def test_shared_main_passes_exact_budget_and_writes_matching_manifest(self):
+        # Execute the real entry body; only external simulator/runner calls are
+        # mocked. Real reference/URDF hashes and config comparison still run.
+        path = ROOT / "humanoid/scripts/train_gmr_phase_smoke.py"
+        nodes = [n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef)]
+        for mode, count, updates in (("smoke", 512, 20), ("formal", 4096, 1000)):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as output:
+                scope = phase_scope()
+                cfg, ppo = scope["X1GMRPhaseAccelCfg"](), scope["X1GMRPhaseAccelCfgPPO"]()
+                cfg.seed = ppo.seed
+                args = SimpleNamespace(**vars(self.args))
+                args.num_envs, args.max_iterations = count, updates
+                env = SimpleNamespace(num_envs=count, phase_physics_dt=.001, dt=.01,
+                    sim_params=SimpleNamespace(substeps=1), reward_scales={"gmr_phase_acc": -.0002},
+                    phase_acc_diagnostics={"gmr_phase_acc_cost": torch.tensor(1.)})
+                model = SimpleNamespace(state_dict=lambda: {"weight": torch.ones(1)})
+                runner = SimpleNamespace(alg=SimpleNamespace(learning_rate=1e-5, schedule="fixed",
+                    actor_critic=model), learn=Mock())
+                registry = SimpleNamespace(get_cfgs=Mock(return_value=(cfg, ppo)),
+                    make_env=Mock(return_value=(env, cfg)),
+                    make_alg_runner=Mock(return_value=(runner, ppo, output)))
+                restore = Mock(return_value={"loaded_tensors": 33})
+                scope.update(argparse=argparse, hashlib=hashlib, json=json, Path=Path, sys=sys,
+                    subprocess=SimpleNamespace(check_output=lambda *a, **k: b"exact"), torch=torch,
+                    LEGGED_GYM_ROOT_DIR=str(ROOT), get_args=lambda: args, task_registry=registry,
+                    class_to_dict=plain, sha256=warm.sha256, warm_start_runner=restore,
+                    locate_verified_checkpoint=lambda *a: "verified_model8000")
+                scope.update({name: getattr(warm, name) for name in (
+                    "SOURCE_TASK", "SOURCE_SHA256", "SOURCE_REFERENCE_SHA256",
+                    "SOURCE_URDF_SHA256", "SOURCE_COMPLETED_UPDATES")})
+                exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), scope)
+                argv = ["entry", "--checkpoint-file=model8000", "--source-task=" + warm.SOURCE_TASK,
+                        "--checkpoint-sha256=" + warm.SOURCE_SHA256, "--expected-commit=exact"]
+                with patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                    scope["main"](mode=mode)
+                restore.assert_called_once_with(runner, "verified_model8000")
+                runner.learn.assert_called_once_with(num_learning_iterations=updates, init_at_random_ep_len=False)
+                self.assertFalse(args.resume)  # Never use the implicit directory loader.
+                manifest = json.loads((Path(output) / ("phase_" + mode + "_manifest.json")).read_text())
+                self.assertEqual(manifest["identity"]["final_completed_updates"], 8000 + updates)
+                self.assertEqual(manifest["identity"]["num_envs"], count)
+                self.assertEqual(manifest["identity"]["purpose"], "smoke_only" if mode == "smoke" else "formal")
+                saved = torch.load(Path(output) / ("model_phase_" + mode + "_manifest.pt"), weights_only=True)
+                self.assertEqual(json.loads(saved["manifest_json"])["final_phase_diagnostics"],
+                                 {"gmr_phase_acc_cost": 1.})
 
 
 class ContactGapTest(unittest.TestCase):
