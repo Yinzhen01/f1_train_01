@@ -66,6 +66,8 @@ from .x1.x1_gmr_accel_env import X1GMRAccelEnv
 from .x1.x1_gmr_accel_config import X1GMRAccel1Cfg, X1GMRAccel3Cfg, X1GMRAccel10Cfg, X1GMRAccelCfgPPO
 from .x1.x1_gmr_phase_accel_env import X1GMRPhaseAccelEnv
 from .x1.x1_gmr_phase_accel_config import X1GMRPhaseAccelCfg, X1GMRPhaseAccelCfgPPO
+from .x1.x1_gmr_cycle_env import X1GMRCycleEnv
+from .x1.x1_gmr_cycle_config import X1GMRCycleContactCfg, X1GMRCycleSmoothCfg, X1GMRCycleBothCfg, X1GMRCycleCfgPPO
 
 from humanoid.utils.task_registry import task_registry
 
@@ -77,6 +79,9 @@ task_registry.register("x1_gmr_accel_1x", X1GMRAccelEnv, X1GMRAccel1Cfg(), X1GMR
 task_registry.register("x1_gmr_accel_3x", X1GMRAccelEnv, X1GMRAccel3Cfg(), X1GMRAccelCfgPPO())
 task_registry.register("x1_gmr_accel_10x", X1GMRAccelEnv, X1GMRAccel10Cfg(), X1GMRAccelCfgPPO())
 task_registry.register("x1_gmr_phase_accel", X1GMRPhaseAccelEnv, X1GMRPhaseAccelCfg(), X1GMRPhaseAccelCfgPPO())
+task_registry.register("x1_gmr_cycle_contact", X1GMRCycleEnv, X1GMRCycleContactCfg(), X1GMRCycleCfgPPO())
+task_registry.register("x1_gmr_cycle_smooth", X1GMRCycleEnv, X1GMRCycleSmoothCfg(), X1GMRCycleCfgPPO())
+task_registry.register("x1_gmr_cycle_both", X1GMRCycleEnv, X1GMRCycleBothCfg(), X1GMRCycleCfgPPO())
 
 task_registry.register( "x1_dh_stand", X1DHStandEnv, X1DHStandCfg(), X1DHStandCfgPPO() )
 task_registry.register(
