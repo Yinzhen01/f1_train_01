@@ -17,7 +17,30 @@ one environment, seed5, three deterministic finite t0 episodes, no learning.
 The renderer only adds the phase-experiment label; it visualizes recorded
 Isaac Gym states through MuJoCo FK, not MuJoCo resimulation. Output is planned
 under `outputs/policy_videos/gmr_phase_task109_model9000/`.
-Inference task and verified video results will be recorded after execution.
+Registered inference `TASK_20260912_113` completed normally at 14:38:18
+Asia/Shanghai, code `2c509e6dc582c883e7cd1185ab2609ad916b965d`.
+Downloaded rollout record3931105 SHA256 is
+`dccfbc0f6290359dcc99a7143295ff539a6237f750ec7a4774c1424d0f6cfb16`.
+Identity, effective configuration, training runtime properties and trajectory
+timelines passed validation. Three identical deterministic episodes completed
+4.6 seconds without physical termination; not independent robustness trials.
+
+Delivery: `phase_12dof_model9000.mp4` and its `_preview.gif`, 1600x720,
+50fps, 231frames, 4.62s. Full MP4/GIF decoding and first/middle/terminal
+visual checks passed. Maximum cross-engine sole FK discrepancy is 1.0um;
+left/right maximum mesh penetration relative to z=0 is 0.449/0.513mm,
+not PhysX contact depth. Trajectory and comparison data accompany the video.
+
+Against original model8000, 100Hz joint-acceleration RMS rises 66.18 to
+73.57rad/s2 (+11.2%) and mean contacting sole speed rises 0.02340 to
+0.03466m/s (+48.1%). Joint RMSE improves 0.09723 to 0.08984rad and
+displacement rises 1.668 to 1.716m. The expected smoothing benefit is not
+demonstrated; same-budget old1x/model9000 also has better smoothing metrics.
+Contact-error percentages were recomputed for all models with the identical
+reference-phase-only gate (17.34%, 16.10%, 18.21% for original/1x/phase),
+not mixed with historical height-gated percentages. Acceleration comparison
+is 100Hz, not the new 1kHz training statistic; sole speed includes rolling.
+No new training, deployment replacement or monitoring was started.
 
 ## 2026-09-12 swing checkpoint inference and rendering
 
