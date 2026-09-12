@@ -57,6 +57,14 @@ stochastic multi-environment statistic from deterministic rollout RMS.
 
 ## Artifacts and boundary
 
+Media delivery validated on 2026-09-12 at 10:12 CST: all three dual-view videos
+are H264, 1600x720, 50fps, 231 frames, 4.62 seconds. The synchronized four-panel
+comparison adds frozen model8000 and is H264, 1280x1020, with the same frame count
+and timing. Full decode and first/middle/last comparison-frame inspection passed.
+GIF previews are reduced to 12fps and are not suitable for judging high-frequency
+jitter; use the full-rate MP4s. No trajectory smoothing or dynamics resimulation
+was applied. Monitoring is paused after this delivery; no new training is started.
+
 Local artifacts live under `outputs/policy_videos/gmr_accel_comparison/` and the
 three `gmr_accel_{1x,3x,10x}_model9000/` folders. Full data, model hashes,
 configuration manifests, task records, sanitized logs, training curves and
