@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
+import numpy as np
+import tempfile
 import torch
 from humanoid import gmr_cycle as cycle
 from humanoid import gmr_phase_accel as phase
@@ -107,6 +109,58 @@ class CycleMathTest(unittest.TestCase):
         torch.testing.assert_close(cycle.impact_cost(force, gate, 300.), cycle.impact_cost(force * 2, gate, 600.))
         f = lambda x: cycle.impact_cost(torch.tensor([[x, 0.]]), gate, 300.)
         torch.testing.assert_close(f(9000.) - f(6000.), f(6000.) - f(3000.))
+
+
+class CycleProbeTest(unittest.TestCase):
+    def test_training_inference_tensors_can_be_reset_and_probed(self):
+        path = ROOT / 'humanoid/scripts/train_gmr_cycle.py'
+        node = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef)
+                    and n.name == 'paired_probe')
+        # Match the persistent inference tensors produced by PPO rollout.
+        with torch.inference_mode():
+            actions = torch.ones(1, 12)
+        self.assertTrue(actions.is_inference())
+        with self.assertRaises(RuntimeError):
+            actions.zero_()
+        e = SimpleNamespace(num_envs=1, device='cpu', dt=.01, tick=0,
+            cfg=SimpleNamespace(motion_reference=SimpleNamespace(random_start=True)),
+            motion=SimpleNamespace(duration=.12, metadata={'foot_names':['L','R']},
+                sole_local=torch.zeros(2,3), sole_normal_local=torch.zeros(2,3)),
+            dof_names=JOINTS, torques=torch.zeros(1,12), clip_finished=torch.zeros(1),
+            cycle_trace={})
+        e.check_termination = lambda: None
+        original = e.check_termination
+        resets = []
+        def reset(ids):
+            actions.zero_()  # Regression: used to fail immediately here.
+            e.tick = 0
+            resets.append(True)
+        e.reset_idx = reset
+        e.compute_observations = lambda: None
+        e.get_observations = lambda: torch.zeros(1,1)
+        def step(action):
+            e.tick += 1
+            e.cycle_trace = dict(time=(torch.arange(10)[:,None] + 1) * .001 + (e.tick-1)*.01,
+                valid=torch.ones(10,1), acc=torch.zeros(10,12), force_z=torch.zeros(10,2))
+            e.check_termination()
+            return torch.zeros(1,1), None, None, torch.tensor([e.tick >= 12]), {}
+        e.step = step
+        loaded = []
+        policy = SimpleNamespace(eval=lambda: None, act_inference=lambda obs: actions,
+                                 load_state_dict=lambda state, strict: loaded.append(state))
+        scope = dict(torch=torch, np=np, io=io, json=json,
+            capture=lambda env, valid=True: dict(time=env.tick*.01, dof_pos=np.zeros(12)),
+            summarize_rollout=lambda data, duration: dict(completed_clip=True))
+        exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), 'exec'), scope)
+        with tempfile.TemporaryDirectory() as output, contextlib.redirect_stdout(io.StringIO()):
+            artifact = Path(output) / 'probe.pt'
+            reports = scope['paired_probe'](e, policy, {'source':1}, {'final':1}, {}, artifact)
+            self.assertTrue(artifact.is_file())
+            self.assertEqual(set(reports), {'source8000','trained'})
+        self.assertEqual(len(resets), 2)
+        self.assertEqual(loaded[-1], {'final':1})
+        self.assertIs(e.check_termination, original)
+        self.assertTrue(e.cfg.motion_reference.random_start)
 
 
 class CycleLoopTest(unittest.TestCase):

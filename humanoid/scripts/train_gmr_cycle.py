@@ -52,12 +52,15 @@ def validate_config(cfg, baseline, group):
         raise ValueError("Old rewards, reference, observation or dynamics changed")
 
 
+@torch.inference_mode()
 def paired_probe(env, policy, source, final, manifest, output):
     """No learning. Same env0 in the training-sized simulator, two exact policies.
 
     This is NOT the previous single-environment evaluation protocol. Retain full
     100Hz pre-reset states and 1kHz substeps to enable a common-protocol comparison.
     Probing only happens after learning, so it cannot change the training RNG.
+    The PPO rollout creates persistent inference tensors. Resets as well as
+    stepping must remain inside inference_mode when reusing that simulator.
     """
     original_termination = env.check_termination
     original_random_start = env.cfg.motion_reference.random_start
