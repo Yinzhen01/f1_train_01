@@ -53,7 +53,7 @@ def validate_config(cfg, baseline, group):
 
 
 @torch.inference_mode()
-def paired_probe(env, policy, source, final, manifest, output):
+def paired_probe(env, policy, source, final, manifest, output, source_label='source8000'):
     """No learning. Same env0 in the training-sized simulator, two exact policies.
 
     This is NOT the previous single-environment evaluation protocol. Retain full
@@ -76,7 +76,7 @@ def paired_probe(env, policy, source, final, manifest, output):
 
     env.check_termination = observe
     try:
-        for label, state in (('source8000', source), ('trained', final)):
+        for label, state in ((source_label, source), ('trained', final)):
             policy.load_state_dict(state, strict=True)
             env.reset_idx(torch.arange(env.num_envs, device=env.device))
             env.clip_finished.zero_()
@@ -122,12 +122,12 @@ def paired_probe(env, policy, source, final, manifest, output):
     buffer = io.BytesIO()
     np.savez_compressed(buffer, **all_data)
     probe_manifest = dict(manifest, reports=reports,
-        protocol='Post-training deterministic t0, env0 of training-sized plane simulation; source8000 and trained weights; no learning; pre-reset 100Hz states plus 1kHz refreshed DOF/contact; not single-env robustness or Sim2Sim.')
+        protocol='Post-training deterministic t0, env0 of training-sized plane simulation; ' + source_label + ' and trained weights; no learning; pre-reset 100Hz states plus 1kHz refreshed DOF/contact; not single-env robustness or Sim2Sim.')
     torch.save(dict(npz_bytes=buffer.getvalue(), manifest_json=json.dumps(probe_manifest)), output)
     return reports
 
 
-def main():
+def main(restart=False):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument('--checkpoint-file', required=True)
     parser.add_argument('--checkpoint-sha256', required=True)
@@ -138,8 +138,14 @@ def main():
     sys.argv = [sys.argv[0]] + remaining
     args = get_args()
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=LEGGED_GYM_ROOT_DIR).decode().strip()
-    validate_request(args, extra, commit)
-    checkpoint = locate_verified_checkpoint(extra.checkpoint_file, [LEGGED_GYM_ROOT_DIR, '/personal', '/workspace'])
+    if restart:
+        from humanoid.gmr_cycle_restart import validate_restart_request, locate_restart_checkpoint, restore_cycle_runner
+        restart_source = validate_restart_request(args, extra, commit)
+        checkpoint = locate_restart_checkpoint(extra.checkpoint_file,
+            [LEGGED_GYM_ROOT_DIR, '/personal', '/workspace'], restart_source)
+    else:
+        validate_request(args, extra, commit)
+        checkpoint = locate_verified_checkpoint(extra.checkpoint_file, [LEGGED_GYM_ROOT_DIR, '/personal', '/workspace'])
     cfg, train_cfg = task_registry.get_cfgs(args.task)
     baseline = X1GMRSwingCfg()
     baseline.seed = train_cfg.seed
@@ -154,13 +160,14 @@ def main():
     train_cfg.runner.resume = False
     env, _ = task_registry.make_env(args.task, args=args, env_cfg=cfg)
     runner, train_cfg, log_dir = task_registry.make_alg_runner(env, name=args.task, args=args, train_cfg=train_cfg)
-    identity = warm_start_runner(runner, checkpoint)
+    identity = (restore_cycle_runner(runner, checkpoint, restart_source) if restart
+                else warm_start_runner(runner, checkpoint))
     if runner.alg.learning_rate != 1e-5 or runner.alg.schedule != 'fixed' or env.num_envs != args.num_envs:
         raise ValueError('Effective training budget/learning rate mismatch')
     for key, expected in zip(('gmr_cycle_acc', 'gmr_cycle_impact'), GROUPS[args.task][:2]):
         if not np.isclose(env.reward_scales.get(key, 0.) / env.dt, expected, atol=1e-12):
             raise ValueError('Effective reward differs from ablation')
-    final_updates = SOURCE_COMPLETED_UPDATES + args.max_iterations
+    final_updates = identity['next_iteration'] + args.max_iterations
     identity.update(code_commit=commit, task=args.task, purpose=extra.mode,
         reference_sha256=SOURCE_REFERENCE_SHA256, urdf_lf_sha256=SOURCE_URDF_SHA256,
         additional_updates=args.max_iterations, final_completed_updates=final_updates,
@@ -187,7 +194,8 @@ def main():
         raise ValueError('Nonfinite cycle diagnostics')
     source = torch.load(str(checkpoint), map_location=env.device, weights_only=True)['model_state_dict']
     manifest['probe_reports'] = paired_probe(env, runner.alg.actor_critic, source, final['model_state_dict'],
-        manifest, Path(log_dir) / 'model_cycle_probe.pt')
+        manifest, Path(log_dir) / 'model_cycle_probe.pt',
+        source_label=('restart%d' % restart_source['checkpoint'] if restart else 'source8000'))
     torch.save(dict(manifest_json=json.dumps(manifest)), Path(log_dir) / 'model_cycle_manifest.pt')
     print('[gmr-cycle] ' + extra.mode + ' completed', flush=True)
 
