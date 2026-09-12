@@ -79,15 +79,17 @@ def sample_envelope(envelope, times, fps):
 
 def swing_terms(actual_height, target_height, phase_gate, vertical_force,
                 valid, settings):
-    # The reference must independently require genuine clearance. A moving
-    # heel/toe near the floor is not necessarily an unintended swing contact.
+    # Clearance retains its height gate. Only the NEW phase experiment opts
+    # out of this gate for contact: a low reference foot can still be in swing.
     height_gate = smoothstep((target_height - settings.gate_height_low_m) /
                              (settings.gate_height_full_m - settings.gate_height_low_m))
     gate = phase_gate * height_gate * valid[:, None]
+    contact_gate = (phase_gate * valid[:, None]
+                    if getattr(settings, "contact_phase_only", False) else gate)
     deficit = (target_height - actual_height - settings.height_tolerance_m).clamp_min(0.)
     normalized = (deficit / settings.height_sigma_m).square().clamp(max=settings.max_height_cost)
     contact = (vertical_force > settings.contact_threshold_n).to(actual_height.dtype)
-    return {"gate": gate, "height_deficit": deficit,
-            "unexpected_contact": contact * gate,
+    return {"gate": gate, "contact_gate": contact_gate, "height_deficit": deficit,
+            "unexpected_contact": contact * contact_gate,
             "clearance_cost": (normalized * gate).sum(dim=1),
-            "contact_cost": (contact * gate).sum(dim=1)}
+            "contact_cost": (contact * contact_gate).sum(dim=1)}

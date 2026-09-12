@@ -122,13 +122,15 @@ class LeggedRobot(BaseTask):
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
         self.render()
-        for _ in range(self.cfg.control.decimation):
+        self._begin_physics_step()
+        for substep in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
             self.gym.simulate(self.sim)
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
+            self._after_physics_substep(substep)
             if self.cfg.domain_rand.add_dof_lag:
                 q = self.dof_pos
                 dq = self.dof_vel
@@ -157,6 +159,14 @@ class LeggedRobot(BaseTask):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+
+    def _begin_physics_step(self):
+        """Optional read-only reward sampling hook; existing tasks do nothing."""
+        pass
+
+    def _after_physics_substep(self, substep):
+        """Observe freshly refreshed DOF state, before reset/history updates."""
+        pass
 
     def reset(self):
         """ Reset all robots"""

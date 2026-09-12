@@ -62,12 +62,14 @@ class X1GMRSwingEnv(X1GMRSmoothEnv):
         super().compute_reward()
         gate = self.swing_costs["gate"]
         count = gate.sum().clamp_min(1.)
+        contact_gate = self.swing_costs["contact_gate"]
         speed = torch.linalg.vector_norm(self._sole_velocities()[:, :, :2], dim=-1)
         unexpected = self.swing_costs["unexpected_contact"]
         self.swing_diagnostics = {
             "gmr_swing_gate_mean": gate.mean(),
+            "gmr_swing_contact_gate_mean": contact_gate.mean(),
             "gmr_swing_deficit_mean_m": (gate * self.swing_costs["height_deficit"]).sum() / count,
-            "gmr_swing_unexpected_contact_fraction": unexpected.sum() / count,
+            "gmr_swing_unexpected_contact_fraction": unexpected.sum() / contact_gate.sum().clamp_min(1.),
             "gmr_swing_contact_speed_mps": (speed * unexpected).sum() / unexpected.sum().clamp_min(1.),
             "gmr_swing_clearance_cost": self.swing_costs["clearance_cost"].mean(),
             "gmr_swing_contact_cost": self.swing_costs["contact_cost"].mean(),
