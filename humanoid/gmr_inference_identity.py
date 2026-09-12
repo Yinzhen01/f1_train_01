@@ -33,6 +33,19 @@ PROFILES = {
     },
 }
 
+# Completed, downloaded and strictly validated model9000 acceleration sweep.
+PROFILES.update({
+    'x1_gmr_accel_' + group: dict(
+        PROFILES['x1_gmr_swing'], source_task=source_task, checkpoint=9000,
+        training_commit='eccd14eed21ffe980c90abd7dc740d043e01fcaf',
+        checkpoint_sha256=digest)
+    for group, source_task, digest in (
+        ('1x', 'TASK_20260912_033', 'd258477d65787c7b89740eb4df4261b04e2fa1b204fdb9e64400a71ab595bdae'),
+        ('3x', 'TASK_20260912_034', '576d5cc511def5318a6c41d4b8e1aadd6dda56b2986f2f2f58ad806a32a9cbb7'),
+        ('10x', 'TASK_20260912_035', '22fb7520a219a265c39b627e8c453136adc57bed019ab4dccff4614f0a58bb37'),
+    )
+})
+
 
 def validate_identity(task, source_task, checkpoint_sha256, motion_sha256, checkpoint=None):
     if task not in PROFILES:

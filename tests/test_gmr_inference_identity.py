@@ -70,6 +70,30 @@ class InferenceIdentityTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source_task'):
             self.check('x1_gmr_swing', source_task='TASK_20260911_116')
 
+    def test_acceleration_final_profiles(self):
+        for group, suffix in (('1x', '033'), ('3x', '034'), ('10x', '035')):
+            task = 'x1_gmr_accel_' + group
+            p = PROFILES[task]
+            result = validate_identity(task, p['source_task'], p['checkpoint_sha256'], p['motion_sha256'], 9000)
+            self.assertEqual(result['source_task'], 'TASK_20260912_' + suffix)
+            self.assertEqual(result['training_commit'], 'eccd14eed21ffe980c90abd7dc740d043e01fcaf')
+            self.assertEqual(result['num_actions'], 12)
+            self.assertEqual(result['urdf_lf_sha256'], PROFILES['x1_gmr_swing']['urdf_lf_sha256'])
+            for checkpoint in (8000, 8020, 8900):
+                with self.assertRaisesRegex(ValueError, 'checkpoint number'):
+                    validate_identity(task, p['source_task'], p['checkpoint_sha256'], p['motion_sha256'], checkpoint)
+
+    def test_acceleration_cross_group_rejected(self):
+        tasks = ['x1_gmr_accel_' + group for group in ('1x', '3x', '10x')]
+        for task in tasks:
+            for other in tasks + ['x1_gmr_swing']:
+                if task == other:
+                    continue
+                with self.assertRaisesRegex(ValueError, 'checkpoint_sha256'):
+                    self.check(task, checkpoint_sha256=PROFILES[other]['checkpoint_sha256'])
+                with self.assertRaisesRegex(ValueError, 'source_task'):
+                    self.check(task, source_task=PROFILES[other]['source_task'])
+
 
 if __name__ == '__main__':
     unittest.main()

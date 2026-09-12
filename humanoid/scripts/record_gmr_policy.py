@@ -121,7 +121,7 @@ def main():
     env, cfg = task_registry.make_env(args.task, args=args, env_cfg=cfg)
     policy = ActorCriticDH(env.num_short_obs, env.num_single_obs, env.num_privileged_obs,
                           env.num_actions, **class_to_dict(train_cfg.policy)).to(env.device)
-    state = torch.load(str(checkpoint), map_location=env.device, weights_only=False)
+    state = torch.load(str(checkpoint), map_location=env.device, weights_only=True)
     # This runner names the final file by update count, but stores self.it
     # (zero-based) inside it: model_5000.pt therefore contains iter=4999.
     stored_iteration = int(state['iter'])

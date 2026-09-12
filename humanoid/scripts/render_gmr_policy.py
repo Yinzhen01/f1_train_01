@@ -181,6 +181,9 @@ def render(archive, manifest, urdf, output, episode=0, limit_frames=None):
             frame = np.concatenate(panels, axis=1)
             cv2.rectangle(frame, (0, 610), (1600, 720), (25, 30, 37), -1)
             variant = {'x1_gmr_swing': 'SWING 12DOF',
+                       'x1_gmr_accel_1x': 'ACCEL 1x CONTROL 12DOF',
+                       'x1_gmr_accel_3x': 'ACCEL 3x 12DOF',
+                       'x1_gmr_accel_10x': 'ACCEL 10x 12DOF',
                        'x1_gmr_upright': 'UPRIGHT 12DOF', 'x1_gmr_smooth': 'SMOOTH 12DOF',
                        'x1_gmr_29dof': 'F1 V1.4 29DOF'}.get(meta.get('task'), 'BASELINE 12DOF')
             label(frame, 'GMR KIT317 %s | model_%d | ISAAC GYM POLICY' %
