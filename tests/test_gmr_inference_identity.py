@@ -94,6 +94,28 @@ class InferenceIdentityTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'source_task'):
                     self.check(task, source_task=PROFILES[other]['source_task'])
 
+    def test_phase_formal_identity_and_checkpoint(self):
+        task = 'x1_gmr_phase_accel'
+        p = PROFILES[task]
+        result = validate_identity(task, p['source_task'], p['checkpoint_sha256'], p['motion_sha256'], 9000)
+        self.assertEqual(result['source_task'], 'TASK_20260912_109')
+        self.assertEqual(result['training_commit'], '9eb084ed63c1c4d10fc70f4a50e3bf0cfbec10bd')
+        self.assertEqual(result['checkpoint_sha256'], '391ec534f54c73c8272ebc7160b4dec28cf18599f6330e6baca9481b87fc0631')
+        self.assertEqual(result['num_actions'], 12)
+        self.assertEqual(result['urdf_lf_sha256'], PROFILES['x1_gmr_swing']['urdf_lf_sha256'])
+        for checkpoint in (8000, 8020, 8900):
+            with self.assertRaisesRegex(ValueError, 'checkpoint number'):
+                validate_identity(task, p['source_task'], p['checkpoint_sha256'], p['motion_sha256'], checkpoint)
+
+    def test_phase_rejects_previous_sweep_models_and_smoke_source(self):
+        for other in ('x1_gmr_swing', 'x1_gmr_accel_1x', 'x1_gmr_accel_3x', 'x1_gmr_accel_10x'):
+            with self.assertRaisesRegex(ValueError, 'checkpoint_sha256'):
+                self.check('x1_gmr_phase_accel', checkpoint_sha256=PROFILES[other]['checkpoint_sha256'])
+            with self.assertRaisesRegex(ValueError, 'source_task'):
+                self.check('x1_gmr_phase_accel', source_task=PROFILES[other]['source_task'])
+        with self.assertRaisesRegex(ValueError, 'source_task'):
+            self.check('x1_gmr_phase_accel', source_task='TASK_20260912_076')
+
 
 if __name__ == '__main__':
     unittest.main()

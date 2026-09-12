@@ -1,5 +1,24 @@
 # Finite GMR policy inference
 
+## 2026-09-12 phase acceleration checkpoint inference
+
+Training `TASK_20260912_109` completed normally at 14:08:59 Asia/Shanghai,
+code `9eb084ed63c1c4d10fc70f4a50e3bf0cfbec10bd`, 1000 additional updates
+from original task171/model8000. Downloaded final model record 3931070 is
+10,323,330 bytes, SHA256
+`391ec534f54c73c8272ebc7160b4dec28cf18599f6330e6baca9481b87fc0631`.
+Stored iteration is 8999; all 33 tensors are finite and strict loading/forward
+passed. Effective environment and PPO configuration equal smoke076 except
+environment count, update budget and run name. This is not a gait-quality result.
+
+User approved inference-only publication. `x1_gmr_phase_accel` is bound to this
+exact checkpoint, source task, reference and URDF. The unchanged recorder uses
+one environment, seed5, three deterministic finite t0 episodes, no learning.
+The renderer only adds the phase-experiment label; it visualizes recorded
+Isaac Gym states through MuJoCo FK, not MuJoCo resimulation. Output is planned
+under `outputs/policy_videos/gmr_phase_task109_model9000/`.
+Inference task and verified video results will be recorded after execution.
+
 ## 2026-09-12 swing checkpoint inference and rendering
 
 Training `TASK_20260911_171` completed normally at 2026-09-11 17:13:28

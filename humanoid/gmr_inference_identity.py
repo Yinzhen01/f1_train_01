@@ -46,6 +46,12 @@ PROFILES.update({
     )
 })
 
+# Completed task109 formal phase run, downloaded and strictly validated.
+PROFILES['x1_gmr_phase_accel'] = dict(
+    PROFILES['x1_gmr_swing'], source_task='TASK_20260912_109', checkpoint=9000,
+    training_commit='9eb084ed63c1c4d10fc70f4a50e3bf0cfbec10bd',
+    checkpoint_sha256='391ec534f54c73c8272ebc7160b4dec28cf18599f6330e6baca9481b87fc0631')
+
 
 def validate_identity(task, source_task, checkpoint_sha256, motion_sha256, checkpoint=None):
     if task not in PROFILES:
