@@ -12,6 +12,8 @@ class AMPAlgorithmAdapter:
         self.reset_checks = 0
         self.warmup_excluded = 0
         self.latest = {}
+        self.rollout_sums = {}
+        self.rollout_steps = 0
 
     def __getattr__(self, name):
         return getattr(self.ppo, name)
@@ -29,11 +31,19 @@ class AMPAlgorithmAdapter:
             if (self.bridge.stream.history.count[ids] != 0).any():
                 raise RuntimeError("New episode has old AMP history")
             self.reset_checks += len(ids)
-        self.latest.update(task_reward=task, style_reward=float(metrics["style_reward"].mean()),
-                           valid_fraction=float(valid.float().mean()))
+        values = dict(task_reward=task, style_reward=float(metrics["style_reward"].mean()),
+                      mixed_reward=float(metrics["mixed_reward"].mean()), valid_fraction=float(valid.float().mean()))
+        for key, value in values.items():
+            self.rollout_sums[key] = self.rollout_sums.get(key, 0.) + value
+        self.rollout_steps += 1
         rewards.copy_(metrics["mixed_reward"])
 
     def update(self):
+        if self.rollout_steps < 1:
+            raise RuntimeError("No rollout reward samples")
+        self.latest = {key: value/self.rollout_steps for key, value in self.rollout_sums.items()}
+        self.rollout_sums.clear()
+        self.rollout_steps = 0
         losses = self.ppo.update()
         if not all(torch.isfinite(torch.as_tensor(x)) for x in losses):
             raise ValueError("Nonfinite PPO loss")

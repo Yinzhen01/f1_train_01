@@ -123,4 +123,9 @@ def validate_cloud_smoke(experiment, certificate, fingerprint):
         raise ValueError("Wrong smoke budget")
     if certificate.get("valid_windows", 0) <= 0:
         raise ValueError("No valid AMP history observed")
+    if experiment.cfg.get("recovery"):
+        if (certificate.get("no_dr_configuration_verified") is not True or
+                certificate.get("smoke_evaluation_verified") is not True or
+                certificate.get("rsi_reset_count", 0) < 32 or certificate.get("replay_window_count", 0) < 1):
+            raise ValueError("Recovery smoke must verify no-DR, RSI and policy replay")
     return True

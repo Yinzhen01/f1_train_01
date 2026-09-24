@@ -165,6 +165,11 @@ class URDFKinematics:
         self.limits = np.array([limits[n] for n in spec.joint_names])
 
     def key_positions(self, joint_pos, joint_names):
+        poses = self.link_poses(joint_pos, joint_names)
+        return np.stack([poses[b][1] for b in self.spec.body_names], axis=1)
+
+    def link_poses(self, joint_pos, joint_names):
+        """Root-relative rotations and positions, also used for reset geometry."""
         q = np.asarray(joint_pos, dtype=np.float64)
         qi = name_indices(joint_names, self.spec.joint_names)
         q = q[:, qi]
@@ -186,4 +191,4 @@ class URDFKinematics:
                 progressed = True
             if not progressed:
                 raise ValueError("URDF has disconnected/cyclic/unsupported root chain")
-        return np.stack([poses[b][1] for b in self.spec.body_names], axis=1)
+        return poses
