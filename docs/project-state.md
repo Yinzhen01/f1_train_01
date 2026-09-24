@@ -11,6 +11,9 @@ bridge参考足滑较原组−30.7%、加速度−13.1%、示范距离−26.0%�
 下一步拟第8/9轮同源bridge1500、相同奖励，仅比较6秒/60秒训练episode，每组仍
 追加250至1750，先新smoke后正式；尚未实现/创建任务。DR和噪声继续锁定，
 不能把长episode与PPO更新预算混淆。详细数据/曲线在amp-style-signal.md文末。
+固定env0两种60秒双视角视频及最早失败env10视频已渲染、完整解码与关键帧核验；
+最终目录outputs/amp-signal/render-098-long60-widefloor-v2和failure-098-reference-env10-v2。
+230项CPU测试通过，工具/分析提交dbf2af8；没有新增训练，也不宣称Sim2Real验证。
 下方“待60秒结果”条目为历史快照，不再代表当前状态。
 
 2026-09-24 风格信号分支 experiment/f1-amp-style-signal：第6/7轮已完成，

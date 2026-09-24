@@ -245,3 +245,18 @@ TASK_20260924_{097,098}-status-01/logs-01.json。实时平台状态优先于此�
 - 失败前曲线`drift-098-long60/reference_failure_env10.png`等，保留全部初态总览。
 - 视频渲染真实Gym状态，不做MuJoCo动力学。原8m可视地板在长距离行走时移出画面，
   仅新生成的渲染scene按轨迹范围扩大地板；训练资产与物理不变。
+
+最终视频已渲染、完整解码，并检查首/中/末帧；两个固定env0长视频均1280×600、
+50fps、3001帧，对应60秒物理轨迹。关键刚体FK误差分别5.033e-6/3.099e-6m。
+固定env0两种初态均未倒，不代表全部32条通过。另专门输出最早失败的reference
+env10（12.34秒、618帧、FK误差2.534e-6m），不是挑选正常案例替代失败统计。
+
+- [60秒静止起步双视角](../outputs/amp-signal/render-098-long60-widefloor-v2/standing/policy_dual_view.mp4)
+- [60秒参考起步双视角](../outputs/amp-signal/render-098-long60-widefloor-v2/reference/policy_dual_view.mp4)
+- [最早失败样本完整视频](../outputs/amp-signal/failure-098-reference-env10-v2/reference/policy_dual_view.mp4)
+- [失败末段GIF](../outputs/amp-signal/failure-098-reference-env10-v2/reference/failure_last4s.gif)，44帧、4.4秒。
+
+最终采用widefloor-v2目录；旧inspection视频及一次路径类型错误产生的空输出目录
+保留为本地过程记录，不作为最终视频。全套230项本地测试通过（52.97秒），
+分析/审计/渲染工具提交dbf2af8；云端推理仍是55afa2b，不混淆两种代码身份。
+没有增加训练轮次，没有解锁DR。
