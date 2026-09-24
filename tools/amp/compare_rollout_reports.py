@@ -98,9 +98,10 @@ def main():
             axis.set_title(title); axis.grid(axis='y', alpha=.25)
             if name == 'vx':
                 axis.axhline(.45, color='gray', ls='--')
-        counts = ', '.join('%s %s/%s' % (label, result[label]['modes'][mode]['survived'], result[label]['modes'][mode]['n']) for label in labels)
-        fig.suptitle(mode+' initial state | survived 20s: '+counts+'\nEach dot is one initial state; red=failed, black=observed mean; post-2s metrics', fontsize=11)
-        fig.tight_layout(rect=(0, 0, 1, .95)); fig.savefig(args.output/(mode+'_comparison.png'), dpi=150); plt.close(fig)
+        counts = ['%s %s/%s' % (label, result[label]['modes'][mode]['survived'], result[label]['modes'][mode]['n']) for label in labels]
+        count_lines = '\n'.join(', '.join(counts[i:i+4]) for i in range(0, len(counts), 4))
+        fig.suptitle(mode+' initial state | survived 20s\n'+count_lines+'\nEach dot is one initial state; red=failed, black=observed mean; post-2s metrics', fontsize=10)
+        fig.tight_layout(rect=(0, 0, 1, .90)); fig.savefig(args.output/(mode+'_comparison.png'), dpi=150); plt.close(fig)
     print(json.dumps(dict(output=str(args.output), survival={label: {m: v['survived'] for m, v in r['modes'].items()} for label, r in result.items()})))
 
 
