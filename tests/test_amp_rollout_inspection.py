@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import hashlib
+import tempfile
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -74,6 +76,17 @@ class InspectionTests(unittest.TestCase):
         self.assertFalse(report["survived"])
         self.assertIsNone(report["post_2s"])
         self.assertIsNone(geometry)
+
+    def test_mounted_lookup_requires_exact_hash(self):
+        from tools.amp.evaluate_mounted import locate_checkpoint
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            path = root/"model_1000_test.pt"
+            path.write_bytes(b"owned-test-fixture")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            self.assertEqual(locate_checkpoint([root, root], digest), path.resolve())
+            with self.assertRaises(FileNotFoundError):
+                locate_checkpoint([root], "0"*64)
 
 
 if __name__ == "__main__":
