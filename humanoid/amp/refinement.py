@@ -100,6 +100,13 @@ def select_environment(experiment_name):
     from humanoid.envs.x1.x1_amp_env import X1AMPEnv
     from humanoid.envs.x1.x1_amp_recovery_config import X1AMPRecoveryCfg, X1AMPRecoveryCfgPPO
     from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
+    if experiment_name in ('horizon_short', 'horizon_long'):
+        from .horizon import apply_horizon_config
+        from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
+        from humanoid.envs.x1.x1_amp_refine_env import X1AMPRefineEnv
+        cfg = X1AMPRefineCfg()
+        apply_horizon_config(cfg, experiment_name.split('_', 1)[1])
+        return cfg, X1AMPRecoveryCfgPPO(), X1AMPRefineEnv
     if experiment_name == "baseline":
         return X1AMPCfg(), X1AMPCfgPPO(), X1AMPEnv
     if experiment_name in ("recovery", "recovery_static", "refine_control"):

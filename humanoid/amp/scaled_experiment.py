@@ -143,4 +143,9 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
     if experiment.cfg.get("signal"):
         from .signal import validate_signal_certificate
         validate_signal_certificate(experiment, certificate.get("continuation") or {})
+    if experiment.cfg.get("horizon"):
+        from .horizon import validate_horizon_certificate, validate_horizon_probe
+        validate_horizon_certificate(experiment, certificate.get("continuation") or {})
+        validate_horizon_probe(certificate.get('horizon_diagnostics') or {},
+                               experiment.cfg['horizon']['episode_length_s'], True)
     return True

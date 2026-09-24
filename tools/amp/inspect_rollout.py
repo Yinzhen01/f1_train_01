@@ -319,6 +319,8 @@ def main():
                   for group in ("control", "smooth", "noamp")})
     files.update({"f1_amp_walk02_signal_"+group: "lafan_walk02_signal_"+group+".json"
                   for group in ("signed", "bridge")})
+    files.update({'f1_amp_walk02_horizon_'+group: 'lafan_walk02_horizon_'+group+'.json'
+                  for group in ('short', 'long')})
     experiment = ScaledExperiment(ROOT, ROOT/"configs/amp"/files[experiment_name])
     if manifest["identity"] != experiment.identity() or manifest["dof_names"] != list(experiment.spec.joint_names):
         raise ValueError("Recorded/configuration identity mismatch")
@@ -332,7 +334,7 @@ def main():
         if checkpoint["amp_identity"] != experiment.identity():
             raise ValueError("Discriminator identity mismatch")
         discriminator = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std,
-                                          style_floor=experiment.cfg.get("signal", {}).get("style_floor", 0.))
+                                          style_floor=experiment.cfg.get("signal", experiment.cfg.get('horizon', {})).get("style_floor", 0.))
         discriminator.load_state_dict(checkpoint["amp_discriminator_state_dict"], strict=True)
         discriminator.eval()
     auditor, auditor_info = None, None

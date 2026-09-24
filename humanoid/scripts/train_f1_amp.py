@@ -20,6 +20,8 @@ from humanoid.amp.learnability import assert_no_domain_randomization, validate_l
 from humanoid.amp.refinement import GROUPS, validate_refinement, select_environment, locate_source, warm_start
 from humanoid.amp.interrupted import interrupted_source, restart_budget, recover_interrupted
 from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal, warm_start_signal
+from humanoid.amp.horizon import (HORIZON_GROUPS, validate_horizon, warm_start_horizon,
+                                 HorizonProbe, validate_horizon_probe)
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -34,7 +36,7 @@ def main():
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
     parser.add_argument("--recover-interrupted", action="store_true")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS, default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -45,12 +47,17 @@ def main():
         raise ValueError("Unapproved cloud checkout or task")
     refining = extra.experiment in GROUPS
     signaling = extra.experiment in SIGNAL_GROUPS
-    resuming = refining or signaling
+    horizoning = extra.experiment in HORIZON_GROUPS
+    resuming = refining or signaling or horizoning
     if extra.recover_interrupted and not refining:
         raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
     if args.load_run is not None or args.training_profile or (args.resume and not resuming):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
-    if signaling:
+    if horizoning:
+        validate_horizon(experiment)
+        if not args.resume or args.checkpoint != 1500:
+            raise ValueError('Horizon experiments require explicit bridge1500 source')
+    elif signaling:
         validate_signal(experiment)
         if not args.resume or args.checkpoint != 1250:
             raise ValueError("Style-signal experiments require explicit smooth1250 source")
@@ -74,6 +81,8 @@ def main():
         train_cfg.algorithm.learning_rate = experiment.cfg["refinement"]["learning_rate"]
     elif signaling:
         train_cfg.algorithm.learning_rate = experiment.cfg["signal"]["learning_rate"]
+    elif horizoning:
+        train_cfg.algorithm.learning_rate = experiment.cfg['horizon']['learning_rate']
     cfg.seed = train_cfg.seed = 5
     cfg, train_cfg = update_cfg_from_args(cfg, train_cfg, args)
     train_cfg.runner.experiment_name = experiment.cfg["experiment"]
@@ -93,7 +102,10 @@ def main():
     config = {**class_to_dict(train_cfg), **class_to_dict(cfg)}
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
     continuation = None
-    if signaling:
+    if horizoning:
+        source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg['horizon']['source_checkpoint_sha256'])
+        continuation = warm_start_horizon(runner, experiment, source)
+    elif signaling:
         source = locate_source((repo, Path("/workspace"), Path("/personal")), experiment.cfg["signal"]["source_checkpoint_sha256"])
         continuation = warm_start_signal(runner, experiment, source)
     elif refining:
@@ -106,22 +118,29 @@ def main():
         output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if resuming else
                           ("model_rollout_%04d.pt" % completed_updates))
         digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
-        subprocess.run([sys.executable, str(repo/"humanoid/scripts/record_amp_policy.py"),
+        extended = horizoning and not smoke
+        command = [sys.executable, str(repo/"humanoid/scripts/record_amp_policy.py"),
             "--checkpoint-file", str(checkpoint), "--checkpoint-sha256", digest,
             "--expected-commit", commit, "--experiment", extra.experiment,
-            "--output", str(output), "--duration", "1" if smoke else "20",
+            "--output", str(output), "--duration", "1" if smoke else ("60" if extended else "20"),
             "--num_envs", "2" if smoke else "16", "--seed", "5", "--headless",
             "--task", experiment.cfg["experiment"], "--sim_device", args.sim_device,
-            "--rl_device", args.rl_device], cwd=str(repo), check=True, timeout=900)
+            "--rl_device", args.rl_device]
+        if extended: command.append('--extended-validation')
+        subprocess.run(command, cwd=str(repo), check=True, timeout=900)
         record = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
         if record["checkpoint_sha256"] != digest or record["identity"] != experiment.identity():
             raise ValueError("Independent evaluation artifact mismatch")
+        if extended and (record.get('evaluation_protocol') != 'fixed60_independent_mode_seeds' or
+                         record.get('mode_seeds') != {'standing': 5, 'reference': 105}):
+            raise ValueError('Wrong matched long-horizon evaluation protocol')
         return True
     if extra.mode == "formal" and extra.experiment != "baseline":
         runner.evaluation_callback = evaluate
     if extra.mode == "smoke":
         # Deliberately exercise one terminal/reset path, not just no-reset frames.
         env.amp_force_reset_step = env.common_step_counter+37
+    horizon_probe = HorizonProbe(env, smoke=extra.mode == 'smoke') if horizoning else None
     actor_before = {k: v.detach().cpu().clone() for k, v in runner.alg.actor_critic.state_dict().items()}
     d_before = {k: v.detach().cpu().clone() for k, v in runner.amp_trainer.discriminator.state_dict().items()}
     manifest = dict(identity=experiment.identity(), implementation_fingerprint=fingerprint, code_commit=commit,
@@ -157,6 +176,10 @@ def main():
         replay_window_count=0 if runner.alg.bridge.replay is None else runner.alg.bridge.replay.count,
         smoke_evaluation_verified=smoke_evaluation_verified,
         continuation=continuation, effectiveness_verified=False, dr_unlocked=False)
+    if horizon_probe is not None:
+        certificate['horizon_diagnostics'] = horizon_probe.report()
+        validate_horizon_probe(certificate['horizon_diagnostics'], experiment.cfg['horizon']['episode_length_s'],
+                               extra.mode == 'smoke')
     if extra.mode == "smoke":
         validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=extra.recover_interrupted)
     manifest["completion"] = certificate
