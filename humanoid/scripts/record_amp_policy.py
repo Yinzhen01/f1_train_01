@@ -26,8 +26,9 @@ from humanoid.amp.learnability import assert_no_domain_randomization
 from humanoid.amp.recovery import FOOT_NAMES
 from humanoid.amp.refinement import GROUPS, select_environment
 from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal
+from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from humanoid.utils import get_args, task_registry
-from humanoid.utils.helpers import class_to_dict
+from humanoid.utils.helpers import class_to_dict, set_seed
 
 
 def sha(path):
@@ -64,6 +65,7 @@ def main():
     parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
+    parser.add_argument("--extended-validation", action="store_true")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -72,8 +74,7 @@ def main():
         raise ValueError("Evaluation checkout/checkpoint identity mismatch")
     if extra.output.exists() or extra.output.with_suffix(".json").exists():
         raise FileExistsError(extra.output)
-    if args.num_envs not in (2, 16) or extra.duration not in (1., 20.):
-        raise ValueError("Unexpected independent evaluation budget")
+    validate_evaluation_budget(args.num_envs, extra.duration, extra.extended_validation)
     cfg_name = "lafan_walk02_s092.json" if extra.experiment == "baseline" else "lafan_walk02_%s.json" % extra.experiment
     experiment = ScaledExperiment(repo, repo/"configs/amp"/cfg_name)
     if extra.experiment in SIGNAL_GROUPS:
@@ -134,7 +135,10 @@ def main():
     env.check_termination = check_and_capture
     arrays, summaries = {}, {}
     modes = ("standing",) if extra.experiment == "baseline" else ("standing", "reference")
+    mode_seeds = independent_mode_seeds(args.seed, extra.extended_validation)
     for mode in modes:
+        if mode_seeds is not None:
+            set_seed(mode_seeds[mode])
         recording = False
         if extra.experiment != "baseline":
             env.rsi_enabled = mode == "reference"
@@ -182,6 +186,8 @@ def main():
             control_dt=env.dt, physics_dt=env.sim_params.dt),
         policy_deterministic=True, capture="pre-reset; valid stops after first failure",
         effectiveness_verified=False, dr_unlocked=False)
+    if extra.extended_validation:
+        manifest.update(evaluation_protocol="fixed60_independent_mode_seeds", mode_seeds=mode_seeds)
     packed = io.BytesIO()
     np.savez_compressed(packed, **arrays)
     extra.output.parent.mkdir(parents=True, exist_ok=True)

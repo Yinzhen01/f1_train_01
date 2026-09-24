@@ -8,16 +8,18 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def locate_checkpoint(roots, digest):
+def locate_checkpoint(roots, digest, pattern='model_1000*.pt'):
+    if pattern not in ('model_1000*.pt', 'model_8801500*.pt'):
+        raise ValueError('Unapproved checkpoint search pattern')
     matches = []
     for root in roots:
         if root.is_dir():
-            for path in root.rglob("model_1000*.pt"):
+            for path in root.rglob(pattern):
                 if hashlib.sha256(path.read_bytes()).hexdigest() == digest:
                     matches.append(path.resolve())
     matches = sorted(set(matches))
     if not matches:
-        raise FileNotFoundError("No mounted model1000 matches the requested SHA256")
+        raise FileNotFoundError("No mounted checkpoint matches the requested pattern and SHA256")
     return matches[0]
 
 
