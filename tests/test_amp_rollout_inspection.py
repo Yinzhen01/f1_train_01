@@ -100,6 +100,19 @@ class InspectionTests(unittest.TestCase):
         text = '[SDK] upload[f1-amp-update] {"iteration":1001}[SDK] done\n[f1-amp-update] {"iteration":1002}\n'
         self.assertEqual([r['iteration'] for r in parse_updates(text)], [1001, 1002])
 
+    def test_comparison_keeps_failed_episodes_and_exposes_missing_metrics(self):
+        from tools.amp.compare_rollout_reports import summarize
+        rows = [dict(survived=True, post_2s={'vx_mean': .45}),
+                dict(survived=False, post_2s={'vx_mean': .15}),
+                dict(survived=False, post_2s=None)]
+        all_observed, survivors = summarize(rows), summarize(rows, True)
+        self.assertEqual(all_observed['vx']['n'], 2)
+        self.assertAlmostEqual(all_observed['vx']['mean'], .3)
+        self.assertEqual(survivors['vx']['n'], 1)
+        self.assertAlmostEqual(survivors['vx']['mean'], .45)
+        self.assertEqual(all_observed['slip']['n'], 0)
+        self.assertIsNone(all_observed['slip']['mean'])
+
     def test_mounted_lookup_requires_exact_hash(self):
         from tools.amp.evaluate_mounted import locate_checkpoint
         with tempfile.TemporaryDirectory() as folder:
