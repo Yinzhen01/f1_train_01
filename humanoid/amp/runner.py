@@ -17,8 +17,10 @@ from .learnability import evaluation_checkpoint_name
 class AMPOnPolicyRunner(DHOnPolicyRunner):
     def __init__(self, env, train_cfg, experiment, log_dir, device):
         super().__init__(env, train_cfg, log_dir, device)
-        d = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std).to(device)
-        self.amp_trainer = DiscriminatorTrainer(d)
+        signal = experiment.cfg.get("signal", {})
+        d = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std,
+                             style_floor=signal.get("style_floor", 0.)).to(device)
+        self.amp_trainer = DiscriminatorTrainer(d, bridge_gradient_penalty=signal.get("bridge_gradient_penalty", 0.))
         bridge = AMPBridge(experiment.spec, self.amp_trainer, env.num_envs, experiment.cfg["reward"], device,
                            recovery_config=experiment.cfg.get("recovery"))
         env.attach_amp(bridge, experiment)

@@ -140,4 +140,7 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
             actual.get("actor_and_discriminator_restored") is not True or
             actual.get("optimizers_restored") is not True or actual.get("replay_windows") != 50000):
             raise ValueError("Refinement smoke lacks matched warm-start proof")
+    if experiment.cfg.get("signal"):
+        from .signal import validate_signal_certificate
+        validate_signal_certificate(experiment, certificate.get("continuation") or {})
     return True

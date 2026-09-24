@@ -69,9 +69,9 @@ def warm_start(runner, experiment, checkpoint):
         source_completed_updates=1000, **restored)
 
 
-def restore_learning_state(runner, experiment, state):
+def restore_learning_state(runner, experiment, state, learning_rate=None):
     """Used only after the caller verifies exact file hash, identity and update."""
-    cfg = experiment.cfg["refinement"]
+    learning_rate = experiment.cfg["refinement"]["learning_rate"] if learning_rate is None else learning_rate
     actor = runner.alg.actor_critic
     actor.load_state_dict(state["model_state_dict"], strict=True)
     runner.alg.optimizer.load_state_dict(state["optimizer_state_dict"])
@@ -85,14 +85,14 @@ def restore_learning_state(runner, experiment, state):
     runner.alg.bridge.replay.load_state_dict(state["amp_replay_state"], runner.device)
     for optimizer in (runner.alg.optimizer, runner.alg.state_estimator_optimizer):
         for group in optimizer.param_groups:
-            group["lr"] = cfg["learning_rate"]
-    runner.alg.ppo.learning_rate = cfg["learning_rate"]
+            group["lr"] = learning_rate
+    runner.alg.ppo.learning_rate = learning_rate
     runner.current_learning_iteration = state["completed_updates"]
     runner.it = state["completed_updates"]-1
     runner.alg.updates = state["completed_updates"]
     return dict(actor_and_discriminator_restored=True,
         optimizers_restored=True, replay_windows=runner.alg.bridge.replay.count,
-        learning_rate=cfg["learning_rate"], rng="fresh seed5 and real freshly-reset history, not source RNG continuation")
+        learning_rate=learning_rate, rng="fresh seed5 and real freshly-reset history, not source RNG continuation")
 
 
 def select_environment(experiment_name):
@@ -104,7 +104,7 @@ def select_environment(experiment_name):
         return X1AMPCfg(), X1AMPCfgPPO(), X1AMPEnv
     if experiment_name in ("recovery", "recovery_static", "refine_control"):
         return X1AMPRecoveryCfg(), X1AMPRecoveryCfgPPO(), X1AMPRecoveryEnv
-    if experiment_name in ("refine_smooth", "refine_noamp"):
+    if experiment_name in ("refine_smooth", "refine_noamp", "signal_signed", "signal_bridge"):
         from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
         from humanoid.envs.x1.x1_amp_refine_env import X1AMPRefineEnv
         return X1AMPRefineCfg(), X1AMPRecoveryCfgPPO(), X1AMPRefineEnv

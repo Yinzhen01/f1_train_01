@@ -112,9 +112,10 @@ def velocity_spectrum(data, dt=.01, cutoff=10.):
 def discriminator_metrics(discriminator, windows):
     with torch.no_grad():
         scores = discriminator(windows).flatten()
-        reward = (1-.25*(scores-1).square()).clamp_min(0)
+        reward = (1-.25*(scores-1).square()).clamp_min(discriminator.style_floor)
         return dict(score_mean=float(scores.mean()), normalized_reward_mean=float(reward.mean()),
-                    zero_fraction=float((reward == 0).float().mean()))
+                    zero_fraction=float((reward == 0).float().mean()),
+                    negative_fraction=float((reward < 0).float().mean()), reward_floor=discriminator.style_floor)
 
 
 def swing_runs(contact, minimum_frames=8):
@@ -307,6 +308,8 @@ def main():
              "f1_amp_walk02_recovery_static": "lafan_walk02_recovery_static.json"}
     files.update({"f1_amp_walk02_refine_"+group: "lafan_walk02_refine_"+group+".json"
                   for group in ("control", "smooth", "noamp")})
+    files.update({"f1_amp_walk02_signal_"+group: "lafan_walk02_signal_"+group+".json"
+                  for group in ("signed", "bridge")})
     experiment = ScaledExperiment(ROOT, ROOT/"configs/amp"/files[experiment_name])
     if manifest["identity"] != experiment.identity() or manifest["dof_names"] != list(experiment.spec.joint_names):
         raise ValueError("Recorded/configuration identity mismatch")
@@ -319,7 +322,8 @@ def main():
         checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
         if checkpoint["amp_identity"] != experiment.identity():
             raise ValueError("Discriminator identity mismatch")
-        discriminator = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std)
+        discriminator = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std,
+                                          style_floor=experiment.cfg.get("signal", {}).get("style_floor", 0.))
         discriminator.load_state_dict(checkpoint["amp_discriminator_state_dict"], strict=True)
         discriminator.eval()
     auditor, auditor_info = None, None

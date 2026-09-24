@@ -9,6 +9,7 @@ class AMPAlgorithmAdapter:
         self.updates = 0
         self.valid_windows = 0
         self.style_sum = 0.
+        self.style_abs_sum = 0.
         self.reset_checks = 0
         self.warmup_excluded = 0
         self.latest = {}
@@ -25,6 +26,7 @@ class AMPAlgorithmAdapter:
         self.valid_windows += int(valid.sum())
         self.warmup_excluded += int((~valid).sum())
         self.style_sum += float(metrics["style_reward"].sum())
+        self.style_abs_sum += float(metrics["style_reward"].abs().sum())
         ids = dones.nonzero(as_tuple=False).flatten()
         if len(ids):
             self.env.amp_prime(ids)
@@ -34,6 +36,9 @@ class AMPAlgorithmAdapter:
         values = dict(task_reward=task, style_reward=float(metrics["style_reward"].mean()),
                       weighted_style_reward=float(metrics["style_reward"].mean())*self.bridge.reward_config["style_weight"],
                       mixed_reward=float(metrics["mixed_reward"].mean()), valid_fraction=float(valid.float().mean()))
+        observed_style = metrics["style_reward"][valid]
+        values.update(style_negative_fraction=float((observed_style < 0).float().mean()) if len(observed_style) else 0.,
+                      style_zero_fraction=float((observed_style == 0).float().mean()) if len(observed_style) else 0.)
         for key, value in values.items():
             self.rollout_sums[key] = self.rollout_sums.get(key, 0.) + value
         self.rollout_steps += 1

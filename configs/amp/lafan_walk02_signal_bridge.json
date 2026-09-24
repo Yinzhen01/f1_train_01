@@ -1,0 +1,57 @@
+{
+  "experiment": "f1_amp_walk02_signal_bridge",
+  "source_clip_id": "LAFAN_WALK_02",
+  "candidate_id": "LAFAN_WALK_02_LEFT_HIP_ROLL_S092",
+  "motion": "resources/motions/amp_lafan_walk02_s092/motion.npz",
+  "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+  "parent_sha256": "af51c637808a73c5f6f0a9e218930f500ab44b45bc53492fd04f874b2b475f07",
+  "protocol": "configs/amp/f1_100hz.json",
+  "normalizer_std_floor": 0.01,
+  "reward": {
+    "task_weight": 1,
+    "style_weight": 1,
+    "style_scale": 5,
+    "dt": 0.01
+  },
+  "discriminator_batch_size": 1024,
+  "recovery": {
+    "reset_clearance_m": 0.005,
+    "replay_capacity": 50000,
+    "replay_insert": 2048,
+    "discriminator_updates": 2,
+    "static_negative_fraction": 0.25
+  },
+  "seed": 5,
+  "smoke": {
+    "num_envs": 32,
+    "updates": 10
+  },
+  "formal": {
+    "num_envs": 4096,
+    "updates": 250
+  },
+  "evaluation_updates": [
+    1500
+  ],
+  "learnability_only": true,
+  "max_experiment_rounds": 20,
+  "training_ready": false,
+  "scope": "Round 7/20: bridge style-signal intervention only; same smooth1250 source, no DR, 250 updates then independent 1500 evaluation.",
+  "known_risks": [
+    "single-clip discriminator saturation",
+    "reward shape or D score improvement is not physical/style acceptance",
+    "same seed and 250-update diagnostic continuation"
+  ],
+  "artifact_checkpoint_offset": 8800000,
+  "signal": {
+    "group": "bridge",
+    "round": 7,
+    "source_task": "TASK_20260924_072",
+    "source_config": "configs/amp/lafan_walk02_refine_smooth.json",
+    "source_checkpoint_sha256": "e553b2e800d6c307e746e51f17877e9fd4bf27268979fdd7c3cb2c76453495df",
+    "source_completed_updates": 1250,
+    "learning_rate": 0.00005,
+    "style_floor": 0,
+    "bridge_gradient_penalty": 1
+  }
+}

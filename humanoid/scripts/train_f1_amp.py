@@ -19,6 +19,7 @@ from humanoid.amp.runner import AMPOnPolicyRunner
 from humanoid.amp.learnability import assert_no_domain_randomization, validate_learnability_budget
 from humanoid.amp.refinement import GROUPS, validate_refinement, select_environment, locate_source, warm_start
 from humanoid.amp.interrupted import interrupted_source, restart_budget, recover_interrupted
+from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal, warm_start_signal
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -33,7 +34,7 @@ def main():
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
     parser.add_argument("--recover-interrupted", action="store_true")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS, default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -43,11 +44,17 @@ def main():
     if commit != extra.expected_commit or args.task != experiment.cfg["experiment"]:
         raise ValueError("Unapproved cloud checkout or task")
     refining = extra.experiment in GROUPS
+    signaling = extra.experiment in SIGNAL_GROUPS
+    resuming = refining or signaling
     if extra.recover_interrupted and not refining:
         raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
-    if args.load_run is not None or args.training_profile or (args.resume and not refining):
+    if args.load_run is not None or args.training_profile or (args.resume and not resuming):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
-    if refining:
+    if signaling:
+        validate_signal(experiment)
+        if not args.resume or args.checkpoint != 1250:
+            raise ValueError("Style-signal experiments require explicit smooth1250 source")
+    elif refining:
         validate_refinement(experiment.cfg)
         if not args.resume or args.checkpoint != (1250 if extra.recover_interrupted else 1000):
             raise ValueError("Matched refinement requires the approved explicit recovery checkpoint")
@@ -65,6 +72,8 @@ def main():
     cfg, train_cfg, env_class = select_environment(extra.experiment)
     if refining:
         train_cfg.algorithm.learning_rate = experiment.cfg["refinement"]["learning_rate"]
+    elif signaling:
+        train_cfg.algorithm.learning_rate = experiment.cfg["signal"]["learning_rate"]
     cfg.seed = train_cfg.seed = 5
     cfg, train_cfg = update_cfg_from_args(cfg, train_cfg, args)
     train_cfg.runner.experiment_name = experiment.cfg["experiment"]
@@ -84,14 +93,17 @@ def main():
     config = {**class_to_dict(train_cfg), **class_to_dict(cfg)}
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
     continuation = None
-    if refining:
+    if signaling:
+        source = locate_source((repo, Path("/workspace"), Path("/personal")), experiment.cfg["signal"]["source_checkpoint_sha256"])
+        continuation = warm_start_signal(runner, experiment, source)
+    elif refining:
         source_sha = (interrupted_source(experiment.cfg)["source_sha256"] if extra.recover_interrupted else
                       experiment.cfg["refinement"]["source_checkpoint_sha256"])
         source = locate_source((repo, Path("/workspace"), Path("/personal")),
                                source_sha)
         continuation = (recover_interrupted if extra.recover_interrupted else warm_start)(runner, experiment, source)
     def evaluate(checkpoint, completed_updates, smoke=False):
-        output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if refining else
+        output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if resuming else
                           ("model_rollout_%04d.pt" % completed_updates))
         digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
         subprocess.run([sys.executable, str(repo/"humanoid/scripts/record_amp_policy.py"),
@@ -135,7 +147,7 @@ def main():
         body_frames_verified=env.amp_verified_frames >= 12 and env.amp_frame_check_max_error <= 5e-4,
         body_frame_max_error_m=env.amp_frame_check_max_error,
         reset_history_verified=runner.alg.reset_checks > 0 and runner.alg.warmup_excluded >= 9*env.num_envs,
-        nonzero_style_reward=runner.alg.style_sum > 0, valid_windows=runner.alg.valid_windows,
+        nonzero_style_reward=(runner.alg.style_abs_sum > 0 if signaling else runner.alg.style_sum > 0), valid_windows=runner.alg.valid_windows,
         reset_checks=runner.alg.reset_checks, warmup_excluded=runner.alg.warmup_excluded,
         actor_updated=changed(actor_before, runner.alg.actor_critic.state_dict()),
         discriminator_updated=changed(d_before, runner.amp_trainer.discriminator.state_dict()),

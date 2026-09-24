@@ -25,6 +25,7 @@ from humanoid.amp.scaled_experiment import ScaledExperiment, validate_runtime_ti
 from humanoid.amp.learnability import assert_no_domain_randomization
 from humanoid.amp.recovery import FOOT_NAMES
 from humanoid.amp.refinement import GROUPS, select_environment
+from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict
 
@@ -60,7 +61,7 @@ def main():
     parser.add_argument("--checkpoint-file", type=Path, required=True)
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--expected-commit", required=True)
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS, required=True)
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
@@ -75,6 +76,8 @@ def main():
         raise ValueError("Unexpected independent evaluation budget")
     cfg_name = "lafan_walk02_s092.json" if extra.experiment == "baseline" else "lafan_walk02_%s.json" % extra.experiment
     experiment = ScaledExperiment(repo, repo/"configs/amp"/cfg_name)
+    if extra.experiment in SIGNAL_GROUPS:
+        validate_signal(experiment)
     state = torch.load(str(extra.checkpoint_file), map_location="cpu", weights_only=True)
     if state["amp_identity"] != experiment.identity() or args.task != experiment.cfg["experiment"]:
         raise ValueError("Evaluation task/data identity mismatch")
