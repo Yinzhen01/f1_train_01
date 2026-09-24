@@ -64,6 +64,14 @@ def warm_start(runner, experiment, checkpoint):
     for key in ("motion_sha256", "urdf_lf_sha256", "feature_fingerprint"):
         if experiment.identity()[key] != source.identity()[key]:
             raise ValueError("Continuation changed source data/robot/features")
+    restored = restore_learning_state(runner, experiment, state)
+    return dict(source_task=cfg["source_task"], source_sha256=cfg["source_checkpoint_sha256"],
+        source_completed_updates=1000, **restored)
+
+
+def restore_learning_state(runner, experiment, state):
+    """Used only after the caller verifies exact file hash, identity and update."""
+    cfg = experiment.cfg["refinement"]
     actor = runner.alg.actor_critic
     actor.load_state_dict(state["model_state_dict"], strict=True)
     runner.alg.optimizer.load_state_dict(state["optimizer_state_dict"])
@@ -79,11 +87,10 @@ def warm_start(runner, experiment, checkpoint):
         for group in optimizer.param_groups:
             group["lr"] = cfg["learning_rate"]
     runner.alg.ppo.learning_rate = cfg["learning_rate"]
-    runner.current_learning_iteration = 1000
-    runner.it = 999
-    runner.alg.updates = 1000
-    return dict(source_task=cfg["source_task"], source_sha256=cfg["source_checkpoint_sha256"],
-        source_completed_updates=1000, actor_and_discriminator_restored=True,
+    runner.current_learning_iteration = state["completed_updates"]
+    runner.it = state["completed_updates"]-1
+    runner.alg.updates = state["completed_updates"]
+    return dict(actor_and_discriminator_restored=True,
         optimizers_restored=True, replay_windows=runner.alg.bridge.replay.count,
         learning_rate=cfg["learning_rate"], rng="fresh seed5 and real freshly-reset history, not source RNG continuation")
 

@@ -18,6 +18,7 @@ from humanoid.amp.scaled_experiment import ScaledExperiment, implementation_fing
 from humanoid.amp.runner import AMPOnPolicyRunner
 from humanoid.amp.learnability import assert_no_domain_randomization, validate_learnability_budget
 from humanoid.amp.refinement import GROUPS, validate_refinement, select_environment, locate_source, warm_start
+from humanoid.amp.interrupted import interrupted_source, restart_budget, recover_interrupted
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -31,6 +32,7 @@ def main():
     parser.add_argument("--mode", choices=("smoke", "formal"), required=True)
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
+    parser.add_argument("--recover-interrupted", action="store_true")
     parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
@@ -41,22 +43,25 @@ def main():
     if commit != extra.expected_commit or args.task != experiment.cfg["experiment"]:
         raise ValueError("Unapproved cloud checkout or task")
     refining = extra.experiment in GROUPS
+    if extra.recover_interrupted and not refining:
+        raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
     if args.load_run is not None or args.training_profile or (args.resume and not refining):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
     if refining:
         validate_refinement(experiment.cfg)
-        if not args.resume or args.checkpoint != 1000:
-            raise ValueError("Matched refinement requires explicit model1000 warm start")
+        if not args.resume or args.checkpoint != (1250 if extra.recover_interrupted else 1000):
+            raise ValueError("Matched refinement requires the approved explicit recovery checkpoint")
     elif extra.experiment != "baseline":
         validate_learnability_budget(experiment.cfg)
-    budget = experiment.cfg[extra.mode]
+    budget = restart_budget(experiment.cfg, extra.mode) if extra.recover_interrupted else experiment.cfg[extra.mode]
     if (args.num_envs, args.max_iterations, args.seed) != (budget["num_envs"], budget["updates"], 5):
         raise ValueError("Unexpected experiment budget")
     fingerprint = implementation_fingerprint(repo)
     if extra.mode == "formal":
         if not extra.smoke_certificate:
             raise ValueError("A matching real-simulator smoke certificate is required")
-        validate_cloud_smoke(experiment, json.loads(Path(extra.smoke_certificate).read_text()), fingerprint)
+        validate_cloud_smoke(experiment, json.loads(Path(extra.smoke_certificate).read_text()), fingerprint,
+                             interrupted=extra.recover_interrupted)
     cfg, train_cfg, env_class = select_environment(extra.experiment)
     if refining:
         train_cfg.algorithm.learning_rate = experiment.cfg["refinement"]["learning_rate"]
@@ -80,9 +85,11 @@ def main():
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
     continuation = None
     if refining:
+        source_sha = (interrupted_source(experiment.cfg)["source_sha256"] if extra.recover_interrupted else
+                      experiment.cfg["refinement"]["source_checkpoint_sha256"])
         source = locate_source((repo, Path("/workspace"), Path("/personal")),
-                               experiment.cfg["refinement"]["source_checkpoint_sha256"])
-        continuation = warm_start(runner, experiment, source)
+                               source_sha)
+        continuation = (recover_interrupted if extra.recover_interrupted else warm_start)(runner, experiment, source)
     def evaluate(checkpoint, completed_updates, smoke=False):
         output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if refining else
                           ("model_rollout_%04d.pt" % completed_updates))
@@ -139,7 +146,7 @@ def main():
         smoke_evaluation_verified=smoke_evaluation_verified,
         continuation=continuation, effectiveness_verified=False, dr_unlocked=False)
     if extra.mode == "smoke":
-        validate_cloud_smoke(experiment, certificate, fingerprint)
+        validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=extra.recover_interrupted)
     manifest["completion"] = certificate
     (log_dir/"amp_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     torch.save(dict(manifest_json=json.dumps(manifest), certificate_json=json.dumps(certificate)), log_dir/"model_amp_manifest.pt")

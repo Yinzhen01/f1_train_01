@@ -111,7 +111,7 @@ def implementation_fingerprint(repo):
     return digest.hexdigest()
 
 
-def validate_cloud_smoke(experiment, certificate, fingerprint):
+def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False):
     """Fail closed: a data flag alone never admits a long GPU run."""
     if certificate.get("identity") != experiment.identity() or certificate.get("implementation_fingerprint") != fingerprint:
         raise ValueError("Smoke identity/commit does not match this experiment")
@@ -131,7 +131,10 @@ def validate_cloud_smoke(experiment, certificate, fingerprint):
     if experiment.cfg.get("refinement"):
         source = experiment.cfg["refinement"]
         actual = certificate.get("continuation") or {}
-        if (actual.get("source_sha256") != source["source_checkpoint_sha256"] or
+        if interrupted:
+            from .interrupted import validate_recovery_certificate
+            validate_recovery_certificate(experiment.cfg, actual)
+        elif (actual.get("source_sha256") != source["source_checkpoint_sha256"] or
             actual.get("source_task") != source["source_task"] or
             actual.get("source_completed_updates") != 1000 or
             actual.get("actor_and_discriminator_restored") is not True or
