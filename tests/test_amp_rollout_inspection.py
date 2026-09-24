@@ -95,6 +95,11 @@ class InspectionTests(unittest.TestCase):
         self.assertEqual(out["nearest_window_group_mse"]["joint_velocity"], 4.)
         self.assertEqual(out["nearest_window_group_mse"]["joint_position"], 0.)
 
+    def test_cloud_log_markers_survive_sdk_line_interleaving(self):
+        from tools.amp.verify_refinement_smoke import parse_updates
+        text = '[SDK] upload[f1-amp-update] {"iteration":1001}[SDK] done\n[f1-amp-update] {"iteration":1002}\n'
+        self.assertEqual([r['iteration'] for r in parse_updates(text)], [1001, 1002])
+
     def test_mounted_lookup_requires_exact_hash(self):
         from tools.amp.evaluate_mounted import locate_checkpoint
         with tempfile.TemporaryDirectory() as folder:
