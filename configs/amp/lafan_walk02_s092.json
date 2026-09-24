@@ -1,0 +1,18 @@
+{
+  "experiment": "f1_amp_walk02_s092",
+  "source_clip_id": "LAFAN_WALK_02",
+  "candidate_id": "LAFAN_WALK_02_LEFT_HIP_ROLL_S092",
+  "motion": "resources/motions/amp_lafan_walk02_s092/motion.npz",
+  "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+  "parent_sha256": "af51c637808a73c5f6f0a9e218930f500ab44b45bc53492fd04f874b2b475f07",
+  "protocol": "configs/amp/f1_100hz.json",
+  "normalizer_std_floor": 0.01,
+  "reward": {"task_weight": 1.0, "style_weight": 1.0, "style_scale": 2.0, "dt": 0.01},
+  "discriminator_batch_size": 512,
+  "seed": 5,
+  "smoke": {"num_envs": 32, "updates": 10},
+  "formal": {"num_envs": 4096, "updates": 3000},
+  "training_ready": false,
+  "scope": "Isolated simulation AMP experiment authorized 2026-09-24; not physical demonstration acceptance or deployment. Formal run requires a matching cloud smoke certificate.",
+  "known_risks": ["source left-foot clearance 0.412 mm", "source support-proxy slip increased after scaling", "source joint acceleration/jerk peaks retained", "source and training-model geometry differ"]
+}

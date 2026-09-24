@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "training_ready": false,
+  "fps": 100,
+  "history": 10,
+  "root_body": "base_link",
+  "joint_names": [
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
+    "left_knee_pitch_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+    "right_knee_pitch_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"
+  ],
+  "body_names": ["left_knee_pitch_link", "right_knee_pitch_link", "left_ankle_roll_link", "right_ankle_roll_link"],
+  "urdf": "resources/robots/x1/urdf/X1_12DOF.urdf",
+  "allowed_train_ids": ["LAFAN_WALK_01", "LAFAN_WALK_02", "LAFAN_WALK_03", "LAFAN_WALK_04"],
+  "reserve_ids": ["LAFAN_WALK_08", "LAFAN_WALK_09", "LAFAN_WALK_10"],
+  "holdout_ids": ["LAFAN_WALK_15"],
+  "standing_ids": ["R2_009", "R2_010"],
+  "permanent_hold_ids": ["LAFAN_WALK_10"],
+  "sampling": {"weighting": "clip", "clip_weights": {"LAFAN_WALK_01": 1.0, "LAFAN_WALK_02": 1.0, "LAFAN_WALK_03": 1.0, "LAFAN_WALK_04": 1.0}},
+  "normalization": {"fit_ids": ["LAFAN_WALK_01", "LAFAN_WALK_02", "LAFAN_WALK_03", "LAFAN_WALK_04"], "std_floor": 0.0001, "frozen": true},
+  "discriminator": {"hidden_dims": [256, 128], "learning_rate": 0.0001, "gradient_penalty": 10.0, "max_grad_norm": 1.0},
+  "reward": {"task_weight": 1.0, "style_weight": 0.0, "style_scale": 1.0, "dt": 0.01, "status": "safe preparation defaults; no F1 reward mix selected or tuned"},
+  "quality": {"position_tolerance_rad": 0.000001, "quat_norm_tolerance": 0.00001, "derivative": "backward differences; endpoints excluded from demonstration sampling"},
+  "runtime": {"actor_history_unchanged": true, "capture": "post-physics BEFORE reset; prime previous state after every reset", "training_entry_registered": false}
+}
