@@ -1,0 +1,80 @@
+"""Offline evidence calculations, independent of cloud training implementation."""
+import importlib.util
+from pathlib import Path
+import unittest
+
+import numpy as np
+from scipy.spatial.transform import Rotation
+import torch
+
+from humanoid.amp.scaled_experiment import ScaledExperiment
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("inspect_rollout", ROOT/"tools/amp/inspect_rollout.py")
+audit = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(audit)
+torch.set_num_threads(1)
+
+
+class InspectionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.e = ScaledExperiment(ROOT, ROOT/"configs/amp/lafan_walk02_recovery.json")
+
+    def test_prefix_rejects_resets_and_missing_ticks(self):
+        arrays = {"standing_valid": np.array([[True], [False], [True]])}
+        with self.assertRaisesRegex(ValueError, "restarted"):
+            audit.episode(arrays, "standing", 0)
+        arrays = {"standing_valid": np.array([[True], [True], [False]]),
+                  "standing_time": np.array([.01, .03, .04])}
+        with self.assertRaisesRegex(ValueError, "ticks"):
+            audit.episode(arrays, "standing", 0)
+
+    def test_swing_does_not_count_truncated_or_short_runs(self):
+        self.assertEqual(audit.swing_runs(np.zeros(20, dtype=bool)), 0)
+        self.assertEqual(audit.swing_runs([True]*2+[False]*8+[True]*2), 1)
+        self.assertEqual(audit.swing_runs([True]*2+[False]*7+[True]*2), 0)
+        self.assertEqual(audit.swing_runs([False]*8+[True]*2+[False]*8), 0)
+
+    def test_mesh_rotation_and_rigid_velocity(self):
+        state = np.zeros((1, 2, 13))
+        state[..., 6] = 1
+        state[..., 2] = .1
+        state[..., 7] = .3
+        state[..., 11] = 2
+        vertices = {name: np.array([[0., 0., -.1], [.1, 0., 0.]]) for name in ("L", "R")}
+        height, speed = audit.foot_geometry({"foot_state": state}, vertices, ("L", "R"))
+        np.testing.assert_allclose(height, 0)
+        np.testing.assert_allclose(speed, .1)  # vx + omega_y * sole_z
+
+    def test_shared_features_reconstruct_exact_demonstration(self):
+        clip = self.e.clip
+        root = np.zeros((clip.frames, 13), dtype=np.float32)
+        root[:, :3] = clip.arrays["qpos"][:, :3]
+        root[:, 3:7] = clip.arrays["qpos"][:, [4, 5, 6, 3]]
+        rotation = Rotation.from_quat(root[:, 3:7]).as_matrix()
+        keys = np.einsum("nij,nkj->nki", rotation, clip.key_positions_b)+root[:, None, :3]
+        all_data = dict(root_state=root, dof_pos=clip.joint_pos, key_positions_w=keys)
+        data = {key: value[1:] for key, value in all_data.items()}
+        data["initial"] = {key: value[0] for key, value in all_data.items()}
+        result = audit.features_from_episode(data, self.e)
+        torch.testing.assert_close(result, clip.features[1:], atol=3e-5, rtol=1e-5)
+
+    def test_nearest_distance_self_and_displacement(self):
+        demo = torch.zeros((2, 10, 39))
+        mean, std = torch.zeros(39), torch.ones(39)
+        self.assertEqual(audit.nearest_window_distance(demo, demo, mean, std)["mean"], 0.)
+        self.assertAlmostEqual(audit.nearest_window_distance(demo+2, demo, mean, std)["mean"], 2., places=5)
+        self.assertIsNone(audit.nearest_window_distance(demo[:0], demo, mean, std))
+
+    def test_initial_failure_cannot_survive_or_claim_post_transient_metrics(self):
+        data = dict(time=np.zeros(0), initial={"failure": True}, failure=np.zeros(0, dtype=bool))
+        report, geometry = audit.analyze_episode(data, None, None, None, 20)
+        self.assertTrue(report["failure"])
+        self.assertFalse(report["survived"])
+        self.assertIsNone(report["post_2s"])
+        self.assertIsNone(geometry)
+
+
+if __name__ == "__main__":
+    unittest.main()
