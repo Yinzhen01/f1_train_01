@@ -190,6 +190,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertIsNone(summary["episodes"][1]["post_2s_vx_mean"])
         self.assertFalse(summary["dr_unlocked"])
 
+    def test_evaluator_buffers_remain_resettable_between_modes(self):
+        path = ROOT/"humanoid/scripts/record_amp_policy.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+        contexts = [node.items[0].context_expr for node in ast.walk(main) if isinstance(node, ast.With)]
+        torch_context = next(node for node in contexts if isinstance(node, ast.Call) and
+                             isinstance(node.func, ast.Attribute) and node.func.attr in ("no_grad", "inference_mode"))
+        context = eval(compile(ast.Expression(torch_context), str(path), "eval"), {"torch": torch})
+        with context:
+            buffer = torch.ones(2)+1
+        buffer[:] = 0.  # same reset boundary that failed in the real evaluator
+        self.assertTrue(torch.equal(buffer, torch.zeros(2)))
+
     def test_reset_hooks_select_named_reference_and_preserve_velocity_history(self):
         path = ROOT/"humanoid/envs/x1/x1_amp_recovery_env.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))

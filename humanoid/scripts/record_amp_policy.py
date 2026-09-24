@@ -144,7 +144,9 @@ def main():
         alive &= ~env.reset_buf.bool()
         frames = []
         recording = True
-        with torch.inference_mode():
+        # Gym replaces some state buffers during step(). Use no_grad so those
+        # buffers remain writable by the next mode's reset outside this block.
+        with torch.no_grad():
             for step in range(round(extra.duration*100)):
                 actions = policy.act_inference(obs)
                 if not torch.isfinite(actions).all():

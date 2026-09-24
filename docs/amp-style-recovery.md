@@ -94,3 +94,13 @@ nominal armature、1000预算、精确保存次数、无静止任务收益、对
 真实D更新/缓存/合成负样本隔离，以及独立MuJoCo FK验证参考初态足部间隙。
 语法检查与 `git diff --check` 通过；原数据、机器人资产、baseline配置无差异。
 这里没有Isaac Gym运行或有效行走验收，不能据此启动域随机化。
+
+## 云端短测记录
+
+`db6f0bc` 已发布，用户4252、4090D 24GB、镜像V000124。
+组1 `TASK_20260924_055`、组2 `TASK_20260924_056` 于13:50启动，13:51失败。
+两组均完成10次PPO/AMP更新，但独立回放在第二种初态reset时出错：
+`Inplace update to inference tensor outside InferenceMode`，位置为父类reset中的
+状态张量原位写入。正式门禁未放行。仅将独立评估环节的`inference_mode`改为
+`no_grad`，使step生成的环境缓冲可在下一轮reset写入；Actor仍不建立梯度图。
+这属于同组短测重试，不新增奖励实验轮次、不修改训练奖励或动力学。
