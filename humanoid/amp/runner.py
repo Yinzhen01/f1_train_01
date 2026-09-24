@@ -32,6 +32,8 @@ class AMPOnPolicyRunner(DHOnPolicyRunner):
         name = evaluation_checkpoint_name(locs["it"] + 1,
             self.amp_experiment.cfg.get("evaluation_updates", []))
         if name:
+            if self.amp_experiment.cfg.get("artifact_checkpoint_offset"):
+                name = "model_%d.pt" % (self.amp_experiment.cfg["artifact_checkpoint_offset"]+locs["it"]+1)
             checkpoint = str(Path(self.log_dir)/name)
             self.save(checkpoint, infos={"purpose": "independent_evaluation",
                       "effectiveness_verified": False, "dr_unlocked": False})

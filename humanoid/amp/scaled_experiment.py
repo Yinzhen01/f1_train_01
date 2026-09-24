@@ -128,4 +128,13 @@ def validate_cloud_smoke(experiment, certificate, fingerprint):
                 certificate.get("smoke_evaluation_verified") is not True or
                 certificate.get("rsi_reset_count", 0) < 32 or certificate.get("replay_window_count", 0) < 1):
             raise ValueError("Recovery smoke must verify no-DR, RSI and policy replay")
+    if experiment.cfg.get("refinement"):
+        source = experiment.cfg["refinement"]
+        actual = certificate.get("continuation") or {}
+        if (actual.get("source_sha256") != source["source_checkpoint_sha256"] or
+            actual.get("source_task") != source["source_task"] or
+            actual.get("source_completed_updates") != 1000 or
+            actual.get("actor_and_discriminator_restored") is not True or
+            actual.get("optimizers_restored") is not True or actual.get("replay_windows") != 50000):
+            raise ValueError("Refinement smoke lacks matched warm-start proof")
     return True

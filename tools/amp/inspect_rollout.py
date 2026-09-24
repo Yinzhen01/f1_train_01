@@ -267,6 +267,8 @@ def main():
     experiment_name = manifest["identity"]["experiment"]
     files = {"f1_amp_walk02_s092": "lafan_walk02_s092.json", "f1_amp_walk02_recovery": "lafan_walk02_recovery.json",
              "f1_amp_walk02_recovery_static": "lafan_walk02_recovery_static.json"}
+    files.update({"f1_amp_walk02_refine_"+group: "lafan_walk02_refine_"+group+".json"
+                  for group in ("control", "smooth", "noamp")})
     experiment = ScaledExperiment(ROOT, ROOT/"configs/amp"/files[experiment_name])
     if manifest["identity"] != experiment.identity() or manifest["dof_names"] != list(experiment.spec.joint_names):
         raise ValueError("Recorded/configuration identity mismatch")

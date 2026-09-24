@@ -1,0 +1,56 @@
+{
+  "experiment": "f1_amp_walk02_refine_noamp",
+  "source_clip_id": "LAFAN_WALK_02",
+  "candidate_id": "LAFAN_WALK_02_LEFT_HIP_ROLL_S092",
+  "motion": "resources/motions/amp_lafan_walk02_s092/motion.npz",
+  "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+  "parent_sha256": "af51c637808a73c5f6f0a9e218930f500ab44b45bc53492fd04f874b2b475f07",
+  "protocol": "configs/amp/f1_100hz.json",
+  "normalizer_std_floor": 0.01,
+  "reward": {
+    "task_weight": 1,
+    "style_weight": 0,
+    "style_scale": 5,
+    "dt": 0.01
+  },
+  "discriminator_batch_size": 1024,
+  "recovery": {
+    "reset_clearance_m": 0.005,
+    "replay_capacity": 50000,
+    "replay_insert": 2048,
+    "discriminator_updates": 2,
+    "static_negative_fraction": 0.25
+  },
+  "seed": 5,
+  "smoke": {
+    "num_envs": 32,
+    "updates": 10
+  },
+  "formal": {
+    "num_envs": 4096,
+    "updates": 500
+  },
+  "evaluation_updates": [
+    1250,
+    1500
+  ],
+  "learnability_only": true,
+  "max_experiment_rounds": 20,
+  "training_ready": false,
+  "scope": "Round 5/20: matched model1000 warm start, noamp, no DR, 500 additional PPO updates, exact evaluations at 1250/1500. No dynamics/feature/data edits or automatic acceptance.",
+  "known_risks": [
+    "partial standing-start failures",
+    "style dynamics and slip mismatch",
+    "same seed single source experiment, not sim2real evidence"
+  ],
+  "artifact_checkpoint_offset": 8800000,
+  "refinement": {
+    "group": "noamp",
+    "round": 5,
+    "source_task": "TASK_20260924_060",
+    "source_config": "configs/amp/lafan_walk02_recovery_static.json",
+    "source_checkpoint_sha256": "b0aa243c4a4a15db0dc43b70bf22a3f4af4048258f47a2f1cac22cd362b8231c",
+    "source_completed_updates": 1000,
+    "learning_rate": 0.00005
+  }
+}

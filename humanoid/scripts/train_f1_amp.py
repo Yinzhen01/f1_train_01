@@ -17,6 +17,7 @@ from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
 from humanoid.amp.scaled_experiment import ScaledExperiment, implementation_fingerprint, validate_cloud_smoke
 from humanoid.amp.runner import AMPOnPolicyRunner
 from humanoid.amp.learnability import assert_no_domain_randomization, validate_learnability_budget
+from humanoid.amp.refinement import GROUPS, validate_refinement, select_environment, locate_source, warm_start
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -30,7 +31,7 @@ def main():
     parser.add_argument("--mode", choices=("smoke", "formal"), required=True)
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static"), default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -39,9 +40,14 @@ def main():
     experiment = ScaledExperiment(repo, repo/"configs/amp"/config_name)
     if commit != extra.expected_commit or args.task != experiment.cfg["experiment"]:
         raise ValueError("Unapproved cloud checkout or task")
-    if args.resume or args.load_run is not None or args.training_profile:
+    refining = extra.experiment in GROUPS
+    if args.load_run is not None or args.training_profile or (args.resume and not refining):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
-    if extra.experiment != "baseline":
+    if refining:
+        validate_refinement(experiment.cfg)
+        if not args.resume or args.checkpoint != 1000:
+            raise ValueError("Matched refinement requires explicit model1000 warm start")
+    elif extra.experiment != "baseline":
         validate_learnability_budget(experiment.cfg)
     budget = experiment.cfg[extra.mode]
     if (args.num_envs, args.max_iterations, args.seed) != (budget["num_envs"], budget["updates"], 5):
@@ -51,11 +57,9 @@ def main():
         if not extra.smoke_certificate:
             raise ValueError("A matching real-simulator smoke certificate is required")
         validate_cloud_smoke(experiment, json.loads(Path(extra.smoke_certificate).read_text()), fingerprint)
-    cfg, train_cfg = X1AMPCfg(), X1AMPCfgPPO()
-    env_class = X1AMPEnv
-    if extra.experiment != "baseline":
-        cfg, train_cfg = X1AMPRecoveryCfg(), X1AMPRecoveryCfgPPO()
-        env_class = X1AMPRecoveryEnv
+    cfg, train_cfg, env_class = select_environment(extra.experiment)
+    if refining:
+        train_cfg.algorithm.learning_rate = experiment.cfg["refinement"]["learning_rate"]
     cfg.seed = train_cfg.seed = 5
     cfg, train_cfg = update_cfg_from_args(cfg, train_cfg, args)
     train_cfg.runner.experiment_name = experiment.cfg["experiment"]
@@ -74,8 +78,14 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=False)
     config = {**class_to_dict(train_cfg), **class_to_dict(cfg)}
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
+    continuation = None
+    if refining:
+        source = locate_source((repo, Path("/workspace"), Path("/personal")),
+                               experiment.cfg["refinement"]["source_checkpoint_sha256"])
+        continuation = warm_start(runner, experiment, source)
     def evaluate(checkpoint, completed_updates, smoke=False):
-        output = log_dir/("model_rollout_%04d.pt" % completed_updates)
+        output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if refining else
+                          ("model_rollout_%04d.pt" % completed_updates))
         digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
         subprocess.run([sys.executable, str(repo/"humanoid/scripts/record_amp_policy.py"),
             "--checkpoint-file", str(checkpoint), "--checkpoint-sha256", digest,
@@ -99,7 +109,8 @@ def main():
         mode=extra.mode, num_envs=env.num_envs, updates=args.max_iterations,
         feature_spec=experiment.spec.description(), diagnostics=experiment.diagnostics,
         env_config=class_to_dict(cfg), ppo_config=class_to_dict(train_cfg),
-        amp_reward=experiment.cfg["reward"], training_ready=False, dynamics_acceptance="not claimed",
+        amp_reward=experiment.cfg["reward"], continuation=continuation,
+        training_ready=False, dynamics_acceptance="not claimed",
         learnability_gate=no_dr_gate, evaluation_updates=experiment.cfg.get("evaluation_updates", []),
         runtime=dict(physics_dt=env.sim_params.dt, control_dt=env.dt,
             dof_names=env.dof_names, dof_properties={k: props[k].tolist() for k in props.dtype.names},
@@ -109,7 +120,8 @@ def main():
     runner.learn(args.max_iterations, init_at_random_ep_len=False)
     smoke_evaluation_verified = False
     if extra.mode == "smoke" and extra.experiment != "baseline":
-        smoke_evaluation_verified = evaluate(log_dir/("model_%d.pt" % args.max_iterations), args.max_iterations, True)
+        completed = runner.current_learning_iteration
+        smoke_evaluation_verified = evaluate(log_dir/("model_%d.pt" % completed), completed, True)
     tensors = list(runner.alg.actor_critic.state_dict().values())+list(runner.amp_trainer.discriminator.state_dict().values())
     certificate = dict(identity=experiment.identity(), implementation_fingerprint=fingerprint, code_commit=commit,
         num_envs=env.num_envs, updates=args.max_iterations, physics_dt_verified=True,
@@ -125,7 +137,7 @@ def main():
         rsi_reset_count=getattr(env, "rsi_reset_count", 0),
         replay_window_count=0 if runner.alg.bridge.replay is None else runner.alg.bridge.replay.count,
         smoke_evaluation_verified=smoke_evaluation_verified,
-        effectiveness_verified=False, dr_unlocked=False)
+        continuation=continuation, effectiveness_verified=False, dr_unlocked=False)
     if extra.mode == "smoke":
         validate_cloud_smoke(experiment, certificate, fingerprint)
     manifest["completion"] = certificate

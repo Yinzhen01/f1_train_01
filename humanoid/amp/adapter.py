@@ -32,6 +32,7 @@ class AMPAlgorithmAdapter:
                 raise RuntimeError("New episode has old AMP history")
             self.reset_checks += len(ids)
         values = dict(task_reward=task, style_reward=float(metrics["style_reward"].mean()),
+                      weighted_style_reward=float(metrics["style_reward"].mean())*self.bridge.reward_config["style_weight"],
                       mixed_reward=float(metrics["mixed_reward"].mean()), valid_fraction=float(valid.float().mean()))
         for key, value in values.items():
             self.rollout_sums[key] = self.rollout_sums.get(key, 0.) + value

@@ -136,3 +136,17 @@ class PolicyReplay:
     def state_dict(self):
         return dict(capacity=self.capacity, count=self.count, cursor=self.cursor,
                     windows=None if self.buffer is None else self.buffer[:self.count].detach().clone())
+
+    def load_state_dict(self, state, device="cpu"):
+        if not isinstance(state, dict) or state["capacity"] != self.capacity:
+            raise ValueError("Replay checkpoint capacity mismatch")
+        count, cursor, windows = state["count"], state["cursor"], state["windows"]
+        if not 0 <= count <= self.capacity or not 0 <= cursor < self.capacity:
+            raise ValueError("Invalid replay counters")
+        if count == 0 or windows is None or windows.shape != (count, 10, 39) or not torch.isfinite(windows).all():
+            raise ValueError("Missing/nonfinite replay windows")
+        if count < self.capacity and cursor != count:
+            raise ValueError("Partial replay cursor mismatch")
+        self.buffer = torch.empty((self.capacity, 10, 39), dtype=windows.dtype, device=device)
+        self.buffer[:count].copy_(windows.detach().to(device))
+        self.count, self.cursor = count, cursor
