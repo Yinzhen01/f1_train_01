@@ -77,6 +77,24 @@ class InspectionTests(unittest.TestCase):
         self.assertIsNone(report["post_2s"])
         self.assertIsNone(geometry)
 
+    def test_heading_wrap_and_spectral_bands(self):
+        root = np.zeros((101, 13))
+        root[:, 3:7] = Rotation.from_euler("z", np.deg2rad(np.linspace(170, 190, 101))).as_quat()
+        self.assertAlmostEqual(audit.heading_metrics(root)["heading_change_deg"], 20.)
+        t = np.arange(2000)*.01
+        slow = audit.velocity_spectrum(np.sin(2*np.pi*2*t)[:, None])
+        fast = audit.velocity_spectrum(np.sin(2*np.pi*20*t)[:, None])
+        self.assertLess(slow["power_fraction_above_cutoff"], 1e-6)
+        self.assertGreater(fast["power_fraction_above_cutoff"], .999999)
+        self.assertEqual(audit.velocity_spectrum(np.zeros((2000, 12)))["power_fraction_above_cutoff"], 0.)
+
+    def test_nearest_group_error_uses_same_whole_window(self):
+        demo = torch.zeros((2, 10, 39)); demo[1] = 100
+        query = torch.zeros((1, 10, 39)); query[..., 15:27] = 2
+        out = audit.nearest_window_distance(query, demo, torch.zeros(39), torch.ones(39))
+        self.assertEqual(out["nearest_window_group_mse"]["joint_velocity"], 4.)
+        self.assertEqual(out["nearest_window_group_mse"]["joint_position"], 0.)
+
     def test_mounted_lookup_requires_exact_hash(self):
         from tools.amp.evaluate_mounted import locate_checkpoint
         with tempfile.TemporaryDirectory() as folder:

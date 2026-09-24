@@ -49,7 +49,7 @@
     "round": 5,
     "source_task": "TASK_20260924_060",
     "source_config": "configs/amp/lafan_walk02_recovery_static.json",
-    "source_checkpoint_sha256": "b0aa243c4a4a15db0dc43b70bf22a3f4af4048258f47a2f1cac22cd362b8231c",
+    "source_checkpoint_sha256": "def5eea837a60bf8bc4b7c3a481e8c3e84b5da3843e9af4d60b1e3c134c5dd63",
     "source_completed_updates": 1000,
     "learning_rate": 0.00005
   }

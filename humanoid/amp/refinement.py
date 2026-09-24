@@ -27,7 +27,7 @@ def validate_refinement(cfg):
     if group not in ("control", "smooth", "noamp") or cfg["experiment"] != "f1_amp_walk02_refine_"+group:
         raise ValueError("Unknown matched continuation group")
     if (r.get("source_task") != "TASK_20260924_060" or r.get("source_completed_updates") != 1000 or
-        r.get("source_checkpoint_sha256") != "b0aa243c4a4a15db0dc43b70bf22a3f4af4048258f47a2f1cac22cd362b8231c"):
+        r.get("source_checkpoint_sha256") != "def5eea837a60bf8bc4b7c3a481e8c3e84b5da3843e9af4d60b1e3c134c5dd63"):
         raise ValueError("Unapproved warm-start source")
     if (cfg["smoke"] != {"num_envs": 32, "updates": 10} or
         cfg["formal"] != {"num_envs": 4096, "updates": 500} or
@@ -39,12 +39,17 @@ def validate_refinement(cfg):
 
 
 def locate_source(roots, expected_sha):
+    seen = {}
     for root in roots:
         if root.is_dir():
-            for candidate in sorted(root.rglob("model_*1000*.pt")):
-                if hashlib.sha256(candidate.read_bytes()).hexdigest() == expected_sha:
+            for candidate in sorted(root.rglob("model_*.pt")):
+                if candidate.resolve() in seen:
+                    continue
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                seen[candidate.resolve()] = (candidate.name, digest)
+                if digest == expected_sha:
                     return candidate
-    raise FileNotFoundError("No mounted source checkpoint matches the required SHA256")
+    raise FileNotFoundError("No mounted source checkpoint matches the required SHA256; candidates="+str(list(seen.values())))
 
 
 def warm_start(runner, experiment, checkpoint):

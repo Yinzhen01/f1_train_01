@@ -91,7 +91,7 @@ class RefinementTests(unittest.TestCase):
             PolicyReplay(20).load_state_dict(replay.state_dict())
 
     def test_readonly_actual_model1000_restore(self):
-        checkpoint = ROOT.parent/"f1-amp-style-recovery/outputs/amp-recovery/TASK_20260924_060/model_eval_1000.pt"
+        checkpoint = ROOT.parent/"f1-amp-style-recovery/outputs/amp-recovery/TASK_20260924_060/model_1000.pt"
         if not checkpoint.is_file():
             self.skipTest("Local source artifact not installed; cloud smoke must prove warm start")
         e = self.experiments["smooth"]

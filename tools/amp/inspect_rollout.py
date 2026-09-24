@@ -73,11 +73,48 @@ def nearest_window_distance(windows, demonstration, mean, std):
         return None
     reference = ((demonstration-mean)/std).reshape(len(demonstration), -1)
     query = ((windows-mean)/std).reshape(len(windows), -1)
-    distances = []
+    distances, residuals = [], []
     for batch in query.split(128):
-        distances.append(torch.cdist(batch, reference).min(dim=1).values/(query.shape[1]**.5))
+        nearest = torch.cdist(batch, reference).min(dim=1)
+        distances.append(nearest.values/(query.shape[1]**.5))
+        residuals.append((batch-reference[nearest.indices]).reshape(-1, 10, 39).square())
     values = torch.cat(distances).numpy()
-    return dict(mean=float(values.mean()), p95=float(np.percentile(values, 95)), samples=len(values))
+    errors = torch.cat(residuals)
+    groups = {"root_omega": (0, 3), "joint_position": (3, 15),
+              "joint_velocity": (15, 27), "key_position": (27, 39)}
+    return dict(mean=float(values.mean()), p95=float(np.percentile(values, 95)), samples=len(values),
+        nearest_window_group_mse={name: float(errors[..., start:end].mean())
+                                  for name, (start, end) in groups.items()})
+
+
+def heading_metrics(root_state):
+    yaw = np.unwrap(Rotation.from_quat(root_state[:, 3:7]).as_euler("xyz")[:, 2])
+    error = np.arctan2(np.sin(yaw), np.cos(yaw))
+    return dict(heading_rms_to_world_x_deg=float(np.rad2deg(np.sqrt(np.mean(error**2)))),
+        heading_change_deg=float(np.rad2deg(yaw[-1]-yaw[0])),
+        heading_abs_error_p95_deg=float(np.rad2deg(np.percentile(np.abs(error), 95))))
+
+
+def velocity_spectrum(data, dt=.01, cutoff=10.):
+    """Hann-windowed velocity power ratio; not a physical acceleration estimate."""
+    x = np.asarray(data, dtype=np.float64)
+    if len(x) < 20:
+        return None
+    transformed = np.fft.rfft((x-x.mean(axis=0))*np.hanning(len(x))[:, None], axis=0)
+    power = np.abs(transformed)**2
+    power[1:-1 if len(x) % 2 == 0 else None] *= 2
+    frequency = np.fft.rfftfreq(len(x), dt)
+    total = power.sum()
+    return dict(cutoff_hz=cutoff, nyquist_hz=.5/dt,
+                power_fraction_above_cutoff=0. if total < 1e-20 else float(power[frequency > cutoff].sum()/total))
+
+
+def discriminator_metrics(discriminator, windows):
+    with torch.no_grad():
+        scores = discriminator(windows).flatten()
+        reward = (1-.25*(scores-1).square()).clamp_min(0)
+        return dict(score_mean=float(scores.mean()), normalized_reward_mean=float(reward.mean()),
+                    zero_fraction=float((reward == 0).float().mean()))
 
 
 def swing_runs(contact, minimum_frames=8):
@@ -107,7 +144,7 @@ def rms(value):
     return None if not value.size else float(np.sqrt(np.mean(np.square(value, dtype=np.float64))))
 
 
-def analyze_episode(data, experiment, vertices, foot_names, duration, discriminator=None):
+def analyze_episode(data, experiment, vertices, foot_names, duration, discriminator=None, auditor=None):
     count = len(data["time"])
     failed = bool(data["initial"]["failure"] or np.any(data["failure"]))
     report = dict(observed_s=count*.01, failure=failed,
@@ -149,13 +186,12 @@ def analyze_episode(data, experiment, vertices, foot_names, duration, discrimina
     windows = windows[torch.from_numpy(data["time"][9:] >= 2.)][::10]
     sustained["demo_nearest_window_rms_zscore"] = nearest_window_distance(windows,
         experiment.windows, experiment.mean, experiment.std)
+    sustained.update(heading_metrics(data["root_state"][active]))
+    sustained["joint_velocity_spectrum"] = velocity_spectrum(data["dof_vel"][active])
     if discriminator is not None:
-        with torch.no_grad():
-            scores = discriminator(windows).flatten()
-            normalized_reward = (1-.25*(scores-1).square()).clamp_min(0)
-            sustained["learned_style"] = dict(score_mean=float(scores.mean()),
-                normalized_reward_mean=float(normalized_reward.mean()),
-                zero_fraction=float((normalized_reward == 0).float().mean()))
+        sustained["learned_style"] = discriminator_metrics(discriminator, windows)
+    if auditor is not None:
+        sustained["frozen_auditor_style"] = discriminator_metrics(auditor, windows)
     report["post_2s"] = sustained
     return report, geometry
 
@@ -258,6 +294,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--auditor-checkpoint", type=Path)
+    parser.add_argument("--auditor-sha256")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--env-index", type=int, default=0)
@@ -284,17 +322,34 @@ def main():
         discriminator = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std)
         discriminator.load_state_dict(checkpoint["amp_discriminator_state_dict"], strict=True)
         discriminator.eval()
+    auditor, auditor_info = None, None
+    if bool(args.auditor_checkpoint) != bool(args.auditor_sha256):
+        raise ValueError("Frozen auditor requires a checkpoint and explicit SHA256")
+    if args.auditor_checkpoint:
+        if hashlib.sha256(args.auditor_checkpoint.read_bytes()).hexdigest() != args.auditor_sha256:
+            raise ValueError("Frozen auditor SHA mismatch")
+        state = torch.load(args.auditor_checkpoint, map_location="cpu", weights_only=True)
+        for key in ("motion_sha256", "urdf_lf_sha256", "feature_fingerprint"):
+            if state["amp_identity"][key] != experiment.identity()[key]:
+                raise ValueError("Frozen auditor data/feature identity mismatch")
+        auditor = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std)
+        auditor.load_state_dict(state["amp_discriminator_state_dict"], strict=True)
+        auditor.eval()
+        auditor_info = dict(sha256=args.auditor_sha256, identity=state["amp_identity"],
+            completed_updates=state["completed_updates"],
+            limitation="Same frozen scorer permits matched comparisons; not a calibrated quality score or probability. Source-policy bias remains.")
     vertices = foot_collision_vertices(experiment.kinematics.path)
     args.output.mkdir(parents=True, exist_ok=False)
     report = dict(source_bundle_sha256=hashlib.sha256(args.bundle.read_bytes()).hexdigest(),
         analysis_script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         identity=manifest["identity"], checkpoint_sha256=manifest["checkpoint_sha256"], modes={},
+        frozen_auditor=auditor_info,
         note="Post-2s metrics exclude injected initial velocity. Foot geometry is mesh height, not PhysX penetration depth. Ground-contact proxy uses >5 N Fz and mesh min height <2 cm; net force alone cannot distinguish self contacts. No automatic DR acceptance.")
     for mode in manifest["modes"]:
         rows = []
         for index in range(manifest["num_envs"]):
             data = episode(arrays, mode, index)
-            result, geometry = analyze_episode(data, experiment, vertices, manifest["foot_names"], manifest["duration_s"], discriminator)
+            result, geometry = analyze_episode(data, experiment, vertices, manifest["foot_names"], manifest["duration_s"], discriminator, auditor)
             result["env"] = index; rows.append(result)
             if index == args.env_index:
                 folder = args.output/mode; folder.mkdir()

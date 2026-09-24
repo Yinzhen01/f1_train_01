@@ -5,7 +5,7 @@
 ## 当前阶段
 
 2026-09-24动态续训分支：experiment/f1-amp-dynamic-refine，第3–5轮，统一从060精确
-model_eval_1000恢复，原奖励control、动态正则+AMP、动态正则无AMP三组，计划各新增
+model_1000恢复（与原eval的159个训练张量逐位相等），原奖励control、动态正则+AMP、动态正则无AMP三组，计划各新增
 500更新、累计1250/1500独立评估；206项本地测试通过，待云端32×10 smoke门禁。
 不改物理/观测/原数据，DR和噪声继续关闭。详见[amp-dynamic-refine.md](amp-dynamic-refine.md)。
 059完整回放已通过只读任务063补齐，A足滑更小但B加速度略低，不宣称B全面最优。
