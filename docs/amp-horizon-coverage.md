@@ -60,7 +60,13 @@ episode延长只改变何时超时重置，不增加本轮更新预算。每次P
 每组240个控制步、7680个transition；人为物理失败和超时各1次、终止惩罚区分正确。
 恢复源SHA、三个优化器/replay、10条有限更新、无DR/噪声、同源环境与运行时PD/
 DOF参数以及独立短回放均已校验；日志无Traceback。证书位于`docs/validation/`。
-这只放行正式短续训，不是60秒步态验收。正式任务尚未创建。
+这只放行正式短续训，不是60秒步态验收。
+
+正式任务于18:04启动：short=`TASK_20260924_112`、long=`TASK_20260924_113`，
+训练提交`59cf1015bd11ab1126d5b544c21db698fcfe25e3`。18:05两组实际日志均已推进
+累计1518；启动manifest回读确认4096×追加250、同源1500、各自6/60秒episode、
+100Hz控制/1kHz物理、AMP权重和无DR/噪声。日志快照无Traceback，尚未完成1750。
+正式到1750后自动独立60秒评估；当前不声称平滑、存活或风格效果改善。
 工作区`F:\robot_f1\worktrees\f1-amp-horizon-coverage`，
 分支`experiment/f1-amp-horizon-coverage`。旧工作区和所有产物保留。
 源60秒验证与视频详见[amp-style-signal.md](amp-style-signal.md)。
