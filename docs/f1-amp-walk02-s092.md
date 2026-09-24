@@ -80,3 +80,8 @@ checkpoint保存Actor/Critic、PPO优化器、D与其优化器、冻结统计和
 优化器更新，所以legacy独立es_optimizer.state为空是源码既有行为，不是AMP断梯度。
 证书 `resources/motions/amp_lafan_walk02_s092/cloud_smoke_certificate.json`
 仅证明接入短测通过；不代表随机初始化的10次更新已得到合格步态。
+
+正式任务：`TASK_20260924_022`，2026-09-24 11:04:47启动，代码`d25b96a`，
+1×4090D、seed5、scratch、4096环境×3000更新。11:06核实到32次更新，风格奖励
+0.00549/步、D总损失0.6103；此为启动证据而非收敛或动作质量结论。
+训练不恢复短测模型，也不替换旧部署模型；输出保留Actor/PPO/D和来源身份。
