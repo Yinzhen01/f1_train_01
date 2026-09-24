@@ -1,0 +1,32 @@
+{
+  "identity": {
+    "experiment": "f1_amp_walk02_recovery_static",
+    "config_sha256": "2598765e6d5fd22b9a31f45de7a6963368a98fd86165c5231c3024436a16f89e",
+    "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+    "urdf_lf_sha256": "9fb3d6efa623576a964aef9a3e2db2f96ca2296a85f2e0ade6bfe0ecf043ba15",
+    "feature_fingerprint": "91fab3ef16ae4613568ccea4fc49919acc3641c4e516516f4988b4cc8bd6333f"
+  },
+  "implementation_fingerprint": "83f95ca423b73381a1da53aee123d1a96557c24de4323594b928d86dd26b09f0",
+  "code_commit": "0f266c668458672e4a171adb0aa8b311717ba3f1",
+  "num_envs": 32,
+  "updates": 10,
+  "physics_dt_verified": true,
+  "body_frames_verified": true,
+  "body_frame_max_error_m": 0.000002375881871967918,
+  "reset_history_verified": true,
+  "nonzero_style_reward": true,
+  "valid_windows": 6794,
+  "reset_checks": 68,
+  "warmup_excluded": 886,
+  "actor_updated": true,
+  "discriminator_updated": true,
+  "all_finite": true,
+  "complete": true,
+  "no_dr_configuration_verified": true,
+  "rsi_reset_count": 100,
+  "replay_window_count": 6794,
+  "smoke_evaluation_verified": true,
+  "effectiveness_verified": false,
+  "dr_unlocked": false,
+  "source_task_id": "TASK_20260924_058"
+}
