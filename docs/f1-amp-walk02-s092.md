@@ -72,3 +72,11 @@ checkpoint保存Actor/Critic、PPO优化器、D与其优化器、冻结统计和
 0.001秒回读为0.0010000000474974513，乘10后的误差约4.75e-10秒，超过旧1e-10容差。
 修正为1e-6相对容差并严格要求decimation=10，新增错误频率/NaN/Inf拒绝测试；
 未调整任何控制、仿真或动力学参数。该失败任务保留，不作为通过证据。
+
+重测 `TASK_20260924_021` 在2026-09-24 11:01:34正常结束，32环境×10更新。
+7060个合法历史窗口，37次reset检查，620个不完整历史被排除；Actor与D均更新且有限，
+真实刚体FK最大误差1.58253e-6米。已下载model_10与model_amp_manifest并检查身份、
+冻结归一化、checkpoint更新次数和优化器；旧DHPPO将状态估计器MSE与PPO合并在主
+优化器更新，所以legacy独立es_optimizer.state为空是源码既有行为，不是AMP断梯度。
+证书 `resources/motions/amp_lafan_walk02_s092/cloud_smoke_certificate.json`
+仅证明接入短测通过；不代表随机初始化的10次更新已得到合格步态。

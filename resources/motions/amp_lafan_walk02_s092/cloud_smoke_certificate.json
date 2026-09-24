@@ -1,0 +1,26 @@
+{
+  "identity": {
+    "experiment": "f1_amp_walk02_s092",
+    "config_sha256": "9ddb6d78eb15674b6ce53001725151d6d1d15b039b19785cd74d2a08b579ef9e",
+    "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+    "urdf_lf_sha256": "9fb3d6efa623576a964aef9a3e2db2f96ca2296a85f2e0ade6bfe0ecf043ba15",
+    "feature_fingerprint": "91fab3ef16ae4613568ccea4fc49919acc3641c4e516516f4988b4cc8bd6333f"
+  },
+  "implementation_fingerprint": "3b610c0f3247a376bae0e78b9c81a00c08eac44a79fb3cf38f6c4a2b4159427c",
+  "code_commit": "ebf5600f31c0d962a9a6f961f870723bc203c320",
+  "num_envs": 32,
+  "updates": 10,
+  "physics_dt_verified": true,
+  "body_frames_verified": true,
+  "body_frame_max_error_m": 1.5825269296849564e-06,
+  "reset_history_verified": true,
+  "nonzero_style_reward": true,
+  "valid_windows": 7060,
+  "reset_checks": 37,
+  "warmup_excluded": 620,
+  "actor_updated": true,
+  "discriminator_updated": true,
+  "all_finite": true,
+  "complete": true,
+  "evidence_task_id": "TASK_20260924_021"
+}
