@@ -4,6 +4,7 @@ import numpy as np
 from .x1_dh_stand_env import X1DHStandEnv
 from humanoid.amp.history import PolicyState
 from humanoid.amp.features import quat_rotate, quat_conj
+from humanoid.amp.scaled_experiment import validate_runtime_timing
 
 
 class X1AMPEnv(X1DHStandEnv):
@@ -16,8 +17,7 @@ class X1AMPEnv(X1DHStandEnv):
         self.amp_verified_frames = 0
 
     def attach_amp(self, bridge, experiment):
-        if abs(self.dt-.01) > 1e-10 or abs(self.sim_params.dt-.001) > 1e-10:
-            raise ValueError("AMP requires real 100 Hz control / 1 kHz physics")
+        validate_runtime_timing(self.dt, self.sim_params.dt, self.cfg.control.decimation)
         self.amp_bridge, self.amp_experiment = bridge, experiment
         self.amp_body_ids = [self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], n)
                              for n in experiment.spec.body_names]

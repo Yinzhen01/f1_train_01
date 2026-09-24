@@ -6,6 +6,7 @@ acceptance and requires static checks plus a matching real-simulator smoke.
 """
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,17 @@ from .quality import derivative_metrics, support_proxy
 
 def canonical_sha(path):
     return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def validate_runtime_timing(control_dt, physics_dt, decimation):
+    """Accept native float32 rounding, never a different control/physics rate."""
+    if (decimation != 10 or
+            not math.isclose(control_dt, .01, rel_tol=1e-6, abs_tol=1e-10) or
+            not math.isclose(physics_dt, .001, rel_tol=1e-6, abs_tol=1e-10)):
+        raise ValueError("AMP requires 100 Hz control / 1 kHz physics / decimation 10; "
+                         "got control_dt=%.17g physics_dt=%.17g decimation=%s" %
+                         (control_dt, physics_dt, decimation))
+    return True
 
 
 class ScaledExperiment:

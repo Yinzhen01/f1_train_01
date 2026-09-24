@@ -10,7 +10,7 @@ import unittest
 
 import numpy as np
 import torch
-from humanoid.amp.scaled_experiment import ScaledExperiment, canonical_sha, validate_cloud_smoke
+from humanoid.amp.scaled_experiment import ScaledExperiment, canonical_sha, validate_cloud_smoke, validate_runtime_timing
 from humanoid.amp.adapter import AMPAlgorithmAdapter
 from humanoid.amp.discriminator import AMPDiscriminator, DiscriminatorTrainer
 from humanoid.amp.integration import AMPBridge
@@ -24,6 +24,15 @@ class ScaledAMPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.experiment = ScaledExperiment(REPO)
+
+    def test_native_float32_timing_and_wrong_rates(self):
+        dt = float(np.float32(.001))
+        self.assertTrue(validate_runtime_timing(10*dt, dt, 10))
+        for control, physics, decimation in ((.02, .001, 20), (.01, .0005, 20),
+                (.01, .001, 5), (.0101, .00101, 10), (float("nan"), .001, 10),
+                (.01, float("inf"), 10)):
+            with self.assertRaisesRegex(ValueError, "got control_dt="):
+                validate_runtime_timing(control, physics, decimation)
 
     def test_single_clip_and_only_one_changed_column(self):
         e = self.experiment; z = e.clip.arrays
