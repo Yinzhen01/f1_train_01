@@ -2,6 +2,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+import numpy as np
 
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from tools.amp.evaluate_mounted import locate_checkpoint
@@ -9,6 +10,31 @@ from tools.amp.evaluate_long_horizon import SOURCES, audit_source
 
 
 class LongEvaluationTests(unittest.TestCase):
+    def test_drift_metrics_use_only_requested_valid_time_interval(self):
+        from tools.amp.analyze_long_horizon import metrics
+        t = (np.arange(100)+1)*.01
+        root = np.zeros((100, 13)); root[:, 2] = .6; root[:, 6] = 1
+        vel = np.zeros((100, 3)); vel[:, 0] = .45; vel[50:, 0] = 9
+        force = np.zeros((100, 2, 3)); force[:, :, 2] = 100
+        data = dict(time=t, root_state=root, base_lin_vel=vel, foot_force=force, dof_pos=np.zeros((100, 12)))
+        out = metrics(data, np.zeros((100, 2)), np.ones((100, 2))*.1, 0, .5)
+        self.assertAlmostEqual(out['vx_mean'], .45)
+        self.assertAlmostEqual(out['vx_rmse_to_command'], 0.)
+        self.assertAlmostEqual(out['slip_mean_m_s'], .1)
+        self.assertIsNone(metrics(data, np.zeros((100, 2)), np.zeros((100, 2)), 0, .05))
+        self.assertIsNone(metrics(data, np.zeros((100, 2)), np.zeros((100, 2)), 2, 6))
+
+    def test_initial_pair_does_not_assume_same_seed_means_same_state(self):
+        from tools.amp.verify_long_pair import initial_comparison
+        a = {'standing_initial_root_state': np.zeros((16, 13))}
+        b = {'standing_initial_root_state': np.zeros((16, 13))}
+        self.assertTrue(initial_comparison(a, b)['all_captured_fields_exact_equal'])
+        b['standing_initial_root_state'][3, 0] = .01
+        result = initial_comparison(a, b)
+        self.assertFalse(result['all_captured_fields_exact_equal'])
+        self.assertEqual(result['fields']['standing_initial_root_state']['max_abs_difference'], .01)
+        with self.assertRaises(ValueError): initial_comparison(a, {})
+
     def test_long_modes_do_not_depend_on_earlier_failures_rng(self):
         self.assertIsNone(independent_mode_seeds(5))
         self.assertEqual(independent_mode_seeds(5, True), {'standing': 5, 'reference': 105})

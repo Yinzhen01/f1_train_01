@@ -42,19 +42,37 @@ def summarize(rows, survivors_only=False):
     return out
 
 
+def report_duration(report, path):
+    """Older reports keep the explicit budget in an identity-matched sibling manifest."""
+    duration = report.get('duration_s')
+    if duration is None:
+        manifest = json.loads(Path(path).with_name('source_manifest.json').read_text(encoding='utf-8'))
+        if manifest['checkpoint_sha256'] != report['checkpoint_sha256'] or manifest['identity'] != report['identity']:
+            raise ValueError('Duration manifest is not this report')
+        duration = manifest['duration_s']
+    duration = float(duration)
+    if not np.isfinite(duration) or duration <= 0:
+        raise ValueError('Invalid evaluation duration')
+    return duration
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--case', action='append', required=True, help='LABEL=report.json')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     reports, result = {}, {}
-    auditor = None
+    auditor, duration = None, None
     for case in args.case:
         label, path = case.split('=', 1)
         if label in reports:
             raise ValueError('Duplicate label')
         path = Path(path)
         report = json.loads(path.read_text(encoding='utf-8'))
+        actual_duration = report_duration(report, path)
+        if duration not in (None, actual_duration):
+            raise ValueError('Do not compare different evaluation horizons')
+        duration = actual_duration
         digest = (report.get('frozen_auditor') or {}).get('sha256')
         if not digest or auditor not in (None, digest):
             raise ValueError('All comparisons require the same frozen auditor')
@@ -69,7 +87,7 @@ def main():
                 observed_duration_range_s=[min(r['observed_s'] for r in rows), max(r['observed_s'] for r in rows)],
                 all_observed=summarize(rows), survivors_only=summarize(rows, True))
     args.output.mkdir(parents=True, exist_ok=False)
-    output = dict(frozen_auditor_sha256=auditor, cases=result,
+    output = dict(frozen_auditor_sha256=auditor, duration_s=duration, cases=result,
         note='Equal weight per initial condition. Post-2s metrics with missing/short episodes expose n. Failed initial states are retained; survivors-only is secondary, not the primary ranking. Frozen style score is not a probability. No automatic acceptance or DR unlock.')
     (args.output/'comparison.json').write_text(json.dumps(output, indent=2, allow_nan=False), encoding='utf-8')
     import matplotlib
@@ -100,7 +118,7 @@ def main():
                 axis.axhline(.45, color='gray', ls='--')
         counts = ['%s %s/%s' % (label, result[label]['modes'][mode]['survived'], result[label]['modes'][mode]['n']) for label in labels]
         count_lines = '\n'.join(', '.join(counts[i:i+4]) for i in range(0, len(counts), 4))
-        fig.suptitle(mode+' initial state | survived 20s\n'+count_lines+'\nEach dot is one initial state; red=failed, black=observed mean; post-2s metrics', fontsize=10)
+        fig.suptitle(mode+' initial state | survived %gs\n' % duration+count_lines+'\nEach dot is one initial state; red=failed, black=observed mean; post-2s metrics', fontsize=10)
         fig.tight_layout(rect=(0, 0, 1, .90)); fig.savefig(args.output/(mode+'_comparison.png'), dpi=150); plt.close(fig)
     print(json.dumps(dict(output=str(args.output), survival={label: {m: v['survived'] for m, v in r['modes'].items()} for label, r in result.items()})))
 

@@ -227,11 +227,19 @@ def render_episode(data, manifest, urdf, output):
     import cv2
     import imageio.v2 as imageio
     import mujoco
+    import xml.etree.ElementTree as ET
     sys.path.insert(0, str(ROOT/"humanoid/scripts"))
     from render_gmr_policy import make_scene, label
     if not len(data["time"]):
         return None
     model, scene = make_scene(urdf, output)
+    # The old 8m visual plane disappears on long walks although PhysX ground
+    # remains infinite. Extend only this generated rendering scene, not assets.
+    extent = np.maximum(8., np.max(np.abs(data["root_state"][:, :2]), axis=0)+4.)
+    xml = ET.parse(scene)
+    xml.find(".//geom[@name='render_ground']").set("size", "%g %g .1" % tuple(extent))
+    xml.write(scene, encoding="utf-8", xml_declaration=True)
+    model = mujoco.MjModel.from_xml_path(str(scene))
     state = mujoco.MjData(model)
     address = [int(model.joint(name).qposadr[0]) for name in manifest["dof_names"]]
     root_address = int(model.joint("render_root").qposadr[0])
@@ -288,6 +296,7 @@ def render_episode(data, manifest, urdf, output):
     imageio.mimsave(output/"preview_first8s.gif", preview, duration=100, loop=0)
     return dict(mp4=str(path), preview=str(output/"preview_first8s.gif"), frames=len(indices),
                 fps=50, max_key_body_fk_error_m=max_error, scene=str(scene),
+                visual_ground_half_extent_m=extent.tolist(),
                 scope="rendered recorded PhysX states; no MuJoCo dynamics or Sim2Real claim")
 
 
@@ -347,7 +356,7 @@ def main():
     report = dict(source_bundle_sha256=hashlib.sha256(args.bundle.read_bytes()).hexdigest(),
         analysis_script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         identity=manifest["identity"], checkpoint_sha256=manifest["checkpoint_sha256"], modes={},
-        frozen_auditor=auditor_info,
+        frozen_auditor=auditor_info, duration_s=manifest["duration_s"],
         note="Post-2s metrics exclude injected initial velocity. Foot geometry is mesh height, not PhysX penetration depth. Ground-contact proxy uses >5 N Fz and mesh min height <2 cm; net force alone cannot distinguish self contacts. No automatic DR acceptance.")
     for mode in manifest["modes"]:
         rows = []

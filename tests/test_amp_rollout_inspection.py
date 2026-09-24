@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 import hashlib
 import tempfile
+import json
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -123,6 +124,18 @@ class InspectionTests(unittest.TestCase):
             self.assertEqual(locate_checkpoint([root, root], digest), path.resolve())
             with self.assertRaises(FileNotFoundError):
                 locate_checkpoint([root], "0"*64)
+
+    def test_comparison_duration_is_explicit_not_assumed_twenty(self):
+        from tools.amp.compare_rollout_reports import report_duration
+        self.assertEqual(report_duration({'duration_s': 60}, Path('unused')), 60.)
+        for bad in (0, -1, float('nan')):
+            with self.assertRaises(ValueError): report_duration({'duration_s': bad}, Path('unused'))
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'report.json'
+            manifest = Path(folder)/'source_manifest.json'
+            manifest.write_text(json.dumps(dict(checkpoint_sha256='test', identity={}, duration_s=20)))
+            self.assertEqual(report_duration(dict(checkpoint_sha256='test', identity={}), path), 20.)
+            with self.assertRaises(ValueError): report_duration(dict(checkpoint_sha256='wrong', identity={}), path)
 
 
 if __name__ == "__main__":
