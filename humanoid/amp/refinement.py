@@ -100,6 +100,12 @@ def select_environment(experiment_name):
     from humanoid.envs.x1.x1_amp_env import X1AMPEnv
     from humanoid.envs.x1.x1_amp_recovery_config import X1AMPRecoveryCfg, X1AMPRecoveryCfgPPO
     from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
+    if experiment_name in ('sustain_control', 'sustain_progress3'):
+        from .sustain import apply_sustain_config
+        from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
+        from humanoid.envs.x1.x1_amp_direction_env import X1AMPDirectionEnv
+        cfg = apply_sustain_config(X1AMPRefineCfg(), experiment_name.split('_', 1)[1])
+        return cfg, X1AMPRecoveryCfgPPO(), X1AMPDirectionEnv
     if experiment_name in ('direction_mix15', 'direction_heading'):
         from .direction import apply_direction_config
         from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg

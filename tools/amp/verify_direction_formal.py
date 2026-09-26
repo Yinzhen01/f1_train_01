@@ -26,14 +26,21 @@ from tools.amp.verify_horizon_formal import read_cloud_log
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument('--family', choices=('direction', 'sustain'), default='direction')
     for name in ('group', 'task-id', 'expected-commit'):
         p.add_argument('--'+name, required=True)
     for name in ('folder', 'status', 'logs', 'source-manifest', 'source-evaluation'):
         p.add_argument('--'+name, type=Path, required=True)
     a = p.parse_args()
-    if a.group not in ('mix15', 'heading'): raise ValueError('Unknown direction group')
+    validate_certificate, validate_diagnostics = validate_direction_certificate, validate_direction_diagnostics
+    compare_env, validate_updates = compare_environment, validate_direction_updates
+    end = 2250
+    if a.family == 'sustain':
+        from humanoid.amp.sustain import validate_sustain_certificate, validate_sustain_diagnostics
+        from tools.amp.sustain_audit import compare_environment as compare_env, validate_sustain_updates as validate_updates
+        validate_certificate, validate_diagnostics, end = validate_sustain_certificate, validate_sustain_diagnostics, 2500
     torch.set_num_threads(2)
-    e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_direction_'+a.group+'.json'))
+    e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_'+a.family+'_'+a.group+'.json'))
     status = json.loads(a.status.read_text(encoding='utf-8'))['data']['taskBaseInfo']
     assert status['taskId'] == a.task_id and str(status['taskStatus']) == '5'
     assert str(status['userId']) == '4409' and status['goodsId'] == 'ESKU000001' and status['imageVersion'] == 'V000124'
@@ -46,7 +53,7 @@ def main():
     assert m['updates'] == c['updates'] == 250 and m['amp_reward'] == e.cfg['reward']
     assert_no_domain_randomization(m['env_config'])
     validate_runtime_timing(m['runtime']['control_dt'], m['runtime']['physics_dt'], m['env_config']['control']['decimation'])
-    validate_direction_certificate(e, m['continuation'])
+    validate_certificate(e, m['continuation'])
     assert m['continuation'] == c['continuation']
     validate_horizon_probe(c['horizon_diagnostics'], 60., False)
     probe = c['horizon_diagnostics']
@@ -57,14 +64,14 @@ def main():
         assert c[field] is True, field
     assert c['dr_unlocked'] is False and c['effectiveness_verified'] is False
     source = json.loads(torch.load(a.source_manifest, weights_only=True, map_location='cpu')['manifest_json'])
-    assert source['identity']['experiment'] == 'f1_amp_walk02_contact_tail'
-    compare_environment(source['env_config'], m['env_config'], a.group)
+    assert source['identity'] == ScaledExperiment(ROOT, ROOT/e.cfg[a.family]['source_config']).identity()
+    compare_env(source['env_config'], m['env_config'], a.group)
     validate_contact_diagnostics(c['contact_diagnostics'], 'tail', probe['control_steps'], 4096)
-    validate_direction_diagnostics(c['direction_diagnostics'], a.group, probe['control_steps'], 4096)
+    validate_diagnostics(c['direction_diagnostics'], a.group, probe['control_steps'], 4096)
     assert m['runtime'] == source['runtime'], 'Changed runtime physics or PD'
-    checkpoint = a.folder/'model_8802250.pt'
+    checkpoint = a.folder/('model_%d.pt' % (8800000+end))
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
-    bundle_path = a.folder/'model_9902250.pt'
+    bundle_path = a.folder/('model_%d.pt' % (9900000+end))
     bundle, arrays = load_bundle(bundle_path)
     assert bundle['checkpoint_sha256'] == digest and bundle['identity'] == e.identity()
     assert bundle['code_commit'] == a.expected_commit and bundle['num_envs'] == 16 and bundle['duration_s'] == 60
@@ -72,18 +79,18 @@ def main():
     assert bundle['mode_seeds'] == {'standing': 5, 'reference': 105} and bundle['policy_deterministic'] is True
     assert bundle['modes'] == ['standing', 'reference']
     baseline, base_arrays = load_bundle(a.source_evaluation)
-    assert baseline['checkpoint_sha256'] == e.cfg['direction']['source_checkpoint_sha256']
+    assert baseline['checkpoint_sha256'] == e.cfg[a.family]['source_checkpoint_sha256']
     assert baseline['duration_s'] == 60 and baseline['num_envs'] == 16
     assert baseline['mode_seeds'] == bundle['mode_seeds']
     assert baseline['evaluation_protocol'] == bundle['evaluation_protocol']
     assert baseline['runtime'] == bundle['runtime']
-    compare_environment(baseline['environment'], bundle['environment'], a.group)
+    compare_env(baseline['environment'], bundle['environment'], a.group)
     initial = initial_comparison(base_arrays, arrays)
     assert initial['all_captured_fields_exact_equal'], 'Initial state mismatch; do not call matched comparison'
     state = torch.load(checkpoint, weights_only=True, map_location='cpu')
-    final = torch.load(a.folder/'model_2250.pt', weights_only=True, map_location='cpu')
-    assert state['completed_updates'] == final['completed_updates'] == 2250
-    assert state['iter'] == final['iter'] == 2249
+    final = torch.load(a.folder/('model_%d.pt' % end), weights_only=True, map_location='cpu')
+    assert state['completed_updates'] == final['completed_updates'] == end
+    assert state['iter'] == final['iter'] == end-1
     assert state['amp_identity'] == final['amp_identity'] == e.identity()
     for key in ('model_state_dict', 'optimizer_state_dict', 'es_optimizer_state_dict',
                 'amp_discriminator_state_dict', 'amp_optimizer_state_dict', 'amp_replay_state'):
@@ -91,7 +98,7 @@ def main():
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
     logs = read_cloud_log(a.logs)
-    validate_direction_updates(parse_updates(logs), formal=True)
+    validate_updates(parse_updates(logs), formal=True)
     assert '[f1-amp-complete]' in logs and 'CUDA out of memory' not in logs and 'Nonfinite' not in logs
     traces = inspect_tracebacks(logs)
     modes = {}
@@ -107,7 +114,7 @@ def main():
         modes[mode] = rows
     result = dict(task=a.task_id, group=a.group, verified=True, checkpoint_sha256=digest,
         bundle_sha256=hashlib.sha256(bundle_path.read_bytes()).hexdigest(), additional_updates=250,
-        completed_updates=2250, no_dr_verified=True, sdk_connection_reset_tracebacks=traces,
+        completed_updates=end, no_dr_verified=True, sdk_connection_reset_tracebacks=traces,
         initial_comparison=initial, horizon_diagnostics=probe, contact_diagnostics=c['contact_diagnostics'], direction_diagnostics=c['direction_diagnostics'], modes=modes,
         final_eval_learning_state_equal=True, effectiveness_verified=False, dr_unlocked=False)
     with (a.folder/'formal_artifact_audit.json').open('x', encoding='utf-8') as stream: json.dump(result, stream, indent=2)

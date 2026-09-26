@@ -25,6 +25,7 @@ from humanoid.amp.horizon import (HORIZON_GROUPS, validate_horizon, warm_start_h
 from humanoid.amp.contact import CONTACT_GROUPS, validate_contact, warm_start_contact, validate_contact_diagnostics
 from humanoid.amp.progress import PROGRESS_GROUPS, validate_progress, warm_start_progress, validate_progress_diagnostics
 from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction, warm_start_direction, validate_direction_diagnostics
+from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain, warm_start_sustain, validate_sustain_diagnostics
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -39,7 +40,7 @@ def main():
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
     parser.add_argument("--recover-interrupted", action="store_true")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS, default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -53,16 +54,18 @@ def main():
     horizoning = extra.experiment in HORIZON_GROUPS
     contacting = extra.experiment in CONTACT_GROUPS
     progressing = extra.experiment in PROGRESS_GROUPS
-    directing = extra.experiment in DIRECTION_GROUPS
+    sustaining = extra.experiment in SUSTAIN_GROUPS
+    directing = extra.experiment in DIRECTION_GROUPS or sustaining
+    direction_key = 'sustain' if sustaining else 'direction'
     resuming = refining or signaling or horizoning or contacting or progressing or directing
     if extra.recover_interrupted and not refining:
         raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
     if args.load_run is not None or args.training_profile or (args.resume and not resuming):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
     if directing:
-        validate_direction(experiment)
-        if not args.resume or args.checkpoint != 2000:
-            raise ValueError('Direction experiments require exact tail2000 source')
+        (validate_sustain if sustaining else validate_direction)(experiment)
+        if not args.resume or args.checkpoint != (2250 if sustaining else 2000):
+            raise ValueError('Direction/sustain experiments require their exact approved source')
     elif progressing:
         validate_progress(experiment)
         if not args.resume or args.checkpoint != 2000:
@@ -106,7 +109,7 @@ def main():
     elif progressing:
         train_cfg.algorithm.learning_rate = experiment.cfg['progress']['learning_rate']
     elif directing:
-        train_cfg.algorithm.learning_rate = experiment.cfg['direction']['learning_rate']
+        train_cfg.algorithm.learning_rate = experiment.cfg[direction_key]['learning_rate']
     cfg.seed = train_cfg.seed = 5
     cfg, train_cfg = update_cfg_from_args(cfg, train_cfg, args)
     train_cfg.runner.experiment_name = experiment.cfg["experiment"]
@@ -127,8 +130,8 @@ def main():
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
     continuation = None
     if directing:
-        source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg['direction']['source_checkpoint_sha256'])
-        continuation = warm_start_direction(runner, experiment, source)
+        source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg[direction_key]['source_checkpoint_sha256'])
+        continuation = (warm_start_sustain if sustaining else warm_start_direction)(runner, experiment, source)
     elif progressing:
         source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg['progress']['source_checkpoint_sha256'])
         continuation = warm_start_progress(runner, experiment, source)
@@ -226,8 +229,8 @@ def main():
                                       horizon_probe.steps, env.num_envs)
     if directing:
         certificate['direction_diagnostics'] = env.direction_diagnostics()
-        validate_direction_diagnostics(certificate['direction_diagnostics'], experiment.cfg['direction']['group'],
-                                       horizon_probe.steps, env.num_envs)
+        (validate_sustain_diagnostics if sustaining else validate_direction_diagnostics)(
+            certificate['direction_diagnostics'], experiment.cfg[direction_key]['group'], horizon_probe.steps, env.num_envs)
     if extra.mode == "smoke":
         validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=extra.recover_interrupted)
     manifest["completion"] = certificate

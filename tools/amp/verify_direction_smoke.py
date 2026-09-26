@@ -20,7 +20,8 @@ from tools.amp.verify_horizon_formal import read_cloud_log
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--group', choices=('mix15', 'heading'), required=True)
+    p.add_argument('--family', choices=('direction', 'sustain'), default='direction')
+    p.add_argument('--group', required=True)
     p.add_argument('--task-id', required=True)
     p.add_argument('--folder', type=Path, required=True)
     p.add_argument('--status', type=Path, required=True)
@@ -29,8 +30,15 @@ def main():
     p.add_argument('--expected-commit', required=True)
     a = p.parse_args()
     torch.set_num_threads(2)
-    e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_direction_'+a.group+'.json'))
-    validate_direction(e)
+    validate_experiment, validate_diagnostics = validate_direction, validate_direction_diagnostics
+    compare_env, validate_updates = compare_environment, validate_direction_updates
+    end = 2010
+    if a.family == 'sustain':
+        from humanoid.amp.sustain import validate_sustain, validate_sustain_diagnostics
+        from tools.amp.sustain_audit import compare_environment as compare_env, validate_sustain_updates as validate_updates
+        validate_experiment, validate_diagnostics, end = validate_sustain, validate_sustain_diagnostics, 2260
+    e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_'+a.family+'_'+a.group+'.json'))
+    source_experiment = validate_experiment(e)
     status = json.loads(a.status.read_text(encoding='utf-8'))['data']['taskBaseInfo']
     assert status['taskId'] == a.task_id and str(status['taskStatus']) == '5'
     assert str(status['userId']) == '4409' and status['goodsId'] == 'ESKU000001' and status['imageVersion'] == 'V000124'
@@ -41,7 +49,7 @@ def main():
     assert cert['code_commit'] == manifest['code_commit'] == a.expected_commit
     assert manifest['mode'] == 'smoke' and manifest['num_envs'] == 32 and manifest['updates'] == 10
     probe = cert['horizon_diagnostics']
-    validate_direction_diagnostics(cert['direction_diagnostics'], a.group, probe['control_steps'], 32)
+    validate_diagnostics(cert['direction_diagnostics'], a.group, probe['control_steps'], 32)
     assert probe['control_steps'] == 10*manifest['ppo_config']['runner']['num_steps_per_env']
     assert probe['captured_transitions'] == 32*probe['control_steps']
     assert manifest['amp_reward'] == e.cfg['reward'] and manifest['continuation'] == cert['continuation']
@@ -49,33 +57,33 @@ def main():
     assert_no_domain_randomization(manifest['env_config'])
     validate_runtime_timing(manifest['runtime']['control_dt'], manifest['runtime']['physics_dt'], manifest['env_config']['control']['decimation'])
     source = json.loads(torch.load(a.source_manifest, weights_only=True, map_location='cpu')['manifest_json'])
-    assert source['identity']['experiment'] == 'f1_amp_walk02_contact_tail'
-    compare_environment(source['env_config'], manifest['env_config'], a.group, smoke=True)
+    assert source['identity'] == source_experiment.identity()
+    compare_env(source['env_config'], manifest['env_config'], a.group, smoke=True)
     for field in ('pd_p', 'pd_d', 'dof_properties', 'dof_names', 'physics_dt', 'control_dt', 'actor_history', 'critic_history'):
         assert manifest['runtime'][field] == source['runtime'][field], field
-    bundle_path = a.folder/'model_9902010.pt'
+    bundle_path = a.folder/('model_%d.pt' % (9900000+end))
     bundle, arrays = load_bundle(bundle_path)
     assert bundle['identity'] == e.identity() and bundle['code_commit'] == a.expected_commit
     assert bundle['num_envs'] == 2 and bundle['duration_s'] == 1
-    checkpoint = a.folder/'model_2010.pt'
+    checkpoint = a.folder/('model_%d.pt' % end)
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
     assert digest == bundle['checkpoint_sha256']
     state = torch.load(checkpoint, weights_only=True, map_location='cpu')
-    assert state['completed_updates'] == 2010 and state['iter'] == 2009 and state['amp_identity'] == e.identity()
+    assert state['completed_updates'] == end and state['iter'] == end-1 and state['amp_identity'] == e.identity()
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
     assert set(bundle['modes']) == {'standing', 'reference'}
     for mode in bundle['modes']:
         for index in range(2): episode(arrays, mode, index)
     logs = read_cloud_log(a.logs)
-    validate_direction_updates(parse_updates(logs))
+    validate_updates(parse_updates(logs))
     if any(s in logs for s in ('Traceback (most recent call last)', 'CUDA out of memory', 'Nonfinite')):
         raise ValueError('Log error requires inspection before importing certificate')
     assert '[f1-amp-complete]' in logs
     cert.update(source_task_id=a.task_id, independent_artifacts_verified=True,
         checkpoint_sha256=digest, bundle_sha256=hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
         weighted_style_log_verified=True, intervention_log_verified=True, source_environment_equivalence_verified=True)
-    target = ROOT/'docs/validation'/('direction_'+a.group+'_cloud_smoke.json')
+    target = ROOT/'docs/validation'/(a.family+'_'+a.group+'_cloud_smoke.json')
     with target.open('x', encoding='utf-8') as stream: json.dump(cert, stream, indent=2)
     print(json.dumps(dict(group=a.group, task=a.task_id, verified=True, checkpoint_sha256=digest,
         implementation_fingerprint=cert['implementation_fingerprint'], direction=cert['direction_diagnostics'], contact=cert['contact_diagnostics'], dr_unlocked=False)))
