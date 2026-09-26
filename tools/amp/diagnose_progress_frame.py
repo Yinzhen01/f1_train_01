@@ -19,26 +19,31 @@ FIELDS = ('body_vx_mean', 'world_vx_mean', 'world_vy_abs_mean', 'body_progress_r
           'world_progress_reward_mean', 'selected_progress_reward_mean', 'heading_reward_mean', 'yaw_rms_deg')
 
 
-def series(data):
+def series(data, heading_scale=-.5):
+    if heading_scale not in (-.5, -1.5): raise ValueError('Unsupported heading scale')
     body = torch.as_tensor(data['base_lin_vel'][:, :2])
     world = torch.as_tensor(data['root_state'][:, 7:9])
     cmd = torch.tensor([.45, 0.], dtype=body.dtype).expand_as(body)
     yaw = Rotation.from_quat(data['root_state'][:, 3:7]).as_euler('xyz')[:, 2]
     return dict(body_progress=centered_velocity_reward(body, cmd).numpy()*.02,
         world_progress=centered_velocity_reward(world, cmd).numpy()*.02,
-        heading=-.005*(1-np.cos(yaw)), yaw=yaw)
+        heading=.01*heading_scale*(1-np.cos(yaw)), yaw=yaw)
 
 
-def summarize(data, values, frame='body'):
+def summarize(data, values, frame='body', world_fraction=None):
     if frame not in ('body', 'world'): raise ValueError('Unknown actual progress frame')
+    if world_fraction is not None and (frame != 'body' or world_fraction not in (0., .15)):
+        raise ValueError('Invalid bounded direction mixture')
     mask = data['time'] >= 2.
     if not mask.any(): return {k: None for k in FIELDS}
+    selected = (values[frame+'_progress'] if world_fraction is None else
+                (1-world_fraction)*values['body_progress']+world_fraction*values['world_progress'])
     return dict(body_vx_mean=float(data['base_lin_vel'][mask, 0].mean()),
         world_vx_mean=float(data['root_state'][mask, 7].mean()),
         world_vy_abs_mean=float(np.abs(data['root_state'][mask, 8]).mean()),
         body_progress_reward_mean=float(values['body_progress'][mask].mean()),
         world_progress_reward_mean=float(values['world_progress'][mask].mean()),
-        selected_progress_reward_mean=float(values[frame+'_progress'][mask].mean()),
+        selected_progress_reward_mean=float(selected[mask].mean()),
         heading_reward_mean=float(values['heading'][mask].mean()),
         yaw_rms_deg=float(np.rad2deg(np.sqrt(np.mean(values['yaw'][mask]**2)))))
 
@@ -62,19 +67,23 @@ def main():
         ranges = m['environment']['commands']['ranges']
         assert ranges['lin_vel_x'] == [.45, .45] and ranges['lin_vel_y'] == [0., 0.]
         assert m['environment']['rewards']['scales']['recovery_progress'] == 2.
-        assert m['environment']['rewards']['scales']['refine_heading'] == -.5
+        heading_scale = m['environment']['rewards']['scales']['refine_heading']
+        assert heading_scale in (-.5, -1.5)
         frame = m['environment']['rewards'].get('progress_velocity_frame', 'body')
         if frame not in ('body', 'world'): raise ValueError('Unknown recorded progress frame')
-        case = dict(bundle_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), actual_velocity_frame=frame, modes={})
+        fraction = m['environment']['rewards'].get('direction_world_fraction')
+        case = dict(bundle_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    actual_velocity_frame='mixture' if fraction else frame,
+                    world_fraction=fraction, heading_scale=heading_scale, modes={})
         for mi, mode in enumerate(m['modes']):
             rows = []
             for index in range(16):
                 data = episode(arrays, mode, index)
                 if not len(data['time']): raise ValueError('No captured states')
-                v = series(data)
+                v = series(data, heading_scale)
                 rows.append(dict(env=index, samples_post2s=int((data['time'] >= 2.).sum()),
                     failure=bool(data['initial']['failure'] or data['failure'].any()),
-                    observed_s=len(data['time'])*.01, **summarize(data, v, frame)))
+                    observed_s=len(data['time'])*.01, **summarize(data, v, frame, fraction)))
                 if index == 0:
                     axes[mi, 0].plot(data['root_state'][::10, 0], data['root_state'][::10, 1], label=label)
                     axes[mi, 1].plot(data['time'][::10], np.rad2deg(v['yaw'][::10]), label=label)
@@ -86,10 +95,10 @@ def main():
             axes[mi, 1].set_title(mode+' env0 heading'); axes[mi, 1].set_xlabel('time s'); axes[mi, 1].set_ylabel('yaw deg')
         result[label] = case
     for axis in axes.flat: axis.legend(); axis.grid(alpha=.25)
-    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nSelected reward follows the recorded frame; the other is an offline counterfactual')
+    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nSelected reward follows recorded frame/mixture and heading scale')
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'world_paths.png', dpi=140); plt.close(fig)
-    report = dict(schema_version=2, cases=result, source_function='centered_velocity_reward',
-        limitation='Actual frame is read per bundle, default body for older experiments. Both reward values are reconstructed on captured states, not independent interventions. AMP features remain root-local. Scores alone do not establish effectiveness.')
+    report = dict(schema_version=3, cases=result, source_function='centered_velocity_reward',
+        limitation='Actual frame/mixture and heading scale are read per bundle, default body for older experiments. Rewards are reconstructed on captured states, not independent interventions. AMP features remain root-local. Scores alone do not establish effectiveness.')
     with (a.output/'progress_frame_report.json').open('x', encoding='utf-8') as stream:
         json.dump(report, stream, indent=2, allow_nan=False)
     print(json.dumps({k: {m: v['equal_initial_mean'] for m, v in r['modes'].items()} for k, r in result.items()}))
