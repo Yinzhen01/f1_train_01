@@ -10,6 +10,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from tools.amp.verify_horizon_formal import read_cloud_log, validate_updates
+from tools.amp.contact_audit import validate_contact_updates
 from tools.amp.verify_refinement_smoke import parse_updates
 
 
@@ -17,6 +18,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--case', action='append', required=True, help='label=full.log')
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--family', choices=('horizon', 'contact'), default='horizon')
     a = p.parse_args()
     cases, result = {}, {}
     fields = ('task_reward', 'style_reward', 'mixed_reward', 'style_zero_fraction',
@@ -27,7 +29,9 @@ def main():
         label, path = entry.split('=', 1)
         if label in cases: raise ValueError('Duplicate case label')
         path = Path(path)
-        rows = parse_updates(read_cloud_log(path)); validate_updates(rows)
+        rows = parse_updates(read_cloud_log(path))
+        if a.family == 'contact': validate_contact_updates(rows, formal=True)
+        else: validate_updates(rows)
         cases[label] = rows
         result[label] = dict(log_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), updates=250,
             first50={k: float(np.mean([r[k] for r in rows[:50]])) for k in fields},
@@ -52,9 +56,11 @@ def main():
                       label=label, color=line.get_color())
             axis.set_title(title); axis.set_xlabel('Completed PPO updates'); axis.grid(alpha=.25)
     for axis in axes.flat: axis.legend()
-    fig.suptitle('Identical update budget; faint=raw, solid=trailing25 mean\nDifferent episode coverage changes training samples; not a gait-acceptance plot')
+    subtitle = ('Contact reward scales differ; task totals are not a common physical score' if a.family == 'contact'
+                else 'Different episode coverage changes training samples; not a gait-acceptance plot')
+    fig.suptitle('Identical update budget; faint=raw, solid=trailing25 mean\n'+subtitle)
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'training_curves.png', dpi=150); plt.close(fig)
-    report = dict(cases=result, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    report = dict(cases=result, family=a.family, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         limitation='Current D changes during learning; reward/loss alone cannot prove style or physical success. Use independent matched60s trajectories.')
     with (a.output/'training_summary.json').open('x', encoding='utf-8') as stream: json.dump(report, stream, indent=2)
     print(json.dumps(dict(output=str(a.output), cases=result)))

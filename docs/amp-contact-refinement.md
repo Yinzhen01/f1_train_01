@@ -2,12 +2,12 @@
 
 ## 状态与范围
 
-2026-09-26 12:11：独立分支 `experiment/f1-amp-contact-refine`，从第9轮113的
-long1750恢复。249项CPU检查通过；真实短测068(tail)/069(control)/070(slip)
-均正常完成，模型、10条更新、独立轨迹和源码指纹核验通过。正式071(tail)、
-072(slip)、073(control)已在12:09–12:10启动。尚未完成2000或验证效果。
+2026-09-26结果更新：第10–12轮正式071(tail)、072(slip)、073(control)均正常
+完成2000，完整学习状态、250条实际更新、同初态独立60秒回放已核验。32初态
+存活分别30/32、0/32、29/32。tail的风格/加速度较好，但航向明显退化，尚未验收。
+新分析代码全套254项CPU测试通过。旧启动记录保留在下方，不代表任务仍运行。
 保持DR、观测噪声关闭；不改机器人资产、动力学、PD、动作/观测、示范数据、
-AMP判别器或奖励公式。不把静态检查或训练奖励提高当成行走有效性验收。
+AMP判别器结构与风格奖励公式。不把静态检查或训练奖励提高当成行走有效性验收。
 
 ## 为什么继续，以及为什么每组只训练250次
 
@@ -100,3 +100,97 @@ episode60秒、无DR/noise；12:12实际日志tail已1852、slip已1844、contro
 运行记录与资源报价已按任务登记在现有账号池machineSessions中；平台账单同步
 对4409返回query_failed，实际扣费/计费时长未知，未当作0或余额不足。启动前
 API-key余额核查giftBalance=43.43，报价5.4（接口未给出单位/币种，保持未知）。
+
+## 2000完整结果：尚未通过有效性验收
+
+三组均从同一113/1750完整学习状态开始，实际更新1751–2000，未额外加时。
+均关闭DR/noise，资产/动力学/PD/观测/动作不变。完成时间分别为tail12:19:19、
+slip12:18:11、control12:19:45，平台起止间隔590/507/583秒，不等于结算计费时长。
+与源113比较的24个已记录初态字段全部逐位相等；不宣称隐藏求解器状态相同。
+最终model_2000与独立评估model_8802000的actor、D、三套优化器和replay逐项相等。
+
+完整日志分别有2/2/4次SDK pika连接重置Traceback，已按精确SDK异常范围审查；
+不能称为“日志完全无异常”。未出现训练NaN/OOM，全部250条更新及最终产物完整。
+每组独立审计文件：`outputs/amp-contact/TASK_20260926_07{1,2,3}/formal_artifact_audit.json`。
+
+| 方案 | 静止初态存活60s | 参考初态存活60s | 失败情况 |
+|---|---:|---:|---|
+| 源113/1750 | 15/16 | 14/16 | 上轮保留对照 |
+| control073/2000 | 14/16 | 15/16 | standing env6/13，reference env2 |
+| slip072/2000 | 0/16 | 0/16 | 全部失败，参考最早1.19s |
+| tail071/2000 | 14/16 | 16/16 | standing env2=41.70s、env13=46.65s |
+
+参考初始化的指标如下（每初态等权、2秒后有效失败前缀；失败没有剔除）：
+
+| 方案 | 足底接触滑速 m/s | 关节加速度 RMS rad/s² | 航向 RMS ° | 最近示范窗口 RMS z |
+|---|---:|---:|---:|---:|
+| 源1750 | 0.12675 | 58.92 | 14.10 | 0.7290 |
+| control2000 | 0.14733 | 61.01 | 15.81 | 0.6848 |
+| slip2000 | 0.29909 | 81.29 | 28.85 | 1.2727 |
+| tail2000 | 0.12551 | 57.50 | 49.65 | 0.6475 |
+
+source/control/tail的n均16；slip的通用post2s指标n=13（另3个失败前缀未达到
+2秒后的最短分析长度，未按零计入均值），存活分母仍16。新力/进展审计只要求有post2s样本，因此slip参考n=14；
+不同n的均值不能混作同一统计口径。失败前缀时长不等，存活率优先于这些均值。
+
+tail相对control：足滑−14.8%、加速度−5.8%、示范距离−5.4%，但航向恶化到
+49.65°。相对源1750：足滑仅−1.0%、加速度−2.4%、示范距离−11.2%；动作差分
+0.23376→0.25539（+9.2%），力矩差分4.964→5.250 Nm（+5.8%）。不能称为整体更平滑。
+同一冻结D分数source/control/tail为0.5644/0.6408/0.6583，不是风格概率或物理验收。
+
+图表：[静止初态对比](../outputs/amp-contact/comparison-long60/standing_comparison.png)、
+[参考初态对比](../outputs/amp-contact/comparison-long60/reference_comparison.png)、
+[实际训练曲线](../outputs/amp-contact/training-curves/training_curves.png)。
+
+### 原因分析：已证实的监督缺口与未证实的机制
+
+1. **加强足滑并未得到可用策略。** slip权重确实从-2变到-6，短测/正式运行时
+   权重已验证；但确定性回放全部失败，滑速/加速度也更差。这是该种子下的受控
+   训练结果，不证明“足滑惩罚普遍有害”，也不能仅凭视频断言哪一个PPO机制导致崩溃。
+   训练中的573次物理重置与回放0/32存活并不矛盾：训练动作随机、初态/样本分布
+   不同，训练平均重置率不能代替确定性独立评估。
+2. **尾段对冲击的收益有限，方向监督有明显缺口。** tail参考足样本>1100N的
+   比例0.600%，control0.609%，源0.759%；P99.9分别3607/3480/3752 N（每初态
+   分位数再平均）。tail不是所有力指标最优，更不能把100Hz合力当作1kHz触地峰值。
+3. **当前速度奖励奖励的是“沿机身前向”，不是“沿世界+X”。**
+   `_reward_recovery_progress`输入`base_lin_vel[:,:2]`；AMP特征也在根坐标中，
+   不包含绝对航向。零yaw_rate奖励抑制继续转动，不保证已经偏转的机器人返回+X。
+   另有`-0.5*(1-cos(yaw))`，但在tail参考轨迹上实际仅−0.001756/步，而机身前进
+   奖励仍+0.014270/步。机身vx=0.400，世界vx=0.265，世界|vy|=0.281 m/s。
+   换言之，侧向偏航仍保留大部分“前进”收益；这与实际世界路径图一致。
+4. **世界坐标奖励目前只是离线反事实，不是已验证改进。** 对同一tail轨迹，把
+   相同公式速度输入改为root世界平移速度，得到−0.008641/步。单元测试也确认：
+   以0.45m/s沿机身走，在0/50/90°航向时旧奖励均+0.02/步；世界+X版本在50/90°
+   变为负值。它消除了这个奖励不变性，但是否能训练得更好必须再做新对照。
+
+完整数据：[进展坐标诊断](../outputs/amp-contact/progress-frame/progress_frame_report.json)、
+[固定env0世界路径](../outputs/amp-contact/progress-frame/world_paths.png)、
+[接触力尾部统计](../outputs/amp-contact/force-tails/contact_tail_report.json)。
+
+### 视频
+
+MuJoCo渲染的是独立Isaac Gym策略回放的真实100Hz状态，不是参考轨迹，也不是
+MuJoCo动力学sim2sim。视频50fps抽样、不改变控制频率；保留t=0帧导致60秒轨迹
+的视频容器为60.02秒。固定env0不挑选最佳，另保留tail失败env2。
+三组固定env0两模式共6个MP4已完整解码，FK最大误差小于6.2微米；关键帧已检查。
+额外tail静止env2失败视频也已完整解码并检查失败末帧：41.70秒实际轨迹、
+2086帧、1280×600、50fps，FK最大误差5.23微米以内。
+
+| 方案 | 静止初始化 | 参考初始化 |
+|---|---|---|
+| control073 | [60秒MP4](../outputs/amp-contact/render-073-long60/standing/policy_dual_view.mp4) | [60秒MP4](../outputs/amp-contact/render-073-long60/reference/policy_dual_view.mp4) |
+| slip072 | [17.01秒失败MP4](../outputs/amp-contact/render-072-long60/standing/policy_dual_view.mp4) | [8.24秒失败MP4](../outputs/amp-contact/render-072-long60/reference/policy_dual_view.mp4) |
+| tail071 | [60秒MP4](../outputs/amp-contact/render-071-long60/standing/policy_dual_view.mp4) | [60秒MP4](../outputs/amp-contact/render-071-long60/reference/policy_dual_view.mp4) |
+
+[tail前8秒GIF](../outputs/amp-contact/render-071-long60/reference/preview_first8s.gif)，
+[tail静止env2失败MP4](../outputs/amp-contact/failure-071-standing-env2/standing/policy_dual_view.mp4)。
+
+## 后续第13/14轮候选（尚未启动）
+
+不继续强化已失败的slip组，不把tail直接验收或解锁DR。下一步从同一071/tail2000
+完整学习状态，比较原机身坐标进展奖励与世界+X坐标进展奖励；其余任务奖励、AMP、
+接触尾段、数据、动力学、观测和动作完全相同。每组仍只250更新至2250，先新smoke。
+这是显式改变任务进展坐标系，不是改示范数据、加人工步态或改机器人模型。
+源候选`model_8802000.pt` SHA256：
+`4804076ff5f88be3dbfffc86f7a9e3e342b255107a2f780bd3c700d0f8cb512e`。
+第1–12轮已完成，最多20轮；13/14尚未实现或创建云端任务，不能记作已训练。
