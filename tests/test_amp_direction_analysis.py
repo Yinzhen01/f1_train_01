@@ -38,6 +38,16 @@ class DirectionAnalysisTests(unittest.TestCase):
         with self.assertRaises(ValueError): summarize(data, values, 'world', .15)
         with self.assertRaises(ValueError): summarize(data, values, 'body', .5)
         with self.assertRaises(ValueError): series(data, -2.)
+        with self.assertRaises(ValueError): series(data, -1.5, 4.)
+
+    def test_sustain_scale_changes_rewards_not_physical_metrics(self):
+        data = self.fixture()
+        old = summarize(data, series(data, -1.5, 2.))
+        scaled = summarize(data, series(data, -1.5, 3.))
+        self.assertAlmostEqual(scaled['selected_progress_reward_mean'],
+                               old['selected_progress_reward_mean']*1.5, places=7)
+        for field in ('body_vx_mean', 'world_vx_mean', 'heading_reward_mean', 'yaw_rms_deg'):
+            self.assertEqual(scaled[field], old[field])
 
 
 if __name__ == '__main__': unittest.main()

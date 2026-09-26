@@ -13,6 +13,7 @@ from tools.amp.verify_horizon_formal import read_cloud_log, validate_updates
 from tools.amp.contact_audit import validate_contact_updates
 from tools.amp.progress_audit import validate_progress_updates
 from tools.amp.direction_audit import validate_direction_updates
+from tools.amp.sustain_audit import validate_sustain_updates
 from tools.amp.verify_refinement_smoke import parse_updates
 
 
@@ -20,7 +21,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--case', action='append', required=True, help='label=full.log')
     p.add_argument('--output', type=Path, required=True)
-    p.add_argument('--family', choices=('horizon', 'contact', 'progress', 'direction'), default='horizon')
+    p.add_argument('--family', choices=('horizon', 'contact', 'progress', 'direction', 'sustain'), default='horizon')
     a = p.parse_args()
     cases, result = {}, {}
     fields = ('task_reward', 'style_reward', 'mixed_reward', 'style_zero_fraction',
@@ -35,6 +36,7 @@ def main():
         if a.family == 'contact': validate_contact_updates(rows, formal=True)
         elif a.family == 'progress': validate_progress_updates(rows, formal=True)
         elif a.family == 'direction': validate_direction_updates(rows, formal=True)
+        elif a.family == 'sustain': validate_sustain_updates(rows, formal=True)
         else: validate_updates(rows)
         cases[label] = rows
         result[label] = dict(log_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), updates=250,
@@ -64,6 +66,7 @@ def main():
                 else 'Different episode coverage changes training samples; not a gait-acceptance plot')
     if a.family == 'progress': subtitle = 'Velocity reward frames differ; totals are not a common physical score'
     if a.family == 'direction': subtitle = 'Direction reward terms differ; totals are not a common physical score'
+    if a.family == 'sustain': subtitle = 'Progress weights differ; higher task reward is not evidence of better gait'
     fig.suptitle('Identical update budget; faint=raw, solid=trailing25 mean\n'+subtitle)
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'training_curves.png', dpi=150); plt.close(fig)
     report = dict(cases=result, family=a.family, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

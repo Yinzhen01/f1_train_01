@@ -19,14 +19,15 @@ FIELDS = ('body_vx_mean', 'world_vx_mean', 'world_vy_abs_mean', 'body_progress_r
           'world_progress_reward_mean', 'selected_progress_reward_mean', 'heading_reward_mean', 'yaw_rms_deg')
 
 
-def series(data, heading_scale=-.5):
+def series(data, heading_scale=-.5, progress_scale=2.):
     if heading_scale not in (-.5, -1.5): raise ValueError('Unsupported heading scale')
+    if progress_scale not in (2., 3.): raise ValueError('Unsupported progress scale')
     body = torch.as_tensor(data['base_lin_vel'][:, :2])
     world = torch.as_tensor(data['root_state'][:, 7:9])
     cmd = torch.tensor([.45, 0.], dtype=body.dtype).expand_as(body)
     yaw = Rotation.from_quat(data['root_state'][:, 3:7]).as_euler('xyz')[:, 2]
-    return dict(body_progress=centered_velocity_reward(body, cmd).numpy()*.02,
-        world_progress=centered_velocity_reward(world, cmd).numpy()*.02,
+    return dict(body_progress=centered_velocity_reward(body, cmd).numpy()*(.01*progress_scale),
+        world_progress=centered_velocity_reward(world, cmd).numpy()*(.01*progress_scale),
         heading=.01*heading_scale*(1-np.cos(yaw)), yaw=yaw)
 
 
@@ -66,7 +67,8 @@ def main():
         assert m['num_envs'] == 16 and m['duration_s'] == 60
         ranges = m['environment']['commands']['ranges']
         assert ranges['lin_vel_x'] == [.45, .45] and ranges['lin_vel_y'] == [0., 0.]
-        assert m['environment']['rewards']['scales']['recovery_progress'] == 2.
+        progress_scale = m['environment']['rewards']['scales']['recovery_progress']
+        assert progress_scale in (2., 3.)
         heading_scale = m['environment']['rewards']['scales']['refine_heading']
         assert heading_scale in (-.5, -1.5)
         frame = m['environment']['rewards'].get('progress_velocity_frame', 'body')
@@ -74,13 +76,13 @@ def main():
         fraction = m['environment']['rewards'].get('direction_world_fraction')
         case = dict(bundle_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                     actual_velocity_frame='mixture' if fraction else frame,
-                    world_fraction=fraction, heading_scale=heading_scale, modes={})
+                    world_fraction=fraction, heading_scale=heading_scale, progress_scale=progress_scale, modes={})
         for mi, mode in enumerate(m['modes']):
             rows = []
             for index in range(16):
                 data = episode(arrays, mode, index)
                 if not len(data['time']): raise ValueError('No captured states')
-                v = series(data, heading_scale)
+                v = series(data, heading_scale, progress_scale)
                 rows.append(dict(env=index, samples_post2s=int((data['time'] >= 2.).sum()),
                     failure=bool(data['initial']['failure'] or data['failure'].any()),
                     observed_s=len(data['time'])*.01, **summarize(data, v, frame, fraction)))
@@ -95,10 +97,10 @@ def main():
             axes[mi, 1].set_title(mode+' env0 heading'); axes[mi, 1].set_xlabel('time s'); axes[mi, 1].set_ylabel('yaw deg')
         result[label] = case
     for axis in axes.flat: axis.legend(); axis.grid(alpha=.25)
-    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nSelected reward follows recorded frame/mixture and heading scale')
+    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nSelected reward follows recorded frame/mixture and actual weights')
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'world_paths.png', dpi=140); plt.close(fig)
-    report = dict(schema_version=3, cases=result, source_function='centered_velocity_reward',
-        limitation='Actual frame/mixture and heading scale are read per bundle, default body for older experiments. Rewards are reconstructed on captured states, not independent interventions. AMP features remain root-local. Scores alone do not establish effectiveness.')
+    report = dict(schema_version=4, cases=result, source_function='centered_velocity_reward',
+        limitation='Actual frame/mixture and progress/heading weights are read per bundle, default body for older experiments. Rewards are reconstructed on captured states, not independent interventions or common-scale physical scores. AMP features remain root-local. Scores alone do not establish effectiveness.')
     with (a.output/'progress_frame_report.json').open('x', encoding='utf-8') as stream:
         json.dump(report, stream, indent=2, allow_nan=False)
     print(json.dumps({k: {m: v['equal_initial_mean'] for m, v in r['modes'].items()} for k, r in result.items()}))
