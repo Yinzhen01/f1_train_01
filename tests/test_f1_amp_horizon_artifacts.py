@@ -1,10 +1,20 @@
 import copy
 import unittest
+from unittest.mock import Mock
 
-from tools.amp.verify_horizon_formal import validate_updates
+from tools.amp.verify_horizon_formal import validate_updates, read_cloud_log
 
 
 class HorizonArtifactTests(unittest.TestCase):
+    def test_raw_full_log_and_live_api_envelope(self):
+        raw = '[f1-amp-update] {"iteration":1501}\n[f1-amp-complete] {}\n'
+        self.assertEqual(read_cloud_log(Mock(suffix='.log', read_text=Mock(return_value=raw))), raw)
+        import json
+        wrapped = json.dumps(dict(data=raw.replace('\n', '\\n')))
+        self.assertEqual(read_cloud_log(Mock(suffix='.json', read_text=Mock(return_value=wrapped))), raw)
+        with self.assertRaises(ValueError):
+            read_cloud_log(Mock(suffix='.txt', read_text=Mock(return_value=raw)))
+
     def test_exact_bounded_continuation_updates(self):
         rows = [dict(iteration=i, style_reward=.01, weighted_style_reward=.01,
                      discriminator_bridge_gradient_penalty=.1, style_negative_fraction=0)

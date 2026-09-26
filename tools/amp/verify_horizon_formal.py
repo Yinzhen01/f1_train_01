@@ -19,6 +19,16 @@ from tools.amp.verify_refinement_smoke import parse_updates
 from tools.amp.verify_signal_formal import assert_equal, inspect_tracebacks
 
 
+def read_cloud_log(path):
+    """The live API is a tail; completed argo downloads are raw full logs."""
+    text = path.read_text(encoding='utf-8')
+    if path.suffix == '.json':
+        text = json.loads(text)['data'].replace('\\n', '\n')
+    elif path.suffix != '.log':
+        raise ValueError('Explicit .json API envelope or .log full artifact required')
+    return text
+
+
 def validate_updates(rows):
     if [r['iteration'] for r in rows] != list(range(1501, 1751)):
         raise ValueError('Not exactly250 additional updates from1500')
@@ -96,7 +106,7 @@ def main():
         assert_equal(state[key], final[key])
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
-    logs = json.loads(a.logs.read_text(encoding='utf-8'))['data'].replace('\\n', '\n')
+    logs = read_cloud_log(a.logs)
     validate_updates(parse_updates(logs))
     assert '[f1-amp-complete]' in logs and 'CUDA out of memory' not in logs and 'Nonfinite' not in logs
     traces = inspect_tracebacks(logs)
