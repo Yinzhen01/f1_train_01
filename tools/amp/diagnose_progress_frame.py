@@ -16,7 +16,7 @@ from tools.amp.inspect_rollout import load_bundle, episode
 
 
 FIELDS = ('body_vx_mean', 'world_vx_mean', 'world_vy_abs_mean', 'body_progress_reward_mean',
-          'hypothetical_world_progress_reward_mean', 'heading_reward_mean', 'yaw_rms_deg')
+          'world_progress_reward_mean', 'selected_progress_reward_mean', 'heading_reward_mean', 'yaw_rms_deg')
 
 
 def series(data):
@@ -29,14 +29,16 @@ def series(data):
         heading=-.005*(1-np.cos(yaw)), yaw=yaw)
 
 
-def summarize(data, values):
+def summarize(data, values, frame='body'):
+    if frame not in ('body', 'world'): raise ValueError('Unknown actual progress frame')
     mask = data['time'] >= 2.
     if not mask.any(): return {k: None for k in FIELDS}
     return dict(body_vx_mean=float(data['base_lin_vel'][mask, 0].mean()),
         world_vx_mean=float(data['root_state'][mask, 7].mean()),
         world_vy_abs_mean=float(np.abs(data['root_state'][mask, 8]).mean()),
         body_progress_reward_mean=float(values['body_progress'][mask].mean()),
-        hypothetical_world_progress_reward_mean=float(values['world_progress'][mask].mean()),
+        world_progress_reward_mean=float(values['world_progress'][mask].mean()),
+        selected_progress_reward_mean=float(values[frame+'_progress'][mask].mean()),
         heading_reward_mean=float(values['heading'][mask].mean()),
         yaw_rms_deg=float(np.rad2deg(np.sqrt(np.mean(values['yaw'][mask]**2)))))
 
@@ -61,7 +63,9 @@ def main():
         assert ranges['lin_vel_x'] == [.45, .45] and ranges['lin_vel_y'] == [0., 0.]
         assert m['environment']['rewards']['scales']['recovery_progress'] == 2.
         assert m['environment']['rewards']['scales']['refine_heading'] == -.5
-        case = dict(bundle_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), modes={})
+        frame = m['environment']['rewards'].get('progress_velocity_frame', 'body')
+        if frame not in ('body', 'world'): raise ValueError('Unknown recorded progress frame')
+        case = dict(bundle_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), actual_velocity_frame=frame, modes={})
         for mi, mode in enumerate(m['modes']):
             rows = []
             for index in range(16):
@@ -70,7 +74,7 @@ def main():
                 v = series(data)
                 rows.append(dict(env=index, samples_post2s=int((data['time'] >= 2.).sum()),
                     failure=bool(data['initial']['failure'] or data['failure'].any()),
-                    observed_s=len(data['time'])*.01, **summarize(data, v)))
+                    observed_s=len(data['time'])*.01, **summarize(data, v, frame)))
                 if index == 0:
                     axes[mi, 0].plot(data['root_state'][::10, 0], data['root_state'][::10, 1], label=label)
                     axes[mi, 1].plot(data['time'][::10], np.rad2deg(v['yaw'][::10]), label=label)
@@ -82,10 +86,10 @@ def main():
             axes[mi, 1].set_title(mode+' env0 heading'); axes[mi, 1].set_xlabel('time s'); axes[mi, 1].set_ylabel('yaw deg')
         result[label] = case
     for axis in axes.flat: axis.legend(); axis.grid(alpha=.25)
-    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nWorld-frame reward is an offline counterfactual, not proof of a better learned policy')
+    fig.suptitle('Fixed env0 only in plots; all16 initial states retained in report\nSelected reward follows the recorded frame; the other is an offline counterfactual')
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'world_paths.png', dpi=140); plt.close(fig)
-    report = dict(cases=result, source_function='X1AMPRecoveryEnv._reward_recovery_progress',
-        limitation='Current task velocity is body-frame. AMP features are root-local and do not constrain global heading. Hypothetical world reward is not a policy intervention, and does not prove causation or effectiveness.')
+    report = dict(schema_version=2, cases=result, source_function='centered_velocity_reward',
+        limitation='Actual frame is read per bundle, default body for older experiments. Both reward values are reconstructed on captured states, not independent interventions. AMP features remain root-local. Scores alone do not establish effectiveness.')
     with (a.output/'progress_frame_report.json').open('x', encoding='utf-8') as stream:
         json.dump(report, stream, indent=2, allow_nan=False)
     print(json.dumps({k: {m: v['equal_initial_mean'] for m, v in r['modes'].items()} for k, r in result.items()}))

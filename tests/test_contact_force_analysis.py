@@ -45,5 +45,13 @@ class ContactForceAnalysisTests(unittest.TestCase):
         data = dict(time=np.array([1.]))
         self.assertTrue(all(v is None for v in summarize(data, {}).values()))
 
+    def test_actual_frame_selects_corresponding_offline_reward(self):
+        data = dict(time=np.array([2.]), base_lin_vel=np.zeros((1, 3)), root_state=np.zeros((1, 13)))
+        v = dict(body_progress=np.array([.02]), world_progress=np.array([-.01]),
+                 heading=np.zeros(1), yaw=np.zeros(1))
+        self.assertEqual(summarize(data, v)['selected_progress_reward_mean'], .02)
+        self.assertEqual(summarize(data, v, 'world')['selected_progress_reward_mean'], -.01)
+        with self.assertRaises(ValueError): summarize(data, v, 'unknown')
+
 
 if __name__ == '__main__': unittest.main()
