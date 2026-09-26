@@ -148,4 +148,12 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
         validate_horizon_certificate(experiment, certificate.get("continuation") or {})
         validate_horizon_probe(certificate.get('horizon_diagnostics') or {},
                                experiment.cfg['horizon']['episode_length_s'], True)
+    if experiment.cfg.get('contact_refinement'):
+        from .contact import validate_contact_certificate, validate_contact_diagnostics
+        from .horizon import validate_horizon_probe
+        validate_contact_certificate(experiment, certificate.get('continuation') or {})
+        h = certificate.get('horizon_diagnostics') or {}
+        validate_horizon_probe(h, 60., True)
+        validate_contact_diagnostics(certificate.get('contact_diagnostics') or {},
+            experiment.cfg['contact_refinement']['group'], h['control_steps'], 32)
     return True

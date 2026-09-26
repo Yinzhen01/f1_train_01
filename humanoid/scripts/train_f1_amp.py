@@ -22,6 +22,7 @@ from humanoid.amp.interrupted import interrupted_source, restart_budget, recover
 from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal, warm_start_signal
 from humanoid.amp.horizon import (HORIZON_GROUPS, validate_horizon, warm_start_horizon,
                                  HorizonProbe, validate_horizon_probe)
+from humanoid.amp.contact import CONTACT_GROUPS, validate_contact, warm_start_contact, validate_contact_diagnostics
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -36,7 +37,7 @@ def main():
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
     parser.add_argument("--recover-interrupted", action="store_true")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS, default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -48,12 +49,17 @@ def main():
     refining = extra.experiment in GROUPS
     signaling = extra.experiment in SIGNAL_GROUPS
     horizoning = extra.experiment in HORIZON_GROUPS
-    resuming = refining or signaling or horizoning
+    contacting = extra.experiment in CONTACT_GROUPS
+    resuming = refining or signaling or horizoning or contacting
     if extra.recover_interrupted and not refining:
         raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
     if args.load_run is not None or args.training_profile or (args.resume and not resuming):
         raise ValueError("This AMP experiment must start from scratch without old profiles")
-    if horizoning:
+    if contacting:
+        validate_contact(experiment)
+        if not args.resume or args.checkpoint != 1750:
+            raise ValueError('Contact experiments require exact long1750 source')
+    elif horizoning:
         validate_horizon(experiment)
         if not args.resume or args.checkpoint != 1500:
             raise ValueError('Horizon experiments require explicit bridge1500 source')
@@ -83,6 +89,8 @@ def main():
         train_cfg.algorithm.learning_rate = experiment.cfg["signal"]["learning_rate"]
     elif horizoning:
         train_cfg.algorithm.learning_rate = experiment.cfg['horizon']['learning_rate']
+    elif contacting:
+        train_cfg.algorithm.learning_rate = experiment.cfg['contact_refinement']['learning_rate']
     cfg.seed = train_cfg.seed = 5
     cfg, train_cfg = update_cfg_from_args(cfg, train_cfg, args)
     train_cfg.runner.experiment_name = experiment.cfg["experiment"]
@@ -102,7 +110,10 @@ def main():
     config = {**class_to_dict(train_cfg), **class_to_dict(cfg)}
     runner = AMPOnPolicyRunner(env, config, experiment, str(log_dir), args.rl_device)
     continuation = None
-    if horizoning:
+    if contacting:
+        source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg['contact_refinement']['source_checkpoint_sha256'])
+        continuation = warm_start_contact(runner, experiment, source)
+    elif horizoning:
         source = locate_source((repo, Path('/workspace'), Path('/personal')), experiment.cfg['horizon']['source_checkpoint_sha256'])
         continuation = warm_start_horizon(runner, experiment, source)
     elif signaling:
@@ -118,7 +129,7 @@ def main():
         output = log_dir/(("model_%d.pt" % (9900000+completed_updates)) if resuming else
                           ("model_rollout_%04d.pt" % completed_updates))
         digest = hashlib.sha256(Path(checkpoint).read_bytes()).hexdigest()
-        extended = horizoning and not smoke
+        extended = (horizoning or contacting) and not smoke
         command = [sys.executable, str(repo/"humanoid/scripts/record_amp_policy.py"),
             "--checkpoint-file", str(checkpoint), "--checkpoint-sha256", digest,
             "--expected-commit", commit, "--experiment", extra.experiment,
@@ -140,7 +151,8 @@ def main():
     if extra.mode == "smoke":
         # Deliberately exercise one terminal/reset path, not just no-reset frames.
         env.amp_force_reset_step = env.common_step_counter+37
-    horizon_probe = HorizonProbe(env, smoke=extra.mode == 'smoke') if horizoning else None
+    horizon_probe = HorizonProbe(env, smoke=extra.mode == 'smoke') if (horizoning or contacting) else None
+    if contacting: env.reset_contact_diagnostics()
     actor_before = {k: v.detach().cpu().clone() for k, v in runner.alg.actor_critic.state_dict().items()}
     d_before = {k: v.detach().cpu().clone() for k, v in runner.amp_trainer.discriminator.state_dict().items()}
     manifest = dict(identity=experiment.identity(), implementation_fingerprint=fingerprint, code_commit=commit,
@@ -178,8 +190,12 @@ def main():
         continuation=continuation, effectiveness_verified=False, dr_unlocked=False)
     if horizon_probe is not None:
         certificate['horizon_diagnostics'] = horizon_probe.report()
-        validate_horizon_probe(certificate['horizon_diagnostics'], experiment.cfg['horizon']['episode_length_s'],
+        validate_horizon_probe(certificate['horizon_diagnostics'], 60. if contacting else experiment.cfg['horizon']['episode_length_s'],
                                extra.mode == 'smoke')
+    if contacting:
+        certificate['contact_diagnostics'] = env.contact_diagnostics()
+        validate_contact_diagnostics(certificate['contact_diagnostics'], experiment.cfg['contact_refinement']['group'],
+                                     horizon_probe.steps, env.num_envs)
     if extra.mode == "smoke":
         validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=extra.recover_interrupted)
     manifest["completion"] = certificate

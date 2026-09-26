@@ -1,0 +1,63 @@
+{
+  "experiment": "f1_amp_walk02_contact_control",
+  "source_clip_id": "LAFAN_WALK_02",
+  "candidate_id": "LAFAN_WALK_02_LEFT_HIP_ROLL_S092",
+  "motion": "resources/motions/amp_lafan_walk02_s092/motion.npz",
+  "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+  "parent_sha256": "af51c637808a73c5f6f0a9e218930f500ab44b45bc53492fd04f874b2b475f07",
+  "protocol": "configs/amp/f1_100hz.json",
+  "normalizer_std_floor": 0.01,
+  "reward": {
+    "task_weight": 1,
+    "style_weight": 1,
+    "style_scale": 5,
+    "dt": 0.01
+  },
+  "discriminator_batch_size": 1024,
+  "recovery": {
+    "reset_clearance_m": 0.005,
+    "replay_capacity": 50000,
+    "replay_insert": 2048,
+    "discriminator_updates": 2,
+    "static_negative_fraction": 0.25
+  },
+  "seed": 5,
+  "smoke": {
+    "num_envs": 32,
+    "updates": 10
+  },
+  "formal": {
+    "num_envs": 4096,
+    "updates": 250
+  },
+  "evaluation_updates": [
+    2000
+  ],
+  "learnability_only": true,
+  "max_experiment_rounds": 20,
+  "training_ready": false,
+  "scope": "Round 10/20: matched contact control, exact long1750 source; 250 additional updates and independent60s evaluation. DR/noise locked.",
+  "known_risks": [
+    "single training seed and clip",
+    "force observations at control rate are not physics-rate impact peaks",
+    "contact penalties may reduce progress or style; effectiveness unverified"
+  ],
+  "artifact_checkpoint_offset": 8800000,
+  "evaluation_duration_s": 60,
+  "contact_refinement": {
+    "group": "control",
+    "round": 10,
+    "source_task": "TASK_20260924_113",
+    "source_config": "configs/amp/lafan_walk02_horizon_long.json",
+    "source_checkpoint_sha256": "79196fee08379410c0c9218272e91ef95a20e185714a25bb59195635aedeaa1b",
+    "source_completed_updates": 1750,
+    "learning_rate": 0.00005,
+    "episode_length_s": 60,
+    "style_floor": 0,
+    "bridge_gradient_penalty": 1,
+    "refine_slip_scale": -2,
+    "contact_force_tail_scale": 0,
+    "force_threshold_N": 700,
+    "original_excess_cap_N": 400
+  }
+}
