@@ -100,6 +100,12 @@ def select_environment(experiment_name):
     from humanoid.envs.x1.x1_amp_env import X1AMPEnv
     from humanoid.envs.x1.x1_amp_recovery_config import X1AMPRecoveryCfg, X1AMPRecoveryCfgPPO
     from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
+    if experiment_name in ('progress_body', 'progress_world'):
+        from .progress import apply_progress_config
+        from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
+        from humanoid.envs.x1.x1_amp_progress_env import X1AMPProgressEnv
+        cfg = apply_progress_config(X1AMPRefineCfg(), experiment_name.split('_', 1)[1])
+        return cfg, X1AMPRecoveryCfgPPO(), X1AMPProgressEnv
     if experiment_name in ('contact_control', 'contact_slip', 'contact_tail'):
         from .contact import apply_contact_config
         from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
