@@ -3,7 +3,7 @@
 ## 当前状态
 
 2026-09-26：隔离分支 `experiment/f1-amp-progress-frame` 已实现；262项CPU测试
-通过，包括真实源checkpoint逐张量恢复。尚未通过本轮云端短测或正式效果验收。
+通过，包括真实源checkpoint逐张量恢复。两组真实云端短测已通过；正式尚未启动，效果未验收。
 域随机化及观测噪声继续关闭。第1–12轮已完成，本轮两个正式实验计作13/14，
 总上限20；不把短测/回放计作额外的正式训练实验。
 
@@ -56,3 +56,21 @@
 - 实现：`humanoid/amp/progress.py`、`humanoid/envs/x1/x1_amp_progress_env.py`。
 - 门禁：`tools/amp/verify_progress_smoke.py`、`verify_progress_formal.py`。
 - 本地私有产物：`outputs/amp-progress/`；不提交日志、checkpoint或签名下载URL。
+
+## 真实短测证据
+
+代码 `35ce6f68491a220aa417564631238aad0f9caf7a`；实现指纹
+`44692615a29825864f64f14869238ce5d39514faa6eec83b6e02f7ab648dd3d8`。
+任务076(body)/077(world)均正常完成，模型、轨迹与2001–2010共10条实际更新已
+独立核验；日志无Traceback/非有限异常。源完整学习状态、无DR、两种重置检查、
+AMP非零收益和D/策略参数更新均通过。正式仍使用071的原2000模型。
+
+| 组 | reward调用/环境步 | body累计值 | world累计值 | 实际选择 |
+|---|---:|---:|---:|---|
+| body076 | 240 / 7680 | 4970.557 | 3107.569 | body，逐位相等 |
+| world077 | 240 / 7680 | 5181.315 | 3195.741 | world，逐位相等 |
+
+表中是未乘scale的累计值，不是正式效果指标。实际progress scale≈0.02；
+接触尾段均调用240次、非零环境步100/127，沿用scale≈−0.000025。
+证书：`docs/validation/progress_{body,world}_cloud_smoke.json`。
+账号4409资源及余额已重新核验；13:02查询giftBalance40.82（不是可支出预算承诺）。
