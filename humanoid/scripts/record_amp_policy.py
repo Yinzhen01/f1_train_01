@@ -29,6 +29,7 @@ from humanoid.amp.signal import SIGNAL_GROUPS, validate_signal
 from humanoid.amp.horizon import HORIZON_GROUPS, validate_horizon
 from humanoid.amp.contact import CONTACT_GROUPS, validate_contact
 from humanoid.amp.progress import PROGRESS_GROUPS, validate_progress
+from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, set_seed
@@ -65,7 +66,7 @@ def main():
     parser.add_argument("--checkpoint-file", type=Path, required=True)
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--expected-commit", required=True)
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS, required=True)
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
     parser.add_argument("--extended-validation", action="store_true")
@@ -88,6 +89,8 @@ def main():
         validate_contact(experiment)
     if extra.experiment in PROGRESS_GROUPS:
         validate_progress(experiment)
+    if extra.experiment in DIRECTION_GROUPS:
+        validate_direction(experiment)
     state = torch.load(str(extra.checkpoint_file), map_location="cpu", weights_only=True)
     if state["amp_identity"] != experiment.identity() or args.task != experiment.cfg["experiment"]:
         raise ValueError("Evaluation task/data identity mismatch")

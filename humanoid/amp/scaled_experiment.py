@@ -166,4 +166,14 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
         validate_contact_diagnostics(certificate.get('contact_diagnostics') or {}, 'tail', h['control_steps'], 32)
         validate_progress_diagnostics(certificate.get('progress_diagnostics') or {},
             experiment.cfg['progress']['group'], h['control_steps'], 32)
+    if experiment.cfg.get('direction'):
+        from .direction import validate_direction_certificate, validate_direction_diagnostics
+        from .contact import validate_contact_diagnostics
+        from .horizon import validate_horizon_probe
+        validate_direction_certificate(experiment, certificate.get('continuation') or {})
+        h = certificate.get('horizon_diagnostics') or {}
+        validate_horizon_probe(h, 60., True)
+        validate_contact_diagnostics(certificate.get('contact_diagnostics') or {}, 'tail', h['control_steps'], 32)
+        validate_direction_diagnostics(certificate.get('direction_diagnostics') or {},
+            experiment.cfg['direction']['group'], h['control_steps'], 32)
     return True
