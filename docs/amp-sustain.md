@@ -4,7 +4,10 @@
 
 2026-09-26：独立分支`experiment/f1-amp-sustain`从`018ad95`建立，
 已实现同源heading2250的control/progress3两组，各只追加250次更新。
-尚未完成真实云端短测，不得启动正式训练或宣称效果改善。
+真实短测108(progress3)/109(control)已正常结束，10条更新日志、完整源恢复、
+240次实际奖励调用、两类重置和独立回放均已核验通过，证书已归档。短测代码`90d008d`。
+训练实现指纹`abe8ad2b32856c9fd013f1003e64bf9183d768f8015ce7382d3bfea8b357563b`。
+正式尚未启动，短测通过只说明实现可运行，不能宣称效果改善。
 完整CPU回归290项通过（21.285s），记录`outputs/amp-sustain/cpu-regression-02.log`；
 语法与差异格式检查通过，仍不等价于Isaac Gym运行验证。
 正式已完成16/20，本文件中的17/18为拟用轮次，最多仍剩4轮。
@@ -66,3 +69,7 @@ DR和观测噪声关闭，数据和机器人`training_ready=false`，不宣称�
 - 本地测试：`tests/test_f1_amp_sustain.py`、`tests/test_amp_reward_balance.py`。
 - 云端状态、模型、账单与视频归档于本工作区`outputs/amp-sustain/`，不提交私有运行产物。
 - 前16轮结果入口保留在`docs/amp-direction-refinement.md`和它引用的历史文档中。
+
+对照短测首次创建返回平台1002009（创建失败，非余额错误），回查任务列表确认不存在后，
+顺序重新提交得到109；未重复创建成功任务，也未切换账号。两组均实际运行66秒，
+账单核对记录在本机账号池machineSessions中，不把训练循环耗时当计费时长。
