@@ -27,6 +27,7 @@ from tools.amp.verify_horizon_formal import read_cloud_log
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--family', choices=('direction', 'sustain'), default='direction')
+    p.add_argument('--output', type=Path, help='Optional new audit path; never overwrites an existing report')
     for name in ('group', 'task-id', 'expected-commit'):
         p.add_argument('--'+name, required=True)
     for name in ('folder', 'status', 'logs', 'source-manifest', 'source-evaluation'):
@@ -97,9 +98,21 @@ def main():
         assert_equal(state[key], final[key])
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
-    logs = read_cloud_log(a.logs)
+    log_diagnostics = {}
+    logs = read_cloud_log(a.logs, allow_post_completion_binary=a.family == 'sustain', diagnostics=log_diagnostics)
     validate_updates(parse_updates(logs), formal=True)
     assert '[f1-amp-complete]' in logs and 'CUDA out of memory' not in logs and 'Nonfinite' not in logs
+    complete_marker = '[f1-amp-complete] '
+    assert logs.count(complete_marker) == 1
+    certificate_start = logs.index(complete_marker)+len(complete_marker)
+    logged_certificate, certificate_size = json.JSONDecoder().raw_decode(logs[certificate_start:])
+    assert logged_certificate == c, 'Log completion differs from uploaded manifest'
+    wrapper_failed = 'RL task is failed.' in logs
+    if wrapper_failed:
+        assert logs.index('RL task is failed.') > certificate_start+certificate_size
+    log_diagnostics.update(wrapper_failure_banner=wrapper_failed,
+        wrapper_success_banner='RL task is successful.' in logs,
+        platform_terminal_status=str(status['taskStatus']))
     traces = inspect_tracebacks(logs)
     modes = {}
     for mode in bundle['modes']:
@@ -114,10 +127,10 @@ def main():
         modes[mode] = rows
     result = dict(task=a.task_id, group=a.group, verified=True, checkpoint_sha256=digest,
         bundle_sha256=hashlib.sha256(bundle_path.read_bytes()).hexdigest(), additional_updates=250,
-        completed_updates=end, no_dr_verified=True, sdk_connection_reset_tracebacks=traces,
+        completed_updates=end, no_dr_verified=True, sdk_connection_reset_tracebacks=traces, log_diagnostics=log_diagnostics,
         initial_comparison=initial, horizon_diagnostics=probe, contact_diagnostics=c['contact_diagnostics'], direction_diagnostics=c['direction_diagnostics'], modes=modes,
         final_eval_learning_state_equal=True, effectiveness_verified=False, dr_unlocked=False)
-    with (a.folder/'formal_artifact_audit.json').open('x', encoding='utf-8') as stream: json.dump(result, stream, indent=2)
+    with (a.output or a.folder/'formal_artifact_audit.json').open('x', encoding='utf-8') as stream: json.dump(result, stream, indent=2)
     print(json.dumps(dict(task=a.task_id, group=a.group, verified=True, horizon=probe,
         survival={m: sum(r['survived'] for r in rows) for m, rows in modes.items()}, dr_unlocked=False)))
 

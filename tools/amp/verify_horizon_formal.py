@@ -19,9 +19,51 @@ from tools.amp.verify_refinement_smoke import parse_updates
 from tools.amp.verify_signal_formal import assert_equal, inspect_tracebacks
 
 
-def read_cloud_log(path):
+def decode_post_completion_log(raw, diagnostics):
+    """Retain visible escapes for binary bytes only after a complete training record.
+
+    This is not errors='ignore': ASCII errors/tracebacks remain inspectable, raw
+    evidence is never edited, and corruption before/inside completion is fatal.
+    """
+    positions = []
+    try: raw.decode('utf-8')
+    except UnicodeDecodeError as error: positions.append(error.start)
+    if b'\0' in raw: positions.append(raw.index(b'\0'))
+    if not positions: return raw.decode('utf-8')
+    first = min(positions)
+    prefix = raw[:first].decode('utf-8')
+    marker = '[f1-amp-complete] '
+    if prefix.count(marker) != 1 or '[amp-eval-complete]' not in prefix:
+        raise ValueError('Binary data before verified evaluation/training completion')
+    start = prefix.index(marker)+len(marker)
+    certificate, size = json.JSONDecoder().raw_decode(prefix[start:])
+    if certificate.get('complete') is not True or certificate.get('all_finite') is not True:
+        raise ValueError('Binary log has no complete finite training record')
+    end = start+size
+    if 'uploaded successfully' not in prefix[end:]:
+        raise ValueError('Unexpected binary data before SDK upload tail')
+    decoded = raw.decode('utf-8', errors='surrogateescape')
+    invalid_count = sum(0xdc80 <= ord(c) <= 0xdcff for c in decoded)
+    # Preserve malformed bytes and control bytes as explicit visible escapes.
+    text = raw.decode('utf-8', errors='backslashreplace')
+    text = ''.join('\\x%02x' % ord(c) if (ord(c) < 32 and c not in '\t\r\n') or ord(c) == 127 else c for c in text)
+    diagnostics.update(raw_log_sha256=hashlib.sha256(raw).hexdigest(),
+        raw_bytes=len(raw), escaped_post_completion_binary=True,
+        first_binary_byte_offset=first, completion_record_end_byte=len(prefix[:end].encode('utf-8')),
+        nul_count=raw.count(b'\0'), invalid_utf8_byte_count=invalid_count,
+        note='Raw file retained. Only post-completion SDK tail contains escaped bytes; errors are not removed.')
+    return text
+
+
+def read_cloud_log(path, *, allow_post_completion_binary=False, diagnostics=None):
     """The live API is a tail; completed argo downloads are raw full logs."""
-    text = path.read_text(encoding='utf-8')
+    diagnostics = {} if diagnostics is None else diagnostics
+    try:
+        text = path.read_text(encoding='utf-8')
+        if '\0' in text: raise ValueError('Binary NUL in log')
+    except (UnicodeDecodeError, ValueError):
+        if path.suffix != '.log' or not allow_post_completion_binary: raise
+        text = decode_post_completion_log(path.read_bytes(), diagnostics)
     if path.suffix == '.json':
         text = json.loads(text)['data'].replace('\\n', '\n')
     elif path.suffix != '.log':

@@ -32,14 +32,15 @@ def main():
         label, path = entry.split('=', 1)
         if label in cases: raise ValueError('Duplicate case label')
         path = Path(path)
-        rows = parse_updates(read_cloud_log(path))
+        log_diagnostics = {}
+        rows = parse_updates(read_cloud_log(path, allow_post_completion_binary=a.family == 'sustain', diagnostics=log_diagnostics))
         if a.family == 'contact': validate_contact_updates(rows, formal=True)
         elif a.family == 'progress': validate_progress_updates(rows, formal=True)
         elif a.family == 'direction': validate_direction_updates(rows, formal=True)
         elif a.family == 'sustain': validate_sustain_updates(rows, formal=True)
         else: validate_updates(rows)
         cases[label] = rows
-        result[label] = dict(log_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), updates=250,
+        result[label] = dict(log_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), updates=250, log_diagnostics=log_diagnostics,
             first50={k: float(np.mean([r[k] for r in rows[:50]])) for k in fields},
             last50={k: float(np.mean([r[k] for r in rows[-50:]])) for k in fields})
     a.output.mkdir(parents=True, exist_ok=False)
