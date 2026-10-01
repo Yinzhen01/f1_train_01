@@ -2,7 +2,7 @@
 import copy
 import numpy as np
 
-from humanoid.amp.jitter import jitter_contract
+from humanoid.amp.jitter import jitter_contract, SUBSTEP_GROUPS
 from tools.amp.sustain_audit import validate_sustain_updates
 
 
@@ -16,6 +16,12 @@ def compare_environment(source, target, group, smoke=False):
         after['rewards']['scales']['recovery_smoothness'] != jitter_contract(group)['smoothness_scale']):
         raise ValueError('Wrong smoothness weight')
     after['rewards']['scales']['recovery_smoothness'] = -.02
+    if group in SUBSTEP_GROUPS:
+        contract = jitter_contract(group)['substep']
+        if after.pop('substep_penalty', None) != contract:
+            raise ValueError('Wrong substep contract')
+        if group == 'substep_torque' and after['rewards']['scales'].pop('substep_torque', None) != contract['torque_scale']:
+            raise ValueError('Wrong substep torque weight')
     if smoke:
         after['env']['num_envs'] = source['env']['num_envs']
     if source != after:
@@ -26,8 +32,11 @@ def compare_environment(source, target, group, smoke=False):
 def validate_substep_arrays(manifest, arrays):
     """Check every captured interval, including the surviving prefixes after 2s."""
     spec = manifest.get('substep_telemetry', {})
-    if (spec.get('physics_hz'), spec.get('samples_per_control'), spec.get('reward_used')) != (1000, 10, False):
+    group = manifest.get('identity', {}).get('experiment', '').replace('f1_amp_walk02_jitter_', '', 1)
+    if (spec.get('physics_hz'), spec.get('samples_per_control'), spec.get('reward_used')) != (1000, 10, group in SUBSTEP_GROUPS):
         raise ValueError('Missing or changed substep capture contract')
+    if group in SUBSTEP_GROUPS and spec.get('penalty') != jitter_contract(group)['substep']:
+        raise ValueError('Wrong recorded substep penalty')
     for mode in manifest['modes']:
         dq = arrays[mode+'_dof_vel']; shape = dq.shape
         mask = arrays[mode+'_physics_valid']
@@ -35,6 +44,11 @@ def validate_substep_arrays(manifest, arrays):
             raise ValueError('Invalid physical reset guard')
         active = mask & arrays[mode+'_valid']
         if not active.any(): raise ValueError('No real physical samples')
+        if group in SUBSTEP_GROUPS:
+            for key in ('acceleration_cost', 'torque_cost'):
+                cost = arrays[mode+'_physics_'+key]
+                if cost.shape != shape[:2] or not np.isfinite(cost).all() or (cost < 0).any():
+                    raise ValueError('Invalid actual substep cost: '+key)
         for key, width in (('accel_squared', 12), ('accel_peak', 12),
                            ('torque_delta_squared', 12), ('foot_force_peak', 2)):
             x = arrays[mode+'_physics_'+key]

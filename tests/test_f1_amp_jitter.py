@@ -31,6 +31,14 @@ def jitter_report(group):
     result.update(smoothness_calls=240, physics_substeps=2400,
         smoothness_scale=.01*jitter_contract(group)['smoothness_scale'],
         smoothness_cost_sum=17., physics_accel_squared_sum=240., physics_torque_delta_squared_sum=70.)
+    if group.startswith('substep_'):
+        spec = jitter_contract(group)['substep']
+        result.update(substep_penalty=spec, substep_acceleration_calls=240,
+            substep_torque_calls=240 if spec['torque_scale'] else 0,
+            acceleration_scale=-.005, torque_scale=.01*spec['torque_scale'],
+            substep_acceleration_cost_sum=20., endpoint_acceleration_cost_sum=4.,
+            substep_torque_cost_sum=8., used_acceleration_cost_sum=20. if spec['acceleration'] else 4.,
+            substep_valid_intervals=7400)
     return result
 
 

@@ -218,6 +218,8 @@ def main():
             torque_delta='mean squared actual command difference per .001 s, not torque derivative',
             foot_force='maximum positive net foot Fz over 10 substeps; not contact-pair identity',
             reset_guard='physics_valid excludes first three post-reset control intervals', reward_used=False)
+        if hasattr(cfg, 'substep_penalty'):
+            manifest['substep_telemetry'].update(reward_used=True, penalty=dict(cfg.substep_penalty))
     packed = io.BytesIO()
     np.savez_compressed(packed, **arrays)
     extra.output.parent.mkdir(parents=True, exist_ok=True)
