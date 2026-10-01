@@ -79,3 +79,13 @@
 证书在`docs/validation/jitter_control_cloud_smoke.json`与
 `docs/validation/jitter_smooth_cloud_smoke.json`。短测仅证明实现与恢复链可运行，
 不证明60秒动作质量改善；正式从原2500恢复，而非从2510短测恢复。
+
+## 正式训练启动（非实时状态）
+
+2026-10-01 23:02，039(control)/040(smooth)已启动，训练代码
+`27e6878fbddaecec0424b0da0b4f4d6632f9521f`；实现指纹
+`667e0cdb34e2f8efe1f9cc7eeecad18edd20b6df1d7d4d8af21850dc7dbaa875`。
+账号4409、项目PRO_20260924_005、4090D/ESKU000001、V000124，启动前可用赠送余额34.97。
+两组各4096×250，第19/20轮，最后读取日志到2553/2549，尚未完成或验证质量。
+对应启动/状态/日志证据在`outputs/amp-jitter/TASK_20261001_039-*`与`040-*`。
+本轮20轮总上限已全部分配，不自动增开正式训练。下载/分析完整产物仍需继续。

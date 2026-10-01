@@ -19,6 +19,8 @@ class JitterAnalysisTests(unittest.TestCase):
         r = high_frequency(x)
         self.assertLess(r['fraction'][0], .001)
         self.assertGreater(r['fraction'][1], .999)
+        self.assertAlmostEqual(r['high_band_power'][1], .5, places=6)
+        self.assertAlmostEqual(r['total_power'][1], .5, places=6)
         self.assertEqual(r['stationary_columns'], [False, False, True])
         self.assertIsNone(high_frequency(x[:50]))
 

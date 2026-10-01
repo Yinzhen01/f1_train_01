@@ -83,9 +83,14 @@ def window_summary(data, s, manifest, start, end):
     below = np.asarray(props['lower']); above = np.asarray(props['upper'])
     limit_actual = (q < below-1e-4) | (q > above+1e-4)
     bound_near = (q < below+.01) | (q > above-.01)
-    return dict(samples=int(active.sum()), requested_interval_s=[start, end],
+    expected = int(round((end-start)*100))
+    return dict(samples=int(active.sum()), requested_samples=expected,
+        complete_window=int(active.sum()) == expected, requested_interval_s=[start, end],
         vx_mean=float(data['base_lin_vel'][active, 0].mean()),
         action_delta_rms=rms(s['action_delta'][active]), torque_delta_rms_nm=rms(s['torque_delta'][active]),
+        action_delta_step_rms_p95=float(np.percentile(np.sqrt((s['action_delta'][active]**2).mean(-1)), 95)),
+        torque_delta_step_rms_p95_nm=float(np.percentile(np.sqrt((s['torque_delta'][active]**2).mean(-1)), 95)),
+        acceleration_native_step_rms_p95=float(np.percentile(np.sqrt((s['acceleration_native'][active]**2).mean(-1)), 95)),
         acceleration_native_rms=rms(s['acceleration_native'][active]), acceleration_qfd_rms=rms(s['acceleration_qfd'][active]),
         pd_target_jump_rms_nm=rms(s['pd_target_jump_nm'][active]),
         foot_force_max_n=force.max(axis=0).tolist(), foot_force_p99_n=np.percentile(force, 99, axis=0).tolist(),
@@ -169,22 +174,28 @@ def main():
     for mode in m['modes']:
         rows = []
         for index in range(m['num_envs']):
-            data = episode(arrays, mode, index); s = signals(data, m, vertices)
+            data = episode(arrays, mode, index)
+            if not len(data['time']):
+                rows.append(dict(env=index, failure=True, observed_s=0., windows={k:None for k in WINDOWS}, post2s=None))
+                continue
+            s = signals(data, m, vertices)
             end = float(data['time'][-1])+.01
             row = dict(env=index, failure=bool(data['initial']['failure'] or data['failure'].any()),
                 observed_s=end-.01, windows={k: window_summary(data, s, m, *v) for k, v in WINDOWS.items()},
                 post2s=window_summary(data, s, m, 2., end))
-            if mode == 'reference' and index == 0:
+            if mode == 'reference' and index == 0 and len(data['time']) > 66:
                 estimate = replay(data, m, policy, stride=1)
                 terms, missing = task_terms(data, m, vertices)
                 terms['amp_style'] = style_terms(data, e, disc)
                 row.update(action_reproduction=estimate['parity'], missing_reward_terms=missing, event_rewards={}, estimator={})
                 for name, (start, stop) in dict(WINDOWS, whole=(2., end)).items():
                     keep = (data['time'] >= start-1e-8) & (data['time'] < stop-1e-8)
-                    row['event_rewards'][name] = {k: float(v[keep].mean()) for k, v in terms.items()}
+                    row['event_rewards'][name] = ({k: float(v[keep].mean()) for k, v in terms.items()}
+                                                  if keep.any() else None)
                     row['estimator'][name] = interval(estimate, start, stop)
                     save_curves(data, s, terms, estimate, m, a.output, start, stop, name)
-                row['one_second_windows'] = [dict(start_s=float(start), **window_summary(data, s, m, start, start+1.)) for start in np.arange(2., 60., 1.)]
+                row['one_second_windows'] = [dict(start_s=float(start), summary=window_summary(data, s, m, start, start+1.))
+                                             for start in np.arange(2., 60., 1.)]
                 np.savez_compressed(a.output/'reference_env0_signals.npz', time=data['time'], **s,
                                     foot_force=data['foot_force'], dof_pos=data['dof_pos'], action=data['action'], torque=data['torque'])
             rows.append(row)
@@ -192,9 +203,9 @@ def main():
     with (a.output/'jitter_audit.json').open('x', encoding='utf-8') as stream:
         json.dump(result, stream, indent=2, allow_nan=False)
     r = result['modes']['reference'][0]
-    print(json.dumps(dict(output=str(a.output), action_reproduction=r['action_reproduction'],
-        windows={k:{n:v[n] for n in ('vx_mean','action_delta_rms','acceleration_native_rms','foot_force_max_n')} for k,v in r['windows'].items()},
-        estimator=r['estimator'], event_rewards=r['event_rewards'])))
+    print(json.dumps(dict(output=str(a.output), action_reproduction=r.get('action_reproduction'),
+        windows={k:None if v is None else {n:v[n] for n in ('complete_window','vx_mean','action_delta_rms','acceleration_native_rms','foot_force_max_n')} for k,v in r['windows'].items()},
+        estimator=r.get('estimator'), event_rewards=r.get('event_rewards'))))
 
 
 if __name__ == '__main__': main()
