@@ -92,16 +92,19 @@ def main():
     p = argparse.ArgumentParser()
     for key in ('control', 'smooth', 'output'):
         p.add_argument('--'+key, type=Path, required=True)
+    p.add_argument('--labels', nargs=2, default=('control', 'smooth'))
     a = p.parse_args()
     import matplotlib
     matplotlib.use('Agg')
     a.output.mkdir(parents=True, exist_ok=False)
     cases = {}
-    for name in ('control', 'smooth'):
-        manifest, arrays = load_bundle(getattr(a, name))
+    if len(set(a.labels)) != 2: raise ValueError('Distinct case labels required')
+    paths = dict(zip(a.labels, (a.control, a.smooth)))
+    for name, path in paths.items():
+        manifest, arrays = load_bundle(path)
         validate_substep_arrays(manifest, arrays)
         cases[name] = (manifest, arrays)
-    if not initial_comparison(cases['control'][1], cases['smooth'][1])['all_captured_fields_exact_equal']:
+    if not initial_comparison(cases[a.labels[0]][1], cases[a.labels[1]][1])['all_captured_fields_exact_equal']:
         raise ValueError('Not matched initial states')
     result = dict(cases={}, paired_prefixes=True, effectiveness_verified=False,
         limitations='Compared new groups only; baseline has no 1kHz telemetry. Prefix length per initial condition '
@@ -110,7 +113,7 @@ def main():
         'No raw substep time series exists, only measured per-control-interval mean squares/maxima.')
     for name, (manifest, arrays) in cases.items():
         rows, failures = [], []
-        other = cases['smooth' if name == 'control' else 'control'][1]
+        other = cases[a.labels[1] if name == a.labels[0] else a.labels[0]][1]
         for mode in manifest['modes']:
             for index in range(manifest['num_envs']):
                 data = episode(arrays, mode, index)
@@ -139,7 +142,7 @@ def main():
         means.update(burst_foot_intervals=bursts, burst_missed_by_endpoint=missed,
             missed_burst_fraction=missed/bursts if bursts else None)
         result['cases'][name] = dict(rows=rows, failures=failures, equal_prefix_mean=means,
-            bundle_sha256=hashlib.sha256(getattr(a, name).read_bytes()).hexdigest())
+            identity=manifest['identity'], bundle_sha256=hashlib.sha256(paths[name].read_bytes()).hexdigest())
         print(json.dumps(dict(case=name, means=means, failures=failures)), flush=True)
     with (a.output/'substep_audit.json').open('x', encoding='utf-8') as stream:
         json.dump(result, stream, indent=2, allow_nan=False)

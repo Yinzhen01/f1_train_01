@@ -55,3 +55,95 @@ torque组新增负奖励/前进奖励约5.1%；未用明显压倒前进项的大
 短测仅证明运行与惩罚定义正确，不证明步态质量提升。匹配短测证书已保存于
 `docs/validation/jitter_substep_{accel,torque}_cloud_smoke.json`。
 下一步从原2500分别正式训练250更新，不能从短测2510恢复。
+
+## 正式结果：两组均未通过整体修复
+
+`TASK_20261002_039`（accel）与`TASK_20261002_040`（torque）均完成4096×250，
+从2500到2750；训练commit `0e73c4a059effcdebb6c33653bd4d17e60eae6dd`。
+实现fingerprint与短测一致。全部250条更新、模型/优化器/replay完整状态、
+原始资产/PD/控制时序、初态逐位一致及真实子步cost上下界均已核验。
+完整日志分别含2/4次SDK连接重置，以及收尾failed/successful混合横幅；
+已结合完成证书、上传产物、最终学习状态和平台终态5单独确认完成，不能说零报错。
+证据在`../outputs/amp-substep/TASK_20261002_039/formal_artifact_audit.json`及040同名文件。
+
+下表为每个初态有效前缀的post-2s指标，再取32初态平均。torque含失败前缀，
+未删除、未补零，不能用它与完整60秒轨迹的均值比较代替稳定性验收。
+
+| 指标 | 原2500 | 子步加速度 | 子步力矩 |
+| --- | ---: | ---: | ---: |
+| 60秒存活初态 | 32/32 | 32/32 | 30/32 |
+| 前向速度 m/s | 0.3924 | 0.4203 | 0.3946 |
+| 动作差分 RMS | 0.2466 | 0.2723 | 0.2439 |
+| ≥8Hz指令功率 | 0.07951 | 0.08772 | 0.07116 |
+| 100Hz端点加速度 RMS rad/s² | 58.90 | 61.88 | 58.63 |
+| 100Hz端点力矩差分 RMS N·m | 5.176 | 5.628 | 5.092 |
+| 接触代理足滑 m/s | 0.1250 | 0.1371 | 0.1361 |
+| 航向 RMS 度 | 7.31 | 21.26 | 5.66 |
+| 最近示范窗口标准化距离 | 0.5506 | 0.5800 | 0.5677 |
+
+子步加速度组没有用停步换平滑，但也没有得到目标平滑：动作差分+10.4%、
+端点加速度+5.1%、航向明显退化。力矩组指令高频功率−10.5%，动作差分仅−1.1%，
+还在standing/env5的39.98秒、reference/env4的23.19秒跌倒，因此两组都不能替换源模型。
+数值和全部初态证据见`../outputs/amp-substep/comparison-2750/comparison.json`。
+
+### 子步证据与原因边界
+
+源2500没有1kHz归档，不能伪造其子步改善率。这里与上一轮同源、同250更新的
+`TASK_20261001_039`无新惩罚control比较，并将每个初态截到两组较早失败时刻。
+accel组1kHz加速度RMS为153.82，配对control为159.02，仅下降3.3%；
+无1100N净足力大冲击的区间反而74.53→77.55。torque组为150.68 vs158.97，
+下降5.2%，无大冲击区间74.61→77.96。该阈值只是诊断分类，不是接触相位标签。
+两个配对使用的前缀略不同，不能混用各自分母。
+
+这证明“奖励未实际调用”不是本轮原因；训练中actual cost、调用次数和权重全部有证据。
+但rho均值不等于加速度平方/RMS，多个奖励也存在竞争，补上1kHz监督并不保证
+独立确定性策略的高频行为改善。当前证据支持监督遗漏只是问题的一部分，
+不能据此认定已证明单一根因或直接再次大幅加权。
+力矩组两次失败均先减速、后退，再姿态失稳；上一轮无新惩罚control也有失败，
+因此不能把全部失稳单独归咎于新增力矩项。
+配对子步和失败链见`../outputs/amp-substep/substep-control-vs-accel/substep_audit.json`
+和`../outputs/amp-substep/substep-control-vs-torque/substep_audit.json`。
+
+### 三个指定时间窗
+
+固定reference/env0，三组初态相同，但策略演化后不保证相同秒数就是同一接触相位。
+
+| 区间 | 原/accel/torque 端点加速度RMS | 观察 |
+| --- | --- | --- |
+| 4–6秒 | 45.64 / 69.23 / 60.08 | 新组前向速度恢复较好，但加速度没有改善 |
+| 28–31秒 | 55.57 / 64.69 / 58.50 | 快速踝目标往返、接触和加速度尖峰仍存在 |
+| 47–49秒 | 59.35 / 57.56 / 58.86 | 局部略降；accel右足端点力峰约3309N，不能称冲击消失 |
+
+踝关节目标越界不等于实际关节硬限位越界。本轮不硬裁剪目标、不修改PD或滤波视频。
+后续应先检查目标快速往返、接触响应和更新导致的步态漂移，避免只追求训练平均奖励。
+
+## 视频与曲线
+
+视频均为真实PhysX轨迹的MuJoCo渲染，不是MuJoCo动力学重跑或真机验证。
+完整视频固定env0，不挑选最好的初态；失败和最差航向另外保留。
+
+- [加速度组完整60秒，参考初态](../outputs/amp-substep/render-accel-long60/reference/policy_dual_view.mp4)
+- [力矩组完整60秒，参考初态](../outputs/amp-substep/render-torque-long60/reference/policy_dual_view.mp4)
+- 两组`standing/`目录同时保留站立初态env0完整60秒视频。
+- [5秒窗口对照](../outputs/amp-substep/clips-comparison-2750/near5s.mp4)
+- [29–30秒窗口对照](../outputs/amp-substep/clips-comparison-2750/near29to30s.mp4)
+- [48秒窗口对照](../outputs/amp-substep/clips-comparison-2750/near48s.mp4)
+- [力矩组standing/env5跌倒](../outputs/amp-substep/failure-torque-standing5/policy_dual_view.mp4)
+- [力矩组reference/env4跌倒](../outputs/amp-substep/failure-torque-reference4/policy_dual_view.mp4)
+- [加速度组最差航向reference/env4的50–60秒](../outputs/amp-substep/worst-heading-accel-reference4/policy_dual_view.mp4)
+- [29–30秒曲线](../outputs/amp-substep/comparison-2750/near29to30s.png)、[48秒曲线](../outputs/amp-substep/comparison-2750/near48s.png)
+- [完整训练曲线数据](../outputs/amp-substep/training-curves/training_summary.json)
+
+10段MP4均通过ffprobe帧数/时长核对和ffmpeg全文件解码，完整段为60.02秒、
+50fps、3001帧；对照片段为2/3/2秒。已检查首帧、代表性中末帧及指定窗口曲线，
+不将其表述为完整视频人工逐帧验收。源轨迹/视频未覆盖；裁剪和拼接只做缩放、
+标注，不改变动作时间或滤波运动。各渲染报告保存关键body的正运动学校验误差。
+检查记录：`../outputs/amp-substep/video_qa.json`。最终332项CPU测试通过。
+
+## 账单与保留项
+
+同一已验证账号4409、4090D/ESKU000001、镜像V000124；无新账号或机型切换。
+短测037/038分别67/65秒，各0.09；正式039/040分别601/602秒，各0.90。
+平台账单合计1.98，剩余赠送余额31.19；价格单位和币种未返回，保持未知。
+机器使用台账已按账单ID回填结束时间、运行时长和实际费用并回读确认。
+最终仍保留110/control2500，不提升两组2750，不解锁DR，抖动修复尚未完成。
