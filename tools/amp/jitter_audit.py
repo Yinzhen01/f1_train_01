@@ -63,4 +63,17 @@ def validate_substep_arrays(manifest, arrays):
             raise ValueError('Substep acceleration is inconsistent with endpoint velocity')
         if np.any((peak**2*1.001+.01 < mean_square)[active]):
             raise ValueError('Substep peak smaller than mean square')
+        if group in SUBSTEP_GROUPS:
+            previous_torque = np.concatenate((arrays[mode+'_initial_torque'][None], arrays[mode+'_torque']))
+            for cost_key, squared, mean, normalizer in (
+                ('acceleration_cost', mean_square, endpoint, spec['penalty']['acceleration_normalizer']),
+                ('torque_cost', arrays[mode+'_physics_torque_delta_squared'], np.diff(previous_torque, axis=0)/10.,
+                 spec['penalty']['torque_delta_normalizer'])):
+                cost = arrays[mode+'_physics_'+cost_key]
+                # Convex in delta, concave in delta-squared: two independent
+                # Jensen bounds audit actual nonlinear substep capture.
+                lower = (2*(np.sqrt(1+(mean/normalizer)**2)-1)).mean(-1)
+                upper = (2*(np.sqrt(1+squared/normalizer**2)-1)).mean(-1)
+                if np.any(((cost+1e-3 < lower) | (cost > upper+1e-3))[active]):
+                    raise ValueError('Nonlinear substep cost violates physical bounds: '+cost_key)
     return True

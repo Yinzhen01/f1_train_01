@@ -10,7 +10,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from humanoid.amp.jitter import SOURCE_SHA, validate_jitter
+from humanoid.amp.jitter import SOURCE_SHA, validate_jitter, SUBSTEP_GROUPS
 from humanoid.amp.scaled_experiment import ScaledExperiment
 from humanoid.amp.recovery import foot_collision_vertices
 from tools.amp.inspect_rollout import load_bundle, episode, analyze_episode
@@ -93,13 +93,17 @@ def main():
     p = argparse.ArgumentParser()
     for key in ('source', 'control', 'smooth', 'output'):
         p.add_argument('--'+key, type=Path, required=True)
+    p.add_argument('--groups', nargs=2, default=('control', 'smooth'),
+                   choices=('control', 'smooth')+SUBSTEP_GROUPS,
+                   help='Actual registered group names of the two candidate paths')
     a = p.parse_args(); torch.set_num_threads(2)
     import matplotlib
     matplotlib.use('Agg')
     a.output.mkdir(parents=True, exist_ok=False)
     cases = {}
-    for name in ('source', 'control', 'smooth'):
-        path = getattr(a, name)
+    if len(set(a.groups)) != 2: raise ValueError('Two distinct registered groups required')
+    paths = dict(zip(('source',)+tuple(a.groups), (a.source, a.control, a.smooth)))
+    for name, path in paths.items():
         m, arrays = load_bundle(path)
         if m['duration_s'] != 60 or m['num_envs'] != 16 or m['mode_seeds'] != {'standing': 5, 'reference': 105}:
             raise ValueError('Not the fixed matched60 protocol')
@@ -145,7 +149,7 @@ def main():
     for label, (start, end) in dict(WINDOWS, whole=(0., 60.)).items():
         plot_window(cases, a.output, start, end, label)
     numerical = {group:{baseline:numerical_gates(cases[group]['summary'], cases[baseline]['summary'])
-                        for baseline in ('source', 'control') if group != baseline} for group in ('control', 'smooth')}
+                        for baseline in ('source', a.groups[0]) if group != baseline} for group in a.groups}
     result = dict(cases={name:{k:v for k,v in case.items() if k not in ('arrays','env0')} for name,case in cases.items()},
         numerical_gates=numerical, effectiveness_verified=False, visual_verification_pending=True,
         dr_unlocked=False, limitations='Failed prefixes retained, not survivor-only. Numerical gates do not replace all three event-window and whole-video review. Baseline lacks 1kHz data; compare substep values only between the two new groups. One training seed/clip, fixed nominal simulation only.')
