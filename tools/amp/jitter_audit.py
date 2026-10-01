@@ -1,8 +1,9 @@
-"""Only smoothness weight changes; telemetry is present in both paired groups."""
+"""Audit only registered interventions; reject all unrelated environment changes."""
 import copy
 import numpy as np
 
-from humanoid.amp.jitter import jitter_contract, SUBSTEP_GROUPS
+from humanoid.amp.jitter import jitter_contract, SUBSTEP_GROUPS, FILTER_GROUPS
+from humanoid.amp.target_filter import filter_alpha
 from tools.amp.sustain_audit import validate_sustain_updates
 
 
@@ -22,10 +23,12 @@ def compare_environment(source, target, group, smoke=False):
             raise ValueError('Wrong substep contract')
         if group == 'substep_torque' and after['rewards']['scales'].pop('substep_torque', None) != contract['torque_scale']:
             raise ValueError('Wrong substep torque weight')
+    if group in FILTER_GROUPS and after.pop('target_filter', None) != jitter_contract(group)['target_filter']:
+        raise ValueError('Wrong target filter contract')
     if smoke:
         after['env']['num_envs'] = source['env']['num_envs']
     if source != after:
-        raise ValueError('Environment changed beyond smoothness weight and smoke size')
+        raise ValueError('Environment changed beyond registered intervention and smoke size')
     return True
 
 
@@ -37,6 +40,8 @@ def validate_substep_arrays(manifest, arrays):
         raise ValueError('Missing or changed substep capture contract')
     if group in SUBSTEP_GROUPS and spec.get('penalty') != jitter_contract(group)['substep']:
         raise ValueError('Wrong recorded substep penalty')
+    if group in FILTER_GROUPS:
+        validate_filter_arrays(manifest, arrays, group)
     for mode in manifest['modes']:
         dq = arrays[mode+'_dof_vel']; shape = dq.shape
         mask = arrays[mode+'_physics_valid']
@@ -76,4 +81,30 @@ def validate_substep_arrays(manifest, arrays):
                 upper = (2*(np.sqrt(1+squared/normalizer**2)-1)).mean(-1)
                 if np.any(((cost+1e-3 < lower) | (cost > upper+1e-3))[active]):
                     raise ValueError('Nonlinear substep cost violates physical bounds: '+cost_key)
+    return True
+
+
+def validate_filter_arrays(manifest, arrays, group):
+    spec = jitter_contract(group)['target_filter']
+    if manifest.get('target_filter') != spec:
+        raise ValueError('Wrong captured controller filter')
+    alpha = filter_alpha(spec['cutoff_hz'], spec['dt'])
+    for mode in manifest['modes']:
+        action = arrays[mode+'_action']
+        raw = arrays[mode+'_control_raw_action']
+        before = arrays[mode+'_control_filter_before']
+        valid = arrays[mode+'_valid']
+        if raw.shape != action.shape or before.shape != action.shape:
+            raise ValueError('Wrong control trace shape')
+        if not np.isfinite(raw).all() or not np.isfinite(before).all():
+            raise ValueError('Nonfinite raw/filter state')
+        limit = manifest['environment']['normalization']['clip_actions']
+        if np.any(np.abs(raw[valid]) > limit+1e-5):
+            raise ValueError('Raw policy command not clipped')
+        expected = alpha*raw+(1-alpha)*before
+        previous = np.concatenate((arrays[mode+'_initial_action'][None], action[:-1]))
+        # Recorded episodes stop at first failure; no post-reset tail is valid.
+        if (not np.allclose(expected[valid], action[valid], rtol=1e-5, atol=1e-6) or
+            not np.allclose(previous[valid], before[valid], rtol=1e-5, atol=1e-6)):
+            raise ValueError('Applied target/filter state recurrence mismatch')
     return True

@@ -39,6 +39,12 @@ def jitter_report(group):
             substep_acceleration_cost_sum=20., endpoint_acceleration_cost_sum=4.,
             substep_torque_cost_sum=8., used_acceleration_cost_sum=20. if spec['acceleration'] else 4.,
             substep_valid_intervals=7400)
+    if group in ('target5', 'target8'):
+        from humanoid.amp.target_filter import filter_alpha
+        spec = jitter_contract(group)['target_filter']
+        result.update(target_filter=spec, filter_calls=240, filter_reset_count=32,
+            filter_alpha=filter_alpha(spec['cutoff_hz'], .01), filter_input_delta_squared_sum=20.,
+            filter_applied_delta_squared_sum=10., filter_residual_squared_sum=4., filter_valid_intervals=7400)
     return result
 
 

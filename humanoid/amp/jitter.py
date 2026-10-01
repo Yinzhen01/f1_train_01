@@ -11,15 +11,17 @@ from .refinement import restore_learning_state
 from .scaled_experiment import ScaledExperiment
 
 SUBSTEP_GROUPS = ('substep_accel', 'substep_torque')
-JITTER_GROUPS = ('jitter_control', 'jitter_smooth') + tuple('jitter_'+g for g in SUBSTEP_GROUPS)
+FILTER_GROUPS = ('target5', 'target8')
+JITTER_GROUPS = ('jitter_control', 'jitter_smooth') + tuple('jitter_'+g for g in SUBSTEP_GROUPS+FILTER_GROUPS)
 SOURCE_CONFIG = 'configs/amp/lafan_walk02_sustain_control.json'
 SOURCE_SHA = '07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31'
 
 
 def jitter_contract(group):
-    if group not in ('control', 'smooth') + SUBSTEP_GROUPS:
+    if group not in ('control', 'smooth') + SUBSTEP_GROUPS + FILTER_GROUPS:
         raise ValueError('Unknown jitter group')
-    result = dict(group=group, round={'control': 19, 'smooth': 20, 'substep_accel': 21, 'substep_torque': 22}[group],
+    result = dict(group=group, round={'control': 19, 'smooth': 20, 'substep_accel': 21, 'substep_torque': 22,
+                                    'target5': 23, 'target8': 24}[group],
         source_task='TASK_20260926_110', source_config=SOURCE_CONFIG,
         source_checkpoint_sha256=SOURCE_SHA, source_completed_updates=2500,
         learning_rate=5e-5, episode_length_s=60., style_floor=0., bridge_gradient_penalty=1.,
@@ -28,6 +30,11 @@ def jitter_contract(group):
         result['substep'] = dict(acceleration=group == 'substep_accel', acceleration_normalizer=100.,
             torque_delta_normalizer=2., torque_scale=-.2 if group == 'substep_torque' else 0.,
             reset_guard_steps=3, reduction='mean_of_robust_cost_per_joint_per_substep')
+    if group in FILTER_GROUPS:
+        result['target_filter'] = dict(cutoff_hz=5. if group == 'target5' else 8., dt=.01,
+            formula='alpha=1-exp(-2*pi*cutoff_hz*dt); y=alpha*clipped_raw+(1-alpha)*previous_y',
+            reset_state='zero_action_default_pose', observation_action='previous_applied_action',
+            update_rate_hz=100, deployment_requires_filter=True)
     return result
 
 
@@ -40,6 +47,8 @@ def apply_jitter_config(cfg, group):
         cfg.substep_penalty = copy.deepcopy(jitter_contract(group)['substep'])
         if group == 'substep_torque':
             cfg.rewards.scales.substep_torque = cfg.substep_penalty['torque_scale']
+    if group in FILTER_GROUPS:
+        cfg.target_filter = copy.deepcopy(jitter_contract(group)['target_filter'])
     return cfg
 
 
@@ -50,7 +59,7 @@ def validate_jitter(experiment):
     source = ScaledExperiment(experiment.repo, experiment.repo/SOURCE_CONFIG)
     expected = copy.deepcopy(source.cfg); expected.pop('sustain')
     expected.update(experiment='f1_amp_walk02_jitter_'+c['group'], jitter=c, evaluation_updates=[2750])
-    if c['group'] in SUBSTEP_GROUPS:
+    if c['group'] in SUBSTEP_GROUPS + FILTER_GROUPS:
         # User lifted the 20-experiment cap on 2026-10-02. Each run is still
         # bounded to the unchanged smoke/formal budget and requires a new gate.
         expected['max_experiment_rounds'] = None
@@ -70,6 +79,8 @@ def jitter_source(cfg):
         style_floor=0., bridge_gradient_penalty=1.)
     if c['group'] in SUBSTEP_GROUPS:
         result['substep'] = copy.deepcopy(c['substep'])
+    if c['group'] in FILTER_GROUPS:
+        result['target_filter'] = copy.deepcopy(c['target_filter'])
     return result
 
 
@@ -129,4 +140,7 @@ def validate_jitter_diagnostics(report, group, steps, num_envs):
             raise ValueError('Acceleration reward does not match registered definition')
         if report['substep_valid_intervals'] > steps*num_envs:
             raise ValueError('Invalid physical interval count')
+    if group in FILTER_GROUPS:
+        from .target_filter import validate_filter_diagnostics
+        validate_filter_diagnostics(report, jitter_contract(group)['target_filter'], steps, num_envs)
     return True

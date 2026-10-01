@@ -194,7 +194,7 @@ def main():
         for key, value in initial.items():
             # Interval diagnostics have no initial-state counterpart. Preserve
             # the exact baseline initial-state schema for matched evaluation.
-            if not key.startswith('physics_'):
+            if not key.startswith(('physics_', 'control_')):
                 arrays[mode+"_initial_"+key] = value
         summaries[mode] = summarize(data, extra.duration)
         print("[amp-eval-summary] "+json.dumps(dict(mode=mode, **summaries[mode])), flush=True)
@@ -220,6 +220,9 @@ def main():
             reset_guard='physics_valid excludes first three post-reset control intervals', reward_used=False)
         if hasattr(cfg, 'substep_penalty'):
             manifest['substep_telemetry'].update(reward_used=True, penalty=dict(cfg.substep_penalty))
+        if hasattr(cfg, 'target_filter'):
+            manifest['target_filter'] = dict(cfg.target_filter)
+            manifest['action_semantics'] = 'action is applied filtered PD target; control_raw_action is clipped policy command'
     packed = io.BytesIO()
     np.savez_compressed(packed, **arrays)
     extra.output.parent.mkdir(parents=True, exist_ok=True)

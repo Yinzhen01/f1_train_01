@@ -106,6 +106,9 @@ def select_environment(experiment_name):
         from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
         from humanoid.envs.x1.x1_amp_jitter_env import X1AMPJitterEnv
         cfg = apply_jitter_config(X1AMPRefineCfg(), experiment_name.split('_', 1)[1])
+        if hasattr(cfg, 'target_filter'):
+            from humanoid.envs.x1.x1_amp_target_filter_env import X1AMPTargetFilterEnv
+            return cfg, X1AMPRecoveryCfgPPO(), X1AMPTargetFilterEnv
         if hasattr(cfg, 'substep_penalty'):
             from humanoid.envs.x1.x1_amp_substep_env import X1AMPSubstepEnv
             return cfg, X1AMPRecoveryCfgPPO(), X1AMPSubstepEnv

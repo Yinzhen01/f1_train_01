@@ -10,7 +10,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from humanoid.amp.jitter import SOURCE_SHA, validate_jitter, SUBSTEP_GROUPS
+from humanoid.amp.jitter import SOURCE_SHA, validate_jitter, SUBSTEP_GROUPS, FILTER_GROUPS
 from humanoid.amp.scaled_experiment import ScaledExperiment
 from humanoid.amp.recovery import foot_collision_vertices
 from tools.amp.inspect_rollout import load_bundle, episode, analyze_episode
@@ -94,7 +94,7 @@ def main():
     for key in ('source', 'control', 'smooth', 'output'):
         p.add_argument('--'+key, type=Path, required=True)
     p.add_argument('--groups', nargs=2, default=('control', 'smooth'),
-                   choices=('control', 'smooth')+SUBSTEP_GROUPS,
+                   choices=('control', 'smooth')+SUBSTEP_GROUPS+FILTER_GROUPS,
                    help='Actual registered group names of the two candidate paths')
     a = p.parse_args(); torch.set_num_threads(2)
     import matplotlib
@@ -140,6 +140,9 @@ def main():
                         values = arrays[mode+'_physics_'+key][:len(d['time']), index][valid]
                         row['substep'][key] = None if not values.size else dict(mean=float(values.mean()),
                             p95=float(np.percentile(values, 95)), peak=float(values.max()))
+                if name in FILTER_GROUPS:
+                    raw_data = dict(d, action=arrays[mode+'_control_raw_action'][:len(d['time']), index])
+                    row['raw_policy_command_post2s'] = window_summary(raw_data, signals(raw_data, m, vertices), m, 2., 60.01) if len(d['time']) else None
                 rows.append(row)
                 if mode == 'reference' and index == 0: env0 = (d, s)
         cases[name] = dict(manifest=m, arrays=arrays, env0=env0, rows=rows,
@@ -152,6 +155,7 @@ def main():
                         for baseline in ('source', a.groups[0]) if group != baseline} for group in a.groups}
     result = dict(cases={name:{k:v for k,v in case.items() if k not in ('arrays','env0')} for name,case in cases.items()},
         numerical_gates=numerical, effectiveness_verified=False, visual_verification_pending=True,
+        action_semantics='Applied PD target. Filter candidates additionally report raw_policy_command_post2s; command smoothing alone does not imply physical improvement.',
         dr_unlocked=False, limitations='Failed prefixes retained, not survivor-only. Numerical gates do not replace all three event-window and whole-video review. Baseline lacks 1kHz data; compare substep values only between the two new groups. One training seed/clip, fixed nominal simulation only.')
     with (a.output/'comparison.json').open('x', encoding='utf-8') as stream:
         json.dump(result, stream, indent=2, allow_nan=False)
