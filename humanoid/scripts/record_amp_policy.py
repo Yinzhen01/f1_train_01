@@ -31,6 +31,7 @@ from humanoid.amp.contact import CONTACT_GROUPS, validate_contact
 from humanoid.amp.progress import PROGRESS_GROUPS, validate_progress
 from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction
 from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain
+from humanoid.amp.jitter import JITTER_GROUPS, validate_jitter
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, set_seed
@@ -67,7 +68,7 @@ def main():
     parser.add_argument("--checkpoint-file", type=Path, required=True)
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--expected-commit", required=True)
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS, required=True)
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS+JITTER_GROUPS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
     parser.add_argument("--extended-validation", action="store_true")
@@ -94,6 +95,8 @@ def main():
         validate_direction(experiment)
     if extra.experiment in SUSTAIN_GROUPS:
         validate_sustain(experiment)
+    if extra.experiment in JITTER_GROUPS:
+        validate_jitter(experiment)
     state = torch.load(str(extra.checkpoint_file), map_location="cpu", weights_only=True)
     if state["amp_identity"] != experiment.identity() or args.task != experiment.cfg["experiment"]:
         raise ValueError("Evaluation task/data identity mismatch")
@@ -137,12 +140,15 @@ def main():
             return value.detach().cpu().numpy().copy()
         root = cpu(env.root_states); root[:, :3] -= cpu(env.env_origins)
         feet = cpu(env.rigid_state[:, env.feet_indices]); feet[:, :, :3] -= cpu(env.env_origins)[:, None, :]
-        return dict(root_state=root, dof_pos=cpu(env.dof_pos), dof_vel=cpu(env.dof_vel),
+        frame = dict(root_state=root, dof_pos=cpu(env.dof_pos), dof_vel=cpu(env.dof_vel),
             action=cpu(env.actions), torque=cpu(env.torques), base_lin_vel=cpu(env.base_lin_vel),
             base_ang_vel=cpu(env.base_ang_vel), foot_state=feet,
             foot_force=cpu(env.contact_forces[:, env.feet_indices]),
             key_positions_w=cpu(env.rigid_state[:, body_ids, :3]-env.env_origins[:, None, :]),
             valid=cpu(alive), failure=cpu(env.reset_buf.bool() & ~env.time_out_buf.bool()))
+        if extra.experiment in JITTER_GROUPS:
+            frame.update({key: cpu(value) for key, value in env.jitter_capture().items()})
+        return frame
     def check_and_capture():
         original_termination()
         if recording:
@@ -186,7 +192,10 @@ def main():
                 raise ValueError("Nonfinite captured rollout "+key)
             arrays[mode+"_"+key] = value
         for key, value in initial.items():
-            arrays[mode+"_initial_"+key] = value
+            # Interval diagnostics have no initial-state counterpart. Preserve
+            # the exact baseline initial-state schema for matched evaluation.
+            if not key.startswith('physics_'):
+                arrays[mode+"_initial_"+key] = value
         summaries[mode] = summarize(data, extra.duration)
         print("[amp-eval-summary] "+json.dumps(dict(mode=mode, **summaries[mode])), flush=True)
     props = env.gym.get_actor_dof_properties(env.envs[0], env.actor_handles[0])
@@ -203,6 +212,12 @@ def main():
         effectiveness_verified=False, dr_unlocked=False)
     if extra.extended_validation:
         manifest.update(evaluation_protocol="fixed60_independent_mode_seeds", mode_seeds=mode_seeds)
+    if extra.experiment in JITTER_GROUPS:
+        manifest['substep_telemetry'] = dict(physics_hz=1000, control_hz=100, samples_per_control=10,
+            acceleration='mean squared and peak absolute native velocity difference / .001',
+            torque_delta='mean squared actual command difference per .001 s, not torque derivative',
+            foot_force='maximum positive net foot Fz over 10 substeps; not contact-pair identity',
+            reset_guard='physics_valid excludes first three post-reset control intervals', reward_used=False)
     packed = io.BytesIO()
     np.savez_compressed(packed, **arrays)
     extra.output.parent.mkdir(parents=True, exist_ok=True)

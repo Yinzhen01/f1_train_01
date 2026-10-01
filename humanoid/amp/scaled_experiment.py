@@ -166,11 +166,14 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
         validate_contact_diagnostics(certificate.get('contact_diagnostics') or {}, 'tail', h['control_steps'], 32)
         validate_progress_diagnostics(certificate.get('progress_diagnostics') or {},
             experiment.cfg['progress']['group'], h['control_steps'], 32)
-    if experiment.cfg.get('direction') or experiment.cfg.get('sustain'):
+    if experiment.cfg.get('direction') or experiment.cfg.get('sustain') or experiment.cfg.get('jitter'):
         from .direction import validate_direction_certificate, validate_direction_diagnostics
         if experiment.cfg.get('sustain'):
             from .sustain import validate_sustain_certificate as validate_direction_certificate
             from .sustain import validate_sustain_diagnostics as validate_direction_diagnostics
+        if experiment.cfg.get('jitter'):
+            from .jitter import validate_jitter_certificate as validate_direction_certificate
+            from .jitter import validate_jitter_diagnostics as validate_direction_diagnostics
         from .contact import validate_contact_diagnostics
         from .horizon import validate_horizon_probe
         validate_direction_certificate(experiment, certificate.get('continuation') or {})
@@ -178,5 +181,5 @@ def validate_cloud_smoke(experiment, certificate, fingerprint, interrupted=False
         validate_horizon_probe(h, 60., True)
         validate_contact_diagnostics(certificate.get('contact_diagnostics') or {}, 'tail', h['control_steps'], 32)
         validate_direction_diagnostics(certificate.get('direction_diagnostics') or {},
-            experiment.cfg.get('direction', experiment.cfg.get('sustain'))['group'], h['control_steps'], 32)
+            experiment.cfg.get('direction', experiment.cfg.get('sustain', experiment.cfg.get('jitter')))['group'], h['control_steps'], 32)
     return True

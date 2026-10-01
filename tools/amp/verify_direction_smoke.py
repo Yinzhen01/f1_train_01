@@ -20,7 +20,7 @@ from tools.amp.verify_horizon_formal import read_cloud_log
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--family', choices=('direction', 'sustain'), default='direction')
+    p.add_argument('--family', choices=('direction', 'sustain', 'jitter'), default='direction')
     p.add_argument('--group', required=True)
     p.add_argument('--task-id', required=True)
     p.add_argument('--folder', type=Path, required=True)
@@ -37,6 +37,10 @@ def main():
         from humanoid.amp.sustain import validate_sustain, validate_sustain_diagnostics
         from tools.amp.sustain_audit import compare_environment as compare_env, validate_sustain_updates as validate_updates
         validate_experiment, validate_diagnostics, end = validate_sustain, validate_sustain_diagnostics, 2260
+    if a.family == 'jitter':
+        from humanoid.amp.jitter import validate_jitter, validate_jitter_diagnostics
+        from tools.amp.jitter_audit import compare_environment as compare_env, validate_jitter_updates as validate_updates
+        validate_experiment, validate_diagnostics, end = validate_jitter, validate_jitter_diagnostics, 2510
     e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_'+a.family+'_'+a.group+'.json'))
     source_experiment = validate_experiment(e)
     status = json.loads(a.status.read_text(encoding='utf-8'))['data']['taskBaseInfo']
@@ -63,6 +67,9 @@ def main():
         assert manifest['runtime'][field] == source['runtime'][field], field
     bundle_path = a.folder/('model_%d.pt' % (9900000+end))
     bundle, arrays = load_bundle(bundle_path)
+    if a.family == 'jitter':
+        from tools.amp.jitter_audit import validate_substep_arrays
+        validate_substep_arrays(bundle, arrays)
     assert bundle['identity'] == e.identity() and bundle['code_commit'] == a.expected_commit
     assert bundle['num_envs'] == 2 and bundle['duration_s'] == 1
     checkpoint = a.folder/('model_%d.pt' % end)

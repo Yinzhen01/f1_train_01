@@ -18,6 +18,8 @@ class AMPOnPolicyRunner(DHOnPolicyRunner):
     def __init__(self, env, train_cfg, experiment, log_dir, device):
         super().__init__(env, train_cfg, log_dir, device)
         signal = experiment.cfg.get("signal", experiment.cfg.get("horizon", experiment.cfg.get('contact_refinement', experiment.cfg.get('progress', experiment.cfg.get('direction', experiment.cfg.get('sustain', {}))))))
+        if experiment.cfg.get('jitter'):
+            signal = experiment.cfg['jitter']
         d = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std,
                              style_floor=signal.get("style_floor", 0.)).to(device)
         self.amp_trainer = DiscriminatorTrainer(d, bridge_gradient_penalty=signal.get("bridge_gradient_penalty", 0.))

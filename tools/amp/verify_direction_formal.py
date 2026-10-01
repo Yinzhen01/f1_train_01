@@ -26,7 +26,7 @@ from tools.amp.verify_horizon_formal import read_cloud_log
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--family', choices=('direction', 'sustain'), default='direction')
+    p.add_argument('--family', choices=('direction', 'sustain', 'jitter'), default='direction')
     p.add_argument('--output', type=Path, help='Optional new audit path; never overwrites an existing report')
     for name in ('group', 'task-id', 'expected-commit'):
         p.add_argument('--'+name, required=True)
@@ -40,6 +40,10 @@ def main():
         from humanoid.amp.sustain import validate_sustain_certificate, validate_sustain_diagnostics
         from tools.amp.sustain_audit import compare_environment as compare_env, validate_sustain_updates as validate_updates
         validate_certificate, validate_diagnostics, end = validate_sustain_certificate, validate_sustain_diagnostics, 2500
+    if a.family == 'jitter':
+        from humanoid.amp.jitter import validate_jitter_certificate, validate_jitter_diagnostics
+        from tools.amp.jitter_audit import compare_environment as compare_env, validate_jitter_updates as validate_updates
+        validate_certificate, validate_diagnostics, end = validate_jitter_certificate, validate_jitter_diagnostics, 2750
     torch.set_num_threads(2)
     e = ScaledExperiment(ROOT, ROOT/'configs/amp'/('lafan_walk02_'+a.family+'_'+a.group+'.json'))
     status = json.loads(a.status.read_text(encoding='utf-8'))['data']['taskBaseInfo']
@@ -74,6 +78,9 @@ def main():
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
     bundle_path = a.folder/('model_%d.pt' % (9900000+end))
     bundle, arrays = load_bundle(bundle_path)
+    if a.family == 'jitter':
+        from tools.amp.jitter_audit import validate_substep_arrays
+        validate_substep_arrays(bundle, arrays)
     assert bundle['checkpoint_sha256'] == digest and bundle['identity'] == e.identity()
     assert bundle['code_commit'] == a.expected_commit and bundle['num_envs'] == 16 and bundle['duration_s'] == 60
     assert bundle['evaluation_protocol'] == 'fixed60_independent_mode_seeds'
@@ -99,7 +106,7 @@ def main():
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
     log_diagnostics = {}
-    logs = read_cloud_log(a.logs, allow_post_completion_binary=a.family == 'sustain', diagnostics=log_diagnostics)
+    logs = read_cloud_log(a.logs, allow_post_completion_binary=a.family in ('sustain', 'jitter'), diagnostics=log_diagnostics)
     validate_updates(parse_updates(logs), formal=True)
     assert '[f1-amp-complete]' in logs and 'CUDA out of memory' not in logs and 'Nonfinite' not in logs
     complete_marker = '[f1-amp-complete] '
