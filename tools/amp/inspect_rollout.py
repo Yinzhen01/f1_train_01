@@ -289,7 +289,7 @@ def render_episode(data, manifest, urdf, output):
                 cv2.imwrite(str(output/"first_frame.png"), view)
             if frame in (len(indices)//2, len(indices)-1):
                 cv2.imwrite(str(output/("frame_%04d.png" % i)), view)
-            if frame % 5 == 0 and data["time"][i] <= 8.:
+            if frame % 5 == 0 and data["time"][i]-data["time"][0] <= 8.:
                 preview.append(cv2.cvtColor(cv2.resize(view, (640, 300)), cv2.COLOR_BGR2RGB))
     finally:
         writer.release(); renderer.close()
