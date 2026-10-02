@@ -33,8 +33,10 @@ def main():
     a = p.parse_args()
     if a.family == 'mu' and a.source_checkpoint is None:
         p.error('--family mu requires --source-checkpoint')
-    if a.family == 'mu' and a.group not in ('anchor', 'temporal'):
-        p.error('--family mu requires --group anchor or temporal')
+    if a.family == 'mu':
+        from humanoid.amp.mu_temporal import MU_SUBGROUPS
+        if a.group not in MU_SUBGROUPS:
+            p.error('--family mu requires an explicitly registered mu subgroup')
     torch.set_num_threads(2)
     validate_experiment, validate_diagnostics = validate_direction, validate_direction_diagnostics
     compare_env, validate_updates = compare_environment, validate_direction_updates
@@ -109,6 +111,9 @@ def main():
     if a.family == 'mu':
         validate_mu_checkpoint_report(state['mu_loss_report'], cert['mu_loss_report'],
             e.cfg['mu_temporal'], 10, cert['continuation'])
+        if e.cfg['mu_temporal'].get('frozen_modules'):
+            from tools.amp.mu_audit import validate_frozen_checkpoint
+            validate_frozen_checkpoint(state, a.source_checkpoint, cert['mu_loss_report'], updates=10)
     for key in ('model_state_dict', 'amp_discriminator_state_dict'):
         assert all(bool(torch.isfinite(v).all()) for v in state[key].values())
     assert set(bundle['modes']) == {'standing', 'reference'}
@@ -132,6 +137,11 @@ def main():
         cert.update(independent_source_model_sha256=teacher_hash,
             mu_optimization_log_verified=True, frozen_teacher_state_verified=True,
             loss_improvement_is_effectiveness=False, candidate_native_substeps_verified=True)
+        if e.cfg['mu_temporal'].get('frozen_modules'):
+            cert['frozen_feature_checkpoint_verified'] = True
+            cert['independent_source_features_sha256'] = cert['mu_loss_report']['frozen_features_initial_sha256']
+            from humanoid.amp.mu_temporal import validate_feature_smoke_admission
+            validate_feature_smoke_admission(e, cert)
     target = ROOT/'docs/validation'/(a.family+'_'+a.group+'_cloud_smoke.json')
     with target.open('x', encoding='utf-8') as stream: json.dump(cert, stream, indent=2)
     print(json.dumps(dict(group=a.group, task=a.task_id, verified=True, checkpoint_sha256=digest,

@@ -92,6 +92,14 @@ class DHPPO:
         self.mu_latest = {}
         self._mu_startup_steps = 66
         self._mu_pending_metadata = None
+        self.feature_freeze_guard = None
+
+    def configure_feature_freeze(self):
+        if self.mu_regularizer is None or self.feature_freeze_guard is not None:
+            raise RuntimeError('Configure restored mu supervision before one-time feature freeze')
+        from humanoid.amp.feature_freeze import FrozenInferenceFeatures
+        self.feature_freeze_guard = FrozenInferenceFeatures(self)
+        return self.feature_freeze_guard.report()
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, None, self.device)
@@ -171,6 +179,10 @@ class DHPPO:
         mu_enabled = self.mu_regularizer is not None
         mu_loss_sum, mu_evaluations, mu_samples, mu_grad_norm = 0., 0, 0, None
         mu_stat_sums = {}
+        gradient_sums = {}
+        frozen = self.feature_freeze_guard is not None
+        if frozen:
+            self.feature_freeze_guard.validate()
         if mu_enabled:
             if not self.mu_regularizer.teacher_unchanged():
                 raise RuntimeError("mu teacher changed before PPO update")
@@ -227,10 +239,11 @@ class DHPPO:
                     value_loss = (returns_batch - value_batch).pow(2).mean()
 
                 # update all actor_critic.parameters()
+                estimator_loss = torch.nn.MSELoss()(est_lin_vel, ref_lin_vel)
                 loss = (surrogate_loss + 
                         self.value_loss_coef * value_loss - 
                         self.entropy_coef * entropy_batch.mean() +
-                        torch.nn.MSELoss()(est_lin_vel, ref_lin_vel))
+                        estimator_loss)
                 if mu_enabled:
                     aux_loss, aux_stats = self.mu_regularizer.loss(obs_batch, temporal["prev_obs"],
                                                                  temporal["older_obs"], temporal["valid_mask"])
@@ -255,19 +268,37 @@ class DHPPO:
                     for key, value in aux_stats.items():
                         if isinstance(value, (int, float)) and not isinstance(value, bool):
                             mu_stat_sums[key] = mu_stat_sums.get(key, 0.) + value
+                    if frozen:
+                        from humanoid.amp.feature_freeze import gradient_diagnostics
+                        diagnostic = gradient_diagnostics(self.actor_critic, loss, aux_loss, estimator_loss)
+                        for key, value in diagnostic.items():
+                            gradient_sums[key] = gradient_sums.get(key, 0.)+value
                     loss = loss + aux_loss
                     if not torch.isfinite(loss):
                         raise ValueError("Nonfinite combined PPO/mu loss")
                 
                 # Gradient step
-                self.optimizer.zero_grad()
+                if frozen:
+                    self.optimizer.zero_grad(set_to_none=True)
+                else:
+                    self.optimizer.zero_grad()
                 loss.backward()
                 if mu_enabled:
                     finite_grads = [torch.isfinite(p.grad).all() for p in self.actor_critic.parameters() if p.grad is not None]
                     if not finite_grads or not torch.stack(finite_grads).all():
                         raise ValueError("Nonfinite combined PPO/mu gradients")
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                norm = nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                if frozen:
+                    preclip = float(norm)
+                    if not math.isfinite(preclip):
+                        raise ValueError('Nonfinite global gradient norm')
+                    gradient_sums['combined_grad_norm_preclip'] = gradient_sums.get('combined_grad_norm_preclip', 0.)+preclip
+                    factor = float(torch.clamp(self.max_grad_norm/(norm+1e-6), max=1.))
+                    gradient_sums['global_clip_factor'] = gradient_sums.get('global_clip_factor', 0.)+factor
+                    self.feature_freeze_guard.validate()
                 self.optimizer.step()
+                if frozen:
+                    self.feature_freeze_guard.validate()
 
                 state_estimator_loss = torch.nn.MSELoss()(est_lin_vel, ref_lin_vel)
 
@@ -294,6 +325,11 @@ class DHPPO:
                                   anchor_coef=getattr(self.mu_regularizer, "anchor_coef", None),
                                   temporal_coef=getattr(self.mu_regularizer, "temporal_coef", None))
             json.dumps(self.mu_latest, allow_nan=False)
+            if frozen:
+                self.mu_latest.update({key: value/num_updates for key, value in gradient_sums.items()})
+                self.mu_latest.update(self.feature_freeze_guard.report(), gradient_minibatches=num_updates)
+                from humanoid.amp.feature_freeze import validate_gradient_report
+                validate_gradient_report(self.mu_latest)
             self._mu_pending_metadata = None
         self.storage.clear()
 

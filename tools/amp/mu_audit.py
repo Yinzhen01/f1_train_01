@@ -49,6 +49,12 @@ def _loss_fields(report, spec, prefix=''):
     for key in ('teacher_unchanged', 'metadata_observed', 'all_finite'):
         if report.get(prefix+key) is not True:
             raise ValueError('Missing deterministic mu invariant: '+prefix+key)
+    if spec.get('frozen_modules'):
+        from humanoid.amp.feature_freeze import validate_gradient_report
+        validate_gradient_report(report, prefix)
+        for key in ('frozen_features_unchanged', 'frozen_optimizer_unchanged'):
+            if report.get(prefix+key) is not True:
+                raise ValueError('Missing frozen feature invariant: '+prefix+key)
     return _number(report.get(prefix+'valid_triplets'), prefix+'valid_triplets', count=True)
 
 
@@ -94,6 +100,12 @@ def validate_mu_source(experiment, continuation, checkpoint):
     if any(continuation.get(key) != digest for key in
            ('teacher_source_model_sha256', 'student_initial_model_sha256')):
         raise ValueError('Frozen teacher does not match independent original model tensors')
+    if spec.get('frozen_modules'):
+        feature_digest = state_fingerprint({name: value for name, value in model.items()
+            if name.startswith(('long_history.', 'state_estimator.'))})
+        if any(continuation.get(key) != feature_digest for key in
+               ('frozen_features_initial_sha256', 'frozen_features_final_sha256')):
+            raise ValueError('Initial frozen features not bound to original source tensors')
     return digest
 
 
@@ -119,6 +131,60 @@ def validate_mu_updates(rows, group, formal=False, report=None):
             raise ValueError('Deterministic mu triplet summary differs from update logs')
         for key in LOSS_FIELDS:
             _same_number(report[key], sum(row['mu_'+key] for row in rows)/len(rows), key)
+        if spec.get('frozen_modules'):
+            from humanoid.amp.feature_freeze import GRADIENT_FIELDS
+            for key in GRADIENT_FIELDS:
+                _same_number(report[key], sum(row['mu_'+key] for row in rows)/len(rows), key)
+            if (report['gradient_minibatches'] != sum(row['mu_gradient_minibatches'] for row in rows) or
+                    any(row.get('mu_gradient_minibatches') != 8 for row in rows)):
+                raise ValueError('Missing actual every-minibatch gradient telemetry')
+    return True
+
+
+def validate_frozen_checkpoint(actual, source_path, report, updates=None):
+    """Independent end-vs-original CNN/ES tensor AND Adam-state proof, not flags."""
+    from humanoid.amp.feature_freeze import _same
+    from humanoid.amp.jitter import SOURCE_SHA
+    path = Path(source_path)
+    if hashlib.sha256(path.read_bytes()).hexdigest() != SOURCE_SHA:
+        raise ValueError('Frozen-feature source SHA mismatch')
+    source = torch.load(path, weights_only=True, map_location='cpu')
+    old, new = source['model_state_dict'], actual['model_state_dict']
+    names = list(old)
+    # Current exact architecture has 33 parameter tensors and no mutable buffers.
+    if len(names) != 33 or new.keys() != old.keys():
+        raise ValueError('Frozen-feature model architecture changed')
+    frozen = [name for name in names if name.startswith(('long_history.', 'state_estimator.'))]
+    old_features, new_features = [{name: state[name] for name in frozen} for state in (old, new)]
+    digest = state_fingerprint(old_features)
+    if (len(frozen) != 16 or not _same(old_features, new_features) or
+            report.get('frozen_features_initial_sha256') != digest or
+            report.get('frozen_features_final_sha256') != digest):
+        raise ValueError('Saved CNN/ES state differs from immutable original')
+    before, after = source['optimizer_state_dict'], actual['optimizer_state_dict']
+    old_slots = [p for g in before['param_groups'] for p in g['params']]
+    new_slots = [p for g in after['param_groups'] for p in g['params']]
+    if len(old_slots) != 33 or new_slots != old_slots:
+        raise ValueError('Original full Adam parameter slots changed')
+    if not _same(before['param_groups'], after['param_groups']):
+        raise ValueError('Original Adam group hyperparameters/order changed')
+    for name in frozen:
+        slot = old_slots[names.index(name)]
+        if (slot not in before['state'] or slot not in after['state'] or
+                not _same(before['state'][slot], after['state'][slot])):
+            raise ValueError('Saved frozen Adam moment/step differs from original: '+name)
+    if updates is not None:
+        if isinstance(updates, bool) or not isinstance(updates, int) or updates <= 0:
+            raise ValueError('Invalid independently checked update budget')
+        for name in names:
+            if name in frozen:
+                continue
+            slot = old_slots[names.index(name)]
+            if (slot not in before['state'] or slot not in after['state'] or
+                    float(after['state'][slot]['step']) != float(before['state'][slot]['step'])+8*updates):
+                raise ValueError('Active Adam step count differs from actual update budget: '+name)
+    if not _same(source['es_optimizer_state_dict'], actual['es_optimizer_state_dict']):
+        raise ValueError('Standalone restored ES Adam changed despite feature freeze')
     return True
 
 
@@ -127,6 +193,10 @@ def validate_mu_loss_report(report, spec, updates, continuation, rows=None,
     if spec != mu_contract(spec.get('group')):
         raise ValueError('Changed deterministic mu audit contract')
     validate_contract_loss_report(report, spec, updates)
+    if spec.get('frozen_modules'):
+        if any(report.get(key) != continuation.get('frozen_features_initial_sha256')
+               for key in ('frozen_features_initial_sha256', 'frozen_features_final_sha256')):
+            raise ValueError('Final frozen-feature evidence differs from source restoration')
     count = _loss_fields(report, spec)
     source_hash = continuation.get('teacher_source_model_sha256')
     if (not isinstance(source_hash, str) or not re.fullmatch('[0-9a-f]{64}', source_hash) or

@@ -37,8 +37,10 @@ def main():
     a = p.parse_args()
     if a.family == 'mu' and a.source_checkpoint is None:
         p.error('--family mu requires --source-checkpoint')
-    if a.family == 'mu' and a.group not in ('anchor', 'temporal'):
-        p.error('--family mu requires --group anchor or temporal')
+    if a.family == 'mu':
+        from humanoid.amp.mu_temporal import MU_SUBGROUPS
+        if a.group not in MU_SUBGROUPS:
+            p.error('--family mu requires an explicitly registered mu subgroup')
     validate_certificate, validate_diagnostics = validate_direction_certificate, validate_direction_diagnostics
     compare_env, validate_updates = compare_environment, validate_direction_updates
     end = 2250
@@ -139,6 +141,9 @@ def main():
         for saved in (state, final):
             validate_mu_checkpoint_report(saved['mu_loss_report'], c['mu_loss_report'],
                 e.cfg['mu_temporal'], 250, c['continuation'])
+            if e.cfg['mu_temporal'].get('frozen_modules'):
+                from tools.amp.mu_audit import validate_frozen_checkpoint
+                validate_frozen_checkpoint(saved, a.source_checkpoint, c['mu_loss_report'], updates=250)
     log_diagnostics = {}
     logs = read_cloud_log(a.logs, allow_post_completion_binary=a.family in ('sustain', 'jitter', 'mu'), diagnostics=log_diagnostics)
     rows = parse_updates(logs)

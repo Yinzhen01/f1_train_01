@@ -19,6 +19,8 @@ class AMPAlgorithmAdapter:
         self.mu_run_sums = {}
         self.mu_run_triplets = 0
         self.mu_rollout_diagnostics = []
+        self.mu_gradient_sums = {}
+        self.mu_gradient_minibatches = 0
 
     def __getattr__(self, name):
         return getattr(self.ppo, name)
@@ -41,6 +43,9 @@ class AMPAlgorithmAdapter:
             all_finite=all(torch.isfinite(torch.as_tensor(value)).item() for value in result.values()),
             anchor_coef=regularizer.anchor_coef, temporal_coef=regularizer.temporal_coef,
             rollout_diagnostics=list(self.mu_rollout_diagnostics))
+        if getattr(self.ppo, 'feature_freeze_guard', None) is not None:
+            result.update({key: value/max(1, self.mu_run_updates) for key, value in self.mu_gradient_sums.items()})
+            result.update(self.ppo.feature_freeze_guard.report(), gradient_minibatches=self.mu_gradient_minibatches)
         return result
 
     def process_env_step(self, rewards, dones, infos):
@@ -85,6 +90,12 @@ class AMPAlgorithmAdapter:
                 self.mu_run_sums[key] = self.mu_run_sums.get(key, 0.)+float(mu[key])
             if not mu.get('teacher_unchanged') or not mu.get('all_finite'):
                 raise ValueError('Deterministic mu teacher/loss invariant failed')
+            if getattr(self.ppo, 'feature_freeze_guard', None) is not None:
+                from .feature_freeze import GRADIENT_FIELDS, validate_gradient_report
+                validate_gradient_report(mu)
+                self.mu_gradient_minibatches += mu['gradient_minibatches']
+                for key in GRADIENT_FIELDS:
+                    self.mu_gradient_sums[key] = self.mu_gradient_sums.get(key, 0.)+mu[key]
             self.latest.update({'mu_'+key: value for key, value in mu.items()
                                 if isinstance(value, (int, float, bool))})
         if not all(torch.isfinite(torch.as_tensor(x)) for x in losses):

@@ -105,6 +105,9 @@ def main():
             raise ValueError("A matching real-simulator smoke certificate is required")
         validate_cloud_smoke(experiment, json.loads(Path(extra.smoke_certificate).read_text()), fingerprint,
                              interrupted=extra.recover_interrupted)
+        if mu_training and experiment.cfg['mu_temporal'].get('frozen_modules'):
+            from humanoid.amp.mu_temporal import validate_feature_smoke_admission
+            validate_feature_smoke_admission(experiment, json.loads(Path(extra.smoke_certificate).read_text()))
     cfg, train_cfg, env_class = select_environment(extra.experiment)
     if refining:
         train_cfg.algorithm.learning_rate = experiment.cfg["refinement"]["learning_rate"]
