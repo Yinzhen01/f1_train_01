@@ -85,6 +85,26 @@ class DiagnosticContractTests(unittest.TestCase):
         self.assertEqual(snap['dof_vel'][0], [0.]*12)
         self.assertNotEqual(snap['obs_history_sha256'], changed['obs_history_sha256'])
         self.assertEqual(snap['critic_history_sha256'], changed['critic_history_sha256'])
+        env.obs_history[0].fill_(-0.)
+        negative_zero_bits = torch.signbit(env.obs_history[0]).clone()
+        zeros = reset_input_snapshot(env)
+        self.assertEqual(snap['obs_history_sha256'], zeros['obs_history_sha256'])
+        self.assertTrue(bool(negative_zero_bits.all()))
+        self.assertTrue(torch.equal(torch.signbit(env.obs_history[0]), negative_zero_bits))
+        env.obs_history[0][0, 0] = 1e-30
+        self.assertNotEqual(snap['obs_history_sha256'], reset_input_snapshot(env)['obs_history_sha256'])
+
+    def test_cleared_history_probe_rejects_nonzero_and_nonfinite_without_mutation(self):
+        from humanoid.amp.physics_diagnostic import cleared_history_diagnostics
+        env = NS(obs_history=[torch.full((2, 3), -0.)], critic_history=[torch.zeros(2, 4)])
+        probe = cleared_history_diagnostics(env)
+        self.assertEqual(probe['obs_history']['negative_zero'], 6)
+        self.assertEqual(probe['obs_history']['nonzero'], 0)
+        self.assertTrue(bool(torch.signbit(env.obs_history[0]).all()))
+        for value in (1e-30, float('nan'), float('inf')):
+            env.obs_history[0][0, 0] = value
+            with self.assertRaisesRegex(ValueError, 'did not clear'):
+                cleared_history_diagnostics(env)
 
     def test_full_requires_real_smoke_flags_fingerprint_and_traceable_commit(self):
         cert = dict(verified=True, no_training=True, all_finite=True, raw_verified=True,

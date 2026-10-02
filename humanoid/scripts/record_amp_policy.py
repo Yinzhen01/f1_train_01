@@ -34,7 +34,7 @@ from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain
 from humanoid.amp.jitter import JITTER_GROUPS, validate_jitter
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from humanoid.amp.physics_diagnostic import (GROUPS as PHYSICS_GROUPS, apply_diagnostic_config,
-    diagnostic_contract, physical_readback, reset_input_snapshot, validate_request,
+    diagnostic_contract, physical_readback, reset_input_snapshot, cleared_history_diagnostics, validate_request,
     validate_smoke_certificate, validate_source_state, SOURCE_SHA as PHYSICS_SOURCE_SHA)
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, set_seed
@@ -168,6 +168,8 @@ def main():
             if reset_input_pending:
                 if len(ids) != env.num_envs:
                     raise ValueError('Mode reset did not inject all diagnostic initial states')
+                print('[amp-physics-reset-history] '+json.dumps(dict(mode=mode,
+                    histories=cleared_history_diagnostics(env))), flush=True)
                 reset_inputs[mode] = reset_input_snapshot(env)
                 reset_input_pending = False
         env.reset_idx = diagnostic_reset_idx

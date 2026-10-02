@@ -98,6 +98,21 @@ def physical_readback(env):
     return dict(physics_sim_parameters=sim, physics_shape_properties=shape)
 
 
+def cleared_history_diagnostics(env):
+    """Prove native reset cleared histories; count signed zeros read-only."""
+    import torch
+    rows = {}
+    for name in ('obs_history', 'critic_history'):
+        value = torch.cat([tensor.flatten() for tensor in getattr(env, name)])
+        nonzero = int(torch.count_nonzero(value).item())
+        nonfinite = int((~torch.isfinite(value)).sum().item())
+        if nonzero or nonfinite:
+            raise ValueError('Native reset did not clear '+name)
+        rows[name] = dict(elements=value.numel(), nonzero=nonzero, nonfinite=nonfinite,
+                          negative_zero=int(torch.signbit(value).sum().item()))
+    return rows
+
+
 def reset_input_snapshot(env):
     """Capture actual injected state before reset() advances native physics."""
     result = {}
@@ -111,7 +126,11 @@ def reset_input_snapshot(env):
     for name in ('obs_history', 'critic_history'):
         digest = hashlib.sha256()
         for tensor in getattr(env, name):
-            value = tensor.detach().cpu().numpy()
+            value = tensor.detach().cpu().numpy().copy()
+            # Native reset uses history *= 0: negative entries retain -0.0.
+            # Equal numerical reset inputs must hash alike; do not mutate the
+            # live buffers or round any nonzero value.
+            value[value == 0] = 0
             digest.update(str((value.shape, str(value.dtype))).encode()+b'\0'+value.tobytes())
         result[name+'_sha256'] = digest.hexdigest()
     return result
