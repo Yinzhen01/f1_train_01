@@ -18,6 +18,7 @@ ARTIFACT_IDS = {'original': 8802500, 'velocity1': 8802501, 'selfoff': 8802502}
 START = '[amp-physics-diagnostic-start] '
 GROUP = '[amp-physics-diagnostic-group-complete] '
 COMPLETE = '[amp-physics-diagnostic-complete] '
+HISTORY = '[amp-physics-reset-history] '
 UPDATE_FIELDS = ('policy_updates', 'discriminator_updates', 'estimator_updates')
 
 
@@ -57,6 +58,148 @@ def validate_log_records(text, manifest, completion):
         require(row[2] == dict(group=group, artifact=artifact['file'], sha256=artifact['sha256']),
                 'Cloud group completion artifact differs from downloaded batch')
     return ends[0][1]
+
+
+def validate_history_records(text):
+    """Only proved zero-history JSON payloads are exempted from error words."""
+    records = marker_records(text, HISTORY)
+    groups = marker_records(text, GROUP)
+    starts = marker_records(text, START)
+    require(len(records) == 6 and len(groups) == 3 and len(starts) == 1,
+            'Missing or duplicate native reset-history probes')
+    proof = []
+    for index, (start, end, value) in enumerate(records):
+        group_index, mode_index = divmod(index, 2)
+        expected_mode = ('standing', 'reference')[mode_index]
+        lower = starts[0][1] if group_index == 0 else groups[group_index-1][1]
+        require(lower <= start < end <= groups[group_index][0] and
+                set(value) == {'mode', 'histories'} and value['mode'] == expected_mode and
+                isinstance(value['histories'], dict) and
+                set(value['histories']) == {'obs_history', 'critic_history'},
+                'Native reset-history group/mode order or schema changed')
+        for name, counts in value['histories'].items():
+            require(isinstance(counts, dict) and
+                    set(counts) == {'elements', 'nonzero', 'nonfinite', 'negative_zero'} and
+                    all(isinstance(count, int) and not isinstance(count, bool) and count >= 0
+                        for count in counts.values()), 'Invalid native reset-history count schema')
+            require(counts['nonzero'] == counts['nonfinite'] == 0 and
+                    counts['negative_zero'] <= counts['elements'],
+                    'Native reset history is nonzero, nonfinite or inconsistent')
+        proof.append(dict(group=groups[group_index][2]['group'], **value))
+    # Preserve character offsets and all surrounding errors. Raw evidence and
+    # its hash are unchanged; only these six validated JSON objects are masked.
+    scanned = text
+    for start, end, _ in reversed(records):
+        payload = start+len(HISTORY)
+        scanned = scanned[:payload]+' '*(end-payload)+scanned[end:]
+    return scanned, dict(probes_verified=6, modes_per_group=['standing', 'reference'],
+        groups=list(GROUPS), records=proof,
+        total_history_elements=sum(counts['elements'] for row in proof
+            for counts in row['histories'].values()),
+        total_negative_zero_elements=sum(counts['negative_zero'] for row in proof
+            for counts in row['histories'].values()))
+
+
+def validate_wrapper_warnings(text, completion_end, task_id):
+    """Mask only the proved pre-native metadata errors and post-native banner."""
+    starts, groups = (marker_records(text, marker) for marker in (START, GROUP))
+    start = starts[0][0]
+    warnings, spans = [], []
+    metadata_error = ('ERROR: Can not execute `setup.py` since setuptools is not available '
+                      'in the build environment.')
+    if metadata_error in text:
+        lines = [
+            'Processing ./gradmotion.tar.gz',
+            'Preparing metadata (setup.py): started',
+            "Preparing metadata (setup.py): finished with status 'error'",
+            'error: subprocess-exited-with-error', '',
+            '× python setup.py egg_info did not run successfully.', '│ exit code: 1',
+            '╰─> [3 lines of output]', None, 'warnings.warn(', metadata_error,
+            '[end of output]', '',
+            'note: This error originates from a subprocess, and is likely not a problem with pip.',
+            'error: metadata-generation-failed', '',
+            '× Encountered error while generating package metadata.', '╰─> See above for output.', '',
+            'note: This is an issue with the package mentioned above, not pip.',
+            'hint: See above for details.']
+        pattern = r'(?m)^'+r'\r?\n'.join(r'[ \t]*'+(re.escape(line) if line is not None else
+            r'/opt/conda/lib/python3\.13/site-packages/_distutils_hack/__init__\.py:53: '
+            r'UserWarning: [^\r\n]+') for line in lines)+r'[ \t]*\r?$'
+        blocks = list(re.finditer(pattern, text))
+        require(len(blocks) == 1 and text.count(metadata_error) == 1 and blocks[0].end() < start,
+                'Unproved, duplicate or native metadata installation failure')
+        block = blocks[0]
+        recovery = text[block.end():start]
+        recovered = (r'(?m)^Successfully installed gradmotion-1\.0\.10\r?$',
+            r'(?m)^Successfully installed humanoid\r?$',
+            r"(?m)^Importing module 'gym_38' \([^\r\n]+/gym_38\.so\)\r?$",
+            r'(?m)^PyTorch version 2\.4\.1\r?$')
+        require(all(re.search(proof, recovery) for proof in recovered) and
+                '/opt/conda/envs/pointfoot_legged_gym/lib/python3.8/site-packages/torch/' in recovery,
+                'Metadata failure has no subsequent Python 3.8 native runtime proof')
+        error_lines = (lines[3], metadata_error, lines[14])
+        for line in error_lines:
+            matches = list(re.finditer(r'(?m)^[ \t]*'+re.escape(line)+r'[ \t]*\r?$', text))
+            require(len(matches) == 1 and block.start() <= matches[0].start() < matches[0].end() <= block.end(),
+                    'Duplicate or unscoped metadata installation error')
+            spans.append((matches[0].start(), matches[0].end()))
+        warnings.append(dict(kind='pre_native_python313_metadata_failure',
+            scope='before_diagnostic_start', character_scope=[block.start(), block.end()],
+            masked_character_scopes=[list(span) for span in spans],
+            setup_metadata_exit_code=1, error=metadata_error,
+            package='gradmotion.tar.gz', python_path='/opt/conda/lib/python3.13',
+            subsequent_installation_verified=['gradmotion-1.0.10', 'humanoid'],
+            native_runtime_verified=dict(python='3.8', gym_binding='gym_38', torch='2.4.1')))
+    failures = list(re.finditer(r'(?m)^RL task is failed\.\r?$', text))
+    if failures or 'RL task is failed.' in text or 'Task status is completed, cannot terminate' in text or \
+            re.search(r'"taskStatus"\s*:\s*"6"', text):
+        require(len(failures) == 1, 'Missing or duplicate exact wrapper failure banner')
+        failure = failures[0]
+        tail = re.fullmatch(r'RL task is failed\.\r?\n(?P<status>\{[^\r\n]+\})\r?\n'
+            r'(?P<response>\{[^\r\n]+\})Start to backup logs\.\r?\n'
+            r"cp: missing destination file operand after '/mnt/rl_tfevents_logs'\r?\n"
+            r"Try 'cp --help' for more information\.\r?\nEnd to backup logs\.\r?\n"
+            r'RL task is successful\.[ \t\r\n]*', text[failure.start():])
+        require(tail is not None and completion_end < failure.start(),
+                'Unproved or native wrapper failure sequence')
+        try:
+            attempted, response = (json.loads(tail.group(name)) for name in ('status', 'response'))
+        except json.JSONDecodeError as error:
+            raise ValueError('Invalid wrapper status-conflict JSON') from error
+        require(attempted == dict(taskStatus='6', taskId=task_id) and
+                set(response) == {'code', 'msg', 'msgEn', 'success', 'time'} and
+                response['code'] == 200 and response['success'] is True and
+                response['msg'] == '任务状态已完成，不能终止' and
+                response['msgEn'] == 'Task status is completed, cannot terminate',
+                'Wrapper status conflict identity or completed-task rejection changed')
+        exits = list(re.finditer(r'(?m)^【SDK】训练进程状态码：([0-9]+)\r?$', text))
+        completed = list(re.finditer(r'(?m)^\[SDK\]\[INFO\] [0-9 :\-]+ '
+            r'Task\(([^)]+)\) status updated to: Completed , ret:(True|False)\r?$', text))
+        require(len(exits) == len(completed) == 1 and exits[0].group(1) == '0' and
+                completed[0].group(1) == task_id and completed[0].group(2) == 'True' and
+                completion_end < exits[0].start() < exits[0].end() < completed[0].start() <
+                completed[0].end() < failure.start(), 'Wrapper failure lacks successful native SDK exit/completion')
+        uploads = []
+        for filename, lower in [(row[2]['artifact'], row[1]) for row in groups]+[
+                ('model_amp_manifest.pt', completion_end)]:
+            matches = list(re.finditer(r'(?m)^\[SDK\]\[INFO\] [0-9 :\-]+ PT file \('
+                +re.escape(filename)+r'\) uploaded successfully\r?$', text))
+            require(matches and all(lower <= match.start() < match.end() < exits[0].start()
+                    for match in matches), 'Wrapper failure lacks all four ordered successful artifact uploads')
+            uploads.append(dict(file=filename, character_scopes=[[match.start(), match.end()] for match in matches]))
+        spans.append((failure.start(), failure.end()))
+        warnings.append(dict(kind='post_native_wrapper_status_conflict', scope='after_diagnostic_completion',
+            character_scope=[failure.start(), len(text)], masked_character_scopes=[[failure.start(), failure.end()]],
+            sdk_child_exit_code=0, sdk_completed_task_id=task_id, sdk_completed_ret=True,
+            sdk_exit_character_scope=[exits[0].start(), exits[0].end()],
+            sdk_completed_character_scope=[completed[0].start(), completed[0].end()],
+            uploaded_artifacts=uploads, attempted_status_update=attempted,
+            completed_task_rejection=response, final_wrapper_success_verified=True,
+            backup_error="cp: missing destination file operand after '/mnt/rl_tfevents_logs'",
+            note='Status 6 was attempted after native exit 0 and SDK Completed, then rejected; wrapper cause unverified.'))
+    scanned = text
+    for lower, upper in sorted(spans, reverse=True):
+        scanned = scanned[:lower]+' '*(upper-lower)+scanned[upper:]
+    return scanned, warnings
 
 
 def decode_post_diagnostic_log(raw, diagnostics):
@@ -118,7 +261,7 @@ def read_log(path, allow_post_completion_binary=False, diagnostics=None):
 
 
 def inspect_log_errors(text, completion_end):
-    """Only the existing exact SDK ConnectionResetError traceback is allowed."""
+    """Scan every unmasked error, allowing only the existing exact SDK reset."""
     try:
         traces = inspect_tracebacks(text)
     except AssertionError as error:
@@ -141,7 +284,7 @@ def inspect_log_errors(text, completion_end):
                      'ERROR:coldplay.get_rabbitmq:')) and
                   "ConnectionResetError(104, 'Connection reset by peer')" in line)))
             require(sdk_reset, 'Non-allowlisted cloud exception line')
-        if re.search(r'\[ERROR\]|^ERROR:', line):
+        if re.search(r'\[ERROR\]|^\s*ERROR:', line, flags=re.IGNORECASE):
             sdk_reset = (traces > 0 and line.startswith((
                 'ERROR:pika.adapters.base_connection:', 'ERROR:pika.adapters.blocking_connection:',
                 'ERROR:coldplay.get_rabbitmq:')) and 'StreamLostError:' in line and
@@ -205,11 +348,15 @@ def bind_evidence(certificate, manifest, completion, status, text, record_manife
                 record.get('dr_unlocked') is False and record.get('effectiveness_verified') is False,
                 'Downloaded record differs from frozen smoke batch')
     end = validate_log_records(text, manifest, completion)
-    diagnostics = inspect_log_errors(text, end)
+    scanned, history_proof = validate_history_records(text)
+    scanned, wrapper_warnings = validate_wrapper_warnings(scanned, end, task_id)
+    diagnostics = inspect_log_errors(scanned, end)
+    diagnostics['logs_clean'] = diagnostics['logs_clean'] and not wrapper_warnings
     result = copy.deepcopy(certificate)
     result.update(cloud_execution_verified=True, cloud_task_id=task_id,
                   cloud_evidence=dict(user_id='4409', platform_terminal_status='5',
-                      goods_id='ESKU000001', image_version='V000124', **diagnostics))
+                      goods_id='ESKU000001', image_version='V000124',
+                      native_reset_history=history_proof, non_native_warnings=wrapper_warnings, **diagnostics))
     return result
 
 

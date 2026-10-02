@@ -1,0 +1,1274 @@
+{
+  "verified": true,
+  "no_training": true,
+  "all_finite": true,
+  "raw_verified": true,
+  "readback_verified": true,
+  "reset_inputs_exact": true,
+  "code_commit": "4d94d2eb78240dbcb57bcf5d134dca5e44f40afe",
+  "implementation_fingerprint": "bb08d1ba9a8e5b3fd8a8ad3a863bdea4c7eb02b6b13a86ed7412470cc2c1beed",
+  "source_checkpoint_sha256": "07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31",
+  "num_envs": 2,
+  "duration_s": 1,
+  "groups": [
+    "original",
+    "velocity1",
+    "selfoff"
+  ],
+  "group_artifacts": {
+    "original": {
+      "sha256": "2e85bde3b2c4597bc04f64b993bbe0ac47337d5c0d391cc72adbd14cd5d06095"
+    },
+    "velocity1": {
+      "sha256": "fc569986edc08e1b152c5b35b65b6ed6e481cabcac9571eecfa37e36a326d302"
+    },
+    "selfoff": {
+      "sha256": "4e48ba7238d0a2b6d9b4cbcd40c386dc638ce6371bda8df83277b42f895fa6ff"
+    }
+  },
+  "group_evidence": {
+    "original": {
+      "raw_audit": {
+        "standing": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 0.5,
+            "acceleration peak": 0.000244140625,
+            "torque-delta mean square": 0.00000762939453125,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        },
+        "reference": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 1,
+            "acceleration peak": 0.000244140625,
+            "torque-delta mean square": 0.00006103515625,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        }
+      },
+      "runtime_audit": {
+        "simulator_parameters_verified": true,
+        "shape_count": 3,
+        "body_shape_mapping_available": true,
+        "unknown_shape_fields": {},
+        "actual_shape_properties": {
+          "body_names": [
+            "base_link",
+            "left_hip_pitch_link",
+            "left_hip_roll_link",
+            "left_hip_yaw_link",
+            "left_knee_pitch_link",
+            "left_ankle_pitch_link",
+            "left_ankle_roll_link",
+            "right_hip_pitch_link",
+            "right_hip_roll_link",
+            "right_hip_yaw_link",
+            "right_knee_pitch_link",
+            "right_ankle_pitch_link",
+            "right_ankle_roll_link"
+          ],
+          "body_shape_ranges": [
+            {
+              "start": 0,
+              "count": 1
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 1
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 1
+            }
+          ],
+          "properties": [
+            {
+              "index": 0,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            },
+            {
+              "index": 1,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            },
+            {
+              "index": 2,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            }
+          ]
+        },
+        "limitation": "Null attributes remain unknown; geometric asset inspection does not replace cooked-shape readback."
+      },
+      "runtime_comparison": null,
+      "pre_physics_initialization_comparison": null,
+      "native_warmup_response": null,
+      "prefixes": [
+        {
+          "mode": "standing",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "standing",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        }
+      ],
+      "bundle_sha256": "2e85bde3b2c4597bc04f64b993bbe0ac47337d5c0d391cc72adbd14cd5d06095"
+    },
+    "velocity1": {
+      "raw_audit": {
+        "standing": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 0.25,
+            "acceleration peak": 0.0001220703125,
+            "torque-delta mean square": 0.000011444091796875,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        },
+        "reference": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 0.5,
+            "acceleration peak": 0.000244140625,
+            "torque-delta mean square": 0.0000152587890625,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        }
+      },
+      "runtime_audit": {
+        "simulator_parameters_verified": true,
+        "shape_count": 3,
+        "body_shape_mapping_available": true,
+        "unknown_shape_fields": {},
+        "actual_shape_properties": {
+          "body_names": [
+            "base_link",
+            "left_hip_pitch_link",
+            "left_hip_roll_link",
+            "left_hip_yaw_link",
+            "left_knee_pitch_link",
+            "left_ankle_pitch_link",
+            "left_ankle_roll_link",
+            "right_hip_pitch_link",
+            "right_hip_roll_link",
+            "right_hip_yaw_link",
+            "right_knee_pitch_link",
+            "right_ankle_pitch_link",
+            "right_ankle_roll_link"
+          ],
+          "body_shape_ranges": [
+            {
+              "start": 0,
+              "count": 1
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 1
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 1
+            }
+          ],
+          "properties": [
+            {
+              "index": 0,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            },
+            {
+              "index": 1,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            },
+            {
+              "index": 2,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 0,
+              "thickness": 0
+            }
+          ]
+        },
+        "limitation": "Null attributes remain unknown; geometric asset inspection does not replace cooked-shape readback."
+      },
+      "runtime_comparison": {
+        "runtime_single_intervention_verified": true,
+        "changed_shape_filters": [],
+        "limitation": "An unchanged or unreadable shape filter does not prove its effective actor-level pair filtering."
+      },
+      "pre_physics_initialization_comparison": {
+        "reset_inputs_exact": true,
+        "fields": {
+          "standing/root_states": {
+            "exact_equal": true
+          },
+          "standing/dof_pos": {
+            "exact_equal": true
+          },
+          "standing/dof_vel": {
+            "exact_equal": true
+          },
+          "standing/actions": {
+            "exact_equal": true
+          },
+          "standing/last_actions": {
+            "exact_equal": true
+          },
+          "standing/last_last_actions": {
+            "exact_equal": true
+          },
+          "standing/commands": {
+            "exact_equal": true
+          },
+          "standing/gait_start": {
+            "exact_equal": true
+          },
+          "standing/episode_length_buf": {
+            "exact_equal": true
+          },
+          "standing/phase_length_buf": {
+            "exact_equal": true
+          },
+          "standing/rsi_indices": {
+            "exact_equal": true
+          },
+          "standing/obs_history_sha256": {
+            "exact_equal": true
+          },
+          "standing/critic_history_sha256": {
+            "exact_equal": true
+          },
+          "reference/root_states": {
+            "exact_equal": true
+          },
+          "reference/dof_pos": {
+            "exact_equal": true
+          },
+          "reference/dof_vel": {
+            "exact_equal": true
+          },
+          "reference/actions": {
+            "exact_equal": true
+          },
+          "reference/last_actions": {
+            "exact_equal": true
+          },
+          "reference/last_last_actions": {
+            "exact_equal": true
+          },
+          "reference/commands": {
+            "exact_equal": true
+          },
+          "reference/gait_start": {
+            "exact_equal": true
+          },
+          "reference/episode_length_buf": {
+            "exact_equal": true
+          },
+          "reference/phase_length_buf": {
+            "exact_equal": true
+          },
+          "reference/rsi_indices": {
+            "exact_equal": true
+          },
+          "reference/obs_history_sha256": {
+            "exact_equal": true
+          },
+          "reference/critic_history_sha256": {
+            "exact_equal": true
+          }
+        },
+        "native_warmup_seconds": 0.01,
+        "limitation": "Equal injected states/history do not prove identical hidden solver state. Warmup-response and later trajectory differences can be caused by the physics intervention."
+      },
+      "native_warmup_response": {
+        "all_captured_fields_exact_equal": true,
+        "fields": {
+          "reference_initial_action": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_base_ang_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_base_lin_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_dof_pos": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_dof_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_failure": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_foot_force": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_foot_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_key_positions_w": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_root_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_torque": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_valid": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_action": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_base_ang_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_base_lin_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_dof_pos": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_dof_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_failure": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_foot_force": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_foot_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_key_positions_w": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_root_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_torque": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_valid": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          }
+        },
+        "limitation": "Observed states only; no claim about hidden PhysX solver state or other training seeds."
+      },
+      "prefixes": [
+        {
+          "mode": "standing",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "standing",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        }
+      ],
+      "bundle_sha256": "fc569986edc08e1b152c5b35b65b6ed6e481cabcac9571eecfa37e36a326d302"
+    },
+    "selfoff": {
+      "raw_audit": {
+        "standing": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 0.5,
+            "acceleration peak": 0.000244140625,
+            "torque-delta mean square": 0.00000762939453125,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        },
+        "reference": {
+          "valid_intervals": 98,
+          "samples": 980,
+          "max_abs_errors": {
+            "velocity endpoint": 0,
+            "torque endpoint": 0,
+            "foot-state endpoint": 0,
+            "acceleration mean square": 1,
+            "acceleration peak": 0.000244140625,
+            "torque-delta mean square": 0.00006103515625,
+            "foot-force peak": 0
+          },
+          "body_names": [
+            "base_link",
+            "left_ankle_roll_link",
+            "right_ankle_roll_link"
+          ],
+          "force_channel": "net rigid-body force; contact pairs and friction semantics are not identified"
+        }
+      },
+      "runtime_audit": {
+        "simulator_parameters_verified": true,
+        "shape_count": 3,
+        "body_shape_mapping_available": true,
+        "unknown_shape_fields": {},
+        "actual_shape_properties": {
+          "body_names": [
+            "base_link",
+            "left_hip_pitch_link",
+            "left_hip_roll_link",
+            "left_hip_yaw_link",
+            "left_knee_pitch_link",
+            "left_ankle_pitch_link",
+            "left_ankle_roll_link",
+            "right_hip_pitch_link",
+            "right_hip_roll_link",
+            "right_hip_yaw_link",
+            "right_knee_pitch_link",
+            "right_ankle_pitch_link",
+            "right_ankle_roll_link"
+          ],
+          "body_shape_ranges": [
+            {
+              "start": 0,
+              "count": 1
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 0
+            },
+            {
+              "start": 1,
+              "count": 1
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 0
+            },
+            {
+              "start": 2,
+              "count": 1
+            }
+          ],
+          "properties": [
+            {
+              "index": 0,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 1,
+              "thickness": 0
+            },
+            {
+              "index": 1,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 1,
+              "thickness": 0
+            },
+            {
+              "index": 2,
+              "friction": 1,
+              "rolling_friction": 0,
+              "torsion_friction": 0,
+              "restitution": 0,
+              "compliance": 0,
+              "contact_offset": 0.009999999776482582,
+              "rest_offset": 0,
+              "filter": 1,
+              "thickness": 0
+            }
+          ]
+        },
+        "limitation": "Null attributes remain unknown; geometric asset inspection does not replace cooked-shape readback."
+      },
+      "runtime_comparison": {
+        "runtime_single_intervention_verified": true,
+        "changed_shape_filters": [
+          {
+            "index": 0,
+            "source": 0,
+            "diagnostic": 1
+          },
+          {
+            "index": 1,
+            "source": 0,
+            "diagnostic": 1
+          },
+          {
+            "index": 2,
+            "source": 0,
+            "diagnostic": 1
+          }
+        ],
+        "limitation": "An unchanged or unreadable shape filter does not prove its effective actor-level pair filtering."
+      },
+      "pre_physics_initialization_comparison": {
+        "reset_inputs_exact": true,
+        "fields": {
+          "standing/root_states": {
+            "exact_equal": true
+          },
+          "standing/dof_pos": {
+            "exact_equal": true
+          },
+          "standing/dof_vel": {
+            "exact_equal": true
+          },
+          "standing/actions": {
+            "exact_equal": true
+          },
+          "standing/last_actions": {
+            "exact_equal": true
+          },
+          "standing/last_last_actions": {
+            "exact_equal": true
+          },
+          "standing/commands": {
+            "exact_equal": true
+          },
+          "standing/gait_start": {
+            "exact_equal": true
+          },
+          "standing/episode_length_buf": {
+            "exact_equal": true
+          },
+          "standing/phase_length_buf": {
+            "exact_equal": true
+          },
+          "standing/rsi_indices": {
+            "exact_equal": true
+          },
+          "standing/obs_history_sha256": {
+            "exact_equal": true
+          },
+          "standing/critic_history_sha256": {
+            "exact_equal": true
+          },
+          "reference/root_states": {
+            "exact_equal": true
+          },
+          "reference/dof_pos": {
+            "exact_equal": true
+          },
+          "reference/dof_vel": {
+            "exact_equal": true
+          },
+          "reference/actions": {
+            "exact_equal": true
+          },
+          "reference/last_actions": {
+            "exact_equal": true
+          },
+          "reference/last_last_actions": {
+            "exact_equal": true
+          },
+          "reference/commands": {
+            "exact_equal": true
+          },
+          "reference/gait_start": {
+            "exact_equal": true
+          },
+          "reference/episode_length_buf": {
+            "exact_equal": true
+          },
+          "reference/phase_length_buf": {
+            "exact_equal": true
+          },
+          "reference/rsi_indices": {
+            "exact_equal": true
+          },
+          "reference/obs_history_sha256": {
+            "exact_equal": true
+          },
+          "reference/critic_history_sha256": {
+            "exact_equal": true
+          }
+        },
+        "native_warmup_seconds": 0.01,
+        "limitation": "Equal injected states/history do not prove identical hidden solver state. Warmup-response and later trajectory differences can be caused by the physics intervention."
+      },
+      "native_warmup_response": {
+        "all_captured_fields_exact_equal": true,
+        "fields": {
+          "reference_initial_action": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_base_ang_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_base_lin_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_dof_pos": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_dof_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_failure": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_foot_force": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_foot_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_key_positions_w": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_root_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_torque": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "reference_initial_valid": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_action": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_base_ang_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_base_lin_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_dof_pos": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_dof_vel": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_failure": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_foot_force": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_foot_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_key_positions_w": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_root_state": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_torque": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          },
+          "standing_initial_valid": {
+            "exact_equal": true,
+            "max_abs_difference": 0
+          }
+        },
+        "limitation": "Observed states only; no claim about hidden PhysX solver state or other training seeds."
+      },
+      "prefixes": [
+        {
+          "mode": "standing",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "standing",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 0,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        },
+        {
+          "mode": "reference",
+          "env": 1,
+          "samples": 100,
+          "observed_s": 1,
+          "survived": true,
+          "failure": false
+        }
+      ],
+      "bundle_sha256": "4e48ba7238d0a2b6d9b4cbcd40c386dc638ce6371bda8df83277b42f895fa6ff"
+    }
+  },
+  "cloud_execution_verified": true,
+  "effectiveness_verified": false,
+  "dr_unlocked": false,
+  "limitation": "This verifies supplied bundles only. An independent cloud task/log audit must bind cloud_task_id and cloud_execution_verified before formal diagnostics. One-second smoke is not fixed60 motion-quality acceptance; native warmup response is allowed to differ.",
+  "cloud_task_id": "TASK_20261002_073",
+  "cloud_evidence": {
+    "user_id": "4409",
+    "platform_terminal_status": "5",
+    "goods_id": "ESKU000001",
+    "image_version": "V000124",
+    "native_reset_history": {
+      "probes_verified": 6,
+      "modes_per_group": [
+        "standing",
+        "reference"
+      ],
+      "groups": [
+        "original",
+        "velocity1",
+        "selfoff"
+      ],
+      "records": [
+        {
+          "group": "original",
+          "mode": "standing",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            }
+          }
+        },
+        {
+          "group": "original",
+          "mode": "reference",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 2758
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 181
+            }
+          }
+        },
+        {
+          "group": "velocity1",
+          "mode": "standing",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            }
+          }
+        },
+        {
+          "group": "velocity1",
+          "mode": "reference",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 2816
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 184
+            }
+          }
+        },
+        {
+          "group": "selfoff",
+          "mode": "standing",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 0
+            }
+          }
+        },
+        {
+          "group": "selfoff",
+          "mode": "reference",
+          "histories": {
+            "obs_history": {
+              "elements": 6204,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 2758
+            },
+            "critic_history": {
+              "elements": 438,
+              "nonzero": 0,
+              "nonfinite": 0,
+              "negative_zero": 181
+            }
+          }
+        }
+      ],
+      "total_history_elements": 39852,
+      "total_negative_zero_elements": 8878
+    },
+    "non_native_warnings": [
+      {
+        "kind": "pre_native_python313_metadata_failure",
+        "scope": "before_diagnostic_start",
+        "character_scope": [
+          6591,
+          7720
+        ],
+        "masked_character_scopes": [
+          [
+            6725,
+            6762
+          ],
+          [
+            7297,
+            7396
+          ],
+          [
+            7509,
+            7542
+          ]
+        ],
+        "setup_metadata_exit_code": 1,
+        "error": "ERROR: Can not execute `setup.py` since setuptools is not available in the build environment.",
+        "package": "gradmotion.tar.gz",
+        "python_path": "/opt/conda/lib/python3.13",
+        "subsequent_installation_verified": [
+          "gradmotion-1.0.10",
+          "humanoid"
+        ],
+        "native_runtime_verified": {
+          "python": "3.8",
+          "gym_binding": "gym_38",
+          "torch": "2.4.1"
+        }
+      },
+      {
+        "kind": "post_native_wrapper_status_conflict",
+        "scope": "after_diagnostic_completion",
+        "character_scope": [
+          232049,
+          232419
+        ],
+        "masked_character_scopes": [
+          [
+            232049,
+            232067
+          ]
+        ],
+        "sdk_child_exit_code": 0,
+        "sdk_completed_task_id": "TASK_20261002_073",
+        "sdk_completed_ret": true,
+        "sdk_exit_character_scope": [
+          231557,
+          231571
+        ],
+        "sdk_completed_character_scope": [
+          231572,
+          231667
+        ],
+        "uploaded_artifacts": [
+          {
+            "file": "model_8802500.pt",
+            "character_scopes": [
+              [
+                217233,
+                217313
+              ],
+              [
+                217616,
+                217696
+              ]
+            ]
+          },
+          {
+            "file": "model_8802501.pt",
+            "character_scopes": [
+              [
+                224321,
+                224401
+              ]
+            ]
+          },
+          {
+            "file": "model_8802502.pt",
+            "character_scopes": [
+              [
+                231045,
+                231125
+              ]
+            ]
+          },
+          {
+            "file": "model_amp_manifest.pt",
+            "character_scopes": [
+              [
+                231433,
+                231518
+              ]
+            ]
+          }
+        ],
+        "attempted_status_update": {
+          "taskStatus": "6",
+          "taskId": "TASK_20261002_073"
+        },
+        "completed_task_rejection": {
+          "code": 200,
+          "msg": "任务状态已完成，不能终止",
+          "msgEn": "Task status is completed, cannot terminate",
+          "success": true,
+          "time": "2026-10-02 11:25:35"
+        },
+        "final_wrapper_success_verified": true,
+        "backup_error": "cp: missing destination file operand after '/mnt/rl_tfevents_logs'",
+        "note": "Status 6 was attempted after native exit 0 and SDK Completed, then rejected; wrapper cause unverified."
+      }
+    ],
+    "sdk_connection_reset_tracebacks": 0,
+    "logs_clean": false,
+    "completion_character_offset": 230238,
+    "raw_log_sha256": "9ba051129550ea171152df56ab5179b0f139b1fe2f796267e2deb50647ebbf1f",
+    "raw_bytes": 232731,
+    "batch_sha256": "1244e89b43481e6a6bc44d067344d283b3bc97adbd544010c868afc174fc2641",
+    "input_certificate_sha256": "ac401c9e491d6d95cd5f8ab436ca00f7f4ec6f5dd04af1d78417dbb6b9f3e1f6",
+    "status_sha256": "818d63ec8fbc3e4e90d9dab05c27b1cea66b5f52eb385c45c41a9090ca7c594c"
+  }
+}

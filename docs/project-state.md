@@ -7,7 +7,10 @@
 2026-10-02：转入`experiment/f1-amp-physics-diagnosis`，冻结原110/control2500，
 只读补齐1kHz原始速度/力矩/三碰撞体状态与实际shape参数；单变量对照原参数、
 速度迭代0→1和禁用自碰撞。训练实现/奖励/策略不改，DR/noise保持关闭。
-尚未进行云端采样验证或证明修复，详见[amp-physics-diagnosis.md](amp-physics-diagnosis.md)。
+063短测在历史字节哈希门禁停止；修正副本的正负零规范并增加原生清零探针后，
+073真实短测及源身份/实际参数/1kHz数据/云执行证据核验通过，平台终态5。
+安装与收尾包装层告警保留（logs_clean=false），原生采样退出码0、四文件已上传。
+尚无60秒三组对照结果或抖动修复证据，详见[amp-physics-diagnosis.md](amp-physics-diagnosis.md)。
 
 2026-10-02：第25轮 `experiment/f1-amp-ankle-slew` 已完成云端短测和正式训练，
 但质量门禁失败：32初态仅31条走满60秒；全程动作差分、实际关节加速度、
