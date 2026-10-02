@@ -21,7 +21,7 @@ from humanoid.envs.x1.x1_amp_config import X1AMPCfg, X1AMPCfgPPO
 from humanoid.envs.x1.x1_amp_env import X1AMPEnv
 from humanoid.envs.x1.x1_amp_recovery_config import X1AMPRecoveryCfg, X1AMPRecoveryCfgPPO
 from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
-from humanoid.amp.scaled_experiment import ScaledExperiment, validate_runtime_timing
+from humanoid.amp.scaled_experiment import ScaledExperiment, validate_runtime_timing, implementation_fingerprint
 from humanoid.amp.learnability import assert_no_domain_randomization
 from humanoid.amp.recovery import FOOT_NAMES
 from humanoid.amp.refinement import GROUPS, select_environment
@@ -33,6 +33,9 @@ from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction
 from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain
 from humanoid.amp.jitter import JITTER_GROUPS, validate_jitter
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
+from humanoid.amp.physics_diagnostic import (GROUPS as PHYSICS_GROUPS, apply_diagnostic_config,
+    diagnostic_contract, physical_readback, reset_input_snapshot, validate_request,
+    validate_smoke_certificate, validate_source_state, SOURCE_SHA as PHYSICS_SOURCE_SHA)
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, set_seed
 
@@ -72,6 +75,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
     parser.add_argument("--extended-validation", action="store_true")
+    parser.add_argument("--physics-diagnostic", choices=PHYSICS_GROUPS)
+    parser.add_argument("--smoke-certificate", type=Path)
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -100,7 +105,29 @@ def main():
     state = torch.load(str(extra.checkpoint_file), map_location="cpu", weights_only=True)
     if state["amp_identity"] != experiment.identity() or args.task != experiment.cfg["experiment"]:
         raise ValueError("Evaluation task/data identity mismatch")
+    if extra.physics_diagnostic:
+        if (subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=str(repo)).strip()
+                or subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '--',
+                                            'humanoid', 'configs', 'resources'], cwd=str(repo)).strip()):
+            raise ValueError('Physics diagnosis requires clean published source files')
+        subprocess.check_call(['git', 'ls-files', '--error-unmatch',
+            'humanoid/amp/physics_diagnostic.py', 'humanoid/scripts/record_amp_policy.py',
+            'humanoid/scripts/diagnose_amp_physics.py',
+            'humanoid/envs/x1/x1_amp_physics_diagnostic_env.py'], cwd=str(repo), stdout=subprocess.DEVNULL)
+        validate_request(extra.physics_diagnostic, extra.experiment, extra.checkpoint_sha256,
+                         args.seed, args.num_envs, extra.duration, extra.extended_validation)
+        validate_source_state(state, experiment.identity())
+        if extra.extended_validation:
+            if extra.smoke_certificate is None:
+                raise ValueError('Full physics recorder requires the real-cloud smoke certificate')
+            validate_smoke_certificate(json.loads(extra.smoke_certificate.read_text(encoding='utf-8')),
+                                       commit, PHYSICS_GROUPS, PHYSICS_SOURCE_SHA)
     cfg, train_cfg, cls = select_environment(extra.experiment)
+    if extra.physics_diagnostic:
+        from humanoid.envs.x1.x1_amp_physics_diagnostic_env import X1AMPPhysicsDiagnosticEnv
+        cfg = apply_diagnostic_config(cfg, extra.physics_diagnostic)
+        cls = X1AMPPhysicsDiagnosticEnv
+    capture_physics = extra.experiment in JITTER_GROUPS or extra.physics_diagnostic is not None
     cfg.seed = args.seed
     # Longer observation horizon, never motion-time rescaling or playback.
     cfg.env.episode_length_s = extra.duration+.1
@@ -132,6 +159,18 @@ def main():
         env.gym.set_dof_state_tensor_indexed(env.sim, gymtorch.unwrap_tensor(env.dof_state),
                                             gymtorch.unwrap_tensor(ids32), len(ids))
     original_termination = env.check_termination
+    reset_inputs, reset_input_pending = {}, False
+    if extra.physics_diagnostic:
+        original_reset_idx = env.reset_idx
+        def diagnostic_reset_idx(ids):
+            nonlocal reset_input_pending
+            original_reset_idx(ids)
+            if reset_input_pending:
+                if len(ids) != env.num_envs:
+                    raise ValueError('Mode reset did not inject all diagnostic initial states')
+                reset_inputs[mode] = reset_input_snapshot(env)
+                reset_input_pending = False
+        env.reset_idx = diagnostic_reset_idx
     frames = []
     recording = False
     alive = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
@@ -146,7 +185,7 @@ def main():
             foot_force=cpu(env.contact_forces[:, env.feet_indices]),
             key_positions_w=cpu(env.rigid_state[:, body_ids, :3]-env.env_origins[:, None, :]),
             valid=cpu(alive), failure=cpu(env.reset_buf.bool() & ~env.time_out_buf.bool()))
-        if extra.experiment in JITTER_GROUPS:
+        if capture_physics:
             frame.update({key: cpu(value) for key, value in env.jitter_capture().items()})
         return frame
     def check_and_capture():
@@ -157,6 +196,8 @@ def main():
     arrays, summaries = {}, {}
     modes = ("standing",) if extra.experiment == "baseline" else ("standing", "reference")
     mode_seeds = independent_mode_seeds(args.seed, extra.extended_validation)
+    if extra.physics_diagnostic:
+        mode_seeds = dict(standing=5, reference=105)
     for mode in modes:
         if mode_seeds is not None:
             set_seed(mode_seeds[mode])
@@ -165,6 +206,8 @@ def main():
             env.rsi_enabled = mode == "reference"
         env._reset_dofs = fixed_reset if mode == "standing" else original_reset
         alive[:] = True
+        if extra.physics_diagnostic:
+            reset_input_pending = True
         obs, _ = env.reset()
         initial = capture()
         alive &= ~env.reset_buf.bool()
@@ -212,7 +255,7 @@ def main():
         effectiveness_verified=False, dr_unlocked=False)
     if extra.extended_validation:
         manifest.update(evaluation_protocol="fixed60_independent_mode_seeds", mode_seeds=mode_seeds)
-    if extra.experiment in JITTER_GROUPS:
+    if capture_physics:
         manifest['substep_telemetry'] = dict(physics_hz=1000, control_hz=100, samples_per_control=10,
             acceleration='mean squared and peak absolute native velocity difference / .001',
             torque_delta='mean squared actual command difference per .001 s, not torque derivative',
@@ -223,6 +266,14 @@ def main():
         if hasattr(cfg, 'target_filter'):
             manifest['target_filter'] = dict(cfg.target_filter)
             manifest['action_semantics'] = 'action is applied filtered PD target; control_raw_action is clipped policy command'
+    if extra.physics_diagnostic:
+        manifest.update(diagnostic_only=True, physics_diagnostic=diagnostic_contract(extra.physics_diagnostic))
+        manifest.update(implementation_fingerprint=implementation_fingerprint(repo), mode_seeds=mode_seeds,
+            physics_initialization=dict(protocol='identical_reset_inputs_then_native_10ms_warmup',
+                warmup_control_dt=.01, reset_inputs=reset_inputs))
+        if not extra.extended_validation:
+            manifest['evaluation_protocol'] = 'physics_diagnostic_smoke'
+        manifest['runtime'].update(physical_readback(env))
     packed = io.BytesIO()
     np.savez_compressed(packed, **arrays)
     extra.output.parent.mkdir(parents=True, exist_ok=True)
