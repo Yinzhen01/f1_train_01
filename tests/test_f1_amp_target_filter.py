@@ -32,6 +32,16 @@ class TargetFilterTests(jitter_tests.JitterTests):
             self.assertGreater(gain(.62), .99)
             self.assertLess(gain(10), .65)
 
+    def test_prefailure_diagnostic_excludes_terminal_spike_and_short_prefix(self):
+        from tools.amp.audit_filter_prefixes import metrics
+        signal = np.zeros((320, 12)); signal[310:, :] = 100.
+        d = dict(time=np.arange(1, 321)*.01, action=signal, torque=signal, dof_vel=signal,
+                 base_lin_vel=np.zeros((320, 3)), initial={k:np.zeros(12) for k in ('action', 'torque', 'dof_vel')})
+        self.assertIsNone(metrics(d, 2.5))
+        self.assertEqual(metrics(d, 3.)['samples'], 101)
+        self.assertEqual(metrics(d, 3.)['acceleration_rms'], 0.)
+        self.assertGreater(metrics(d, 3.2)['acceleration_rms'], 0.)
+
     def test_filter_diagnostics_fail_closed(self):
         for g in FILTER_GROUPS:
             for key, value in (('filter_calls', 239), ('filter_reset_count', 0), ('filter_alpha', .5),

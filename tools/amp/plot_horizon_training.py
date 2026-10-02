@@ -70,7 +70,7 @@ def main():
     if a.family == 'progress': subtitle = 'Velocity reward frames differ; totals are not a common physical score'
     if a.family == 'direction': subtitle = 'Direction reward terms differ; totals are not a common physical score'
     if a.family == 'sustain': subtitle = 'Progress weights differ; higher task reward is not evidence of better gait'
-    if a.family == 'jitter': subtitle = 'Smoothness weights differ; task totals are not a common motion-quality score'
+    if a.family == 'jitter': subtitle = 'Registered jitter interventions; training reward is not a physical motion-quality score'
     fig.suptitle('Identical update budget; faint=raw, solid=trailing25 mean\n'+subtitle)
     fig.tight_layout(rect=(0, 0, 1, .94)); fig.savefig(a.output/'training_curves.png', dpi=150); plt.close(fig)
     report = dict(cases=result, family=a.family, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
