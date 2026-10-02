@@ -330,7 +330,7 @@ def main():
     files.update({'f1_amp_walk02_sustain_'+group: 'lafan_walk02_sustain_'+group+'.json'
                   for group in ('control', 'progress3')})
     files.update({'f1_amp_walk02_jitter_'+group: 'lafan_walk02_jitter_'+group+'.json'
-                  for group in ('control', 'smooth', 'substep_accel', 'substep_torque', 'target5', 'target8')})
+                  for group in ('control', 'smooth', 'substep_accel', 'substep_torque', 'target5', 'target8', 'ankle_slew')})
     experiment = ScaledExperiment(ROOT, ROOT/"configs/amp"/files[experiment_name])
     if manifest["identity"] != experiment.identity() or manifest["dof_names"] != list(experiment.spec.joint_names):
         raise ValueError("Recorded/configuration identity mismatch")

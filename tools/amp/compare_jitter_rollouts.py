@@ -10,7 +10,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from humanoid.amp.jitter import SOURCE_SHA, validate_jitter, SUBSTEP_GROUPS, FILTER_GROUPS
+from humanoid.amp.jitter import SOURCE_SHA, validate_jitter, SUBSTEP_GROUPS, FILTER_GROUPS, ANKLE_GROUPS
 from humanoid.amp.scaled_experiment import ScaledExperiment
 from humanoid.amp.recovery import foot_collision_vertices
 from tools.amp.inspect_rollout import load_bundle, episode, analyze_episode
@@ -94,7 +94,7 @@ def main():
     for key in ('source', 'control', 'smooth', 'output'):
         p.add_argument('--'+key, type=Path, required=True)
     p.add_argument('--groups', nargs=2, default=('control', 'smooth'),
-                   choices=('control', 'smooth')+SUBSTEP_GROUPS+FILTER_GROUPS,
+                   choices=('control', 'smooth')+SUBSTEP_GROUPS+FILTER_GROUPS+ANKLE_GROUPS,
                    help='Actual registered group names of the two candidate paths')
     a = p.parse_args(); torch.set_num_threads(2)
     import matplotlib
