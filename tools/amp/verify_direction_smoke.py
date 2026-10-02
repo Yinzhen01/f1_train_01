@@ -82,14 +82,16 @@ def main():
     assert set(bundle['modes']) == {'standing', 'reference'}
     for mode in bundle['modes']:
         for index in range(2): episode(arrays, mode, index)
-    logs = read_cloud_log(a.logs)
+    log_decode = {}
+    logs = read_cloud_log(a.logs, allow_post_completion_binary=True, diagnostics=log_decode)
     validate_updates(parse_updates(logs))
     if any(s in logs for s in ('Traceback (most recent call last)', 'CUDA out of memory', 'Nonfinite')):
         raise ValueError('Log error requires inspection before importing certificate')
     assert '[f1-amp-complete]' in logs
     cert.update(source_task_id=a.task_id, independent_artifacts_verified=True,
         checkpoint_sha256=digest, bundle_sha256=hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
-        weighted_style_log_verified=True, intervention_log_verified=True, source_environment_equivalence_verified=True)
+        weighted_style_log_verified=True, intervention_log_verified=True, source_environment_equivalence_verified=True,
+        raw_log_diagnostics=log_decode)
     target = ROOT/'docs/validation'/(a.family+'_'+a.group+'_cloud_smoke.json')
     with target.open('x', encoding='utf-8') as stream: json.dump(cert, stream, indent=2)
     print(json.dumps(dict(group=a.group, task=a.task_id, verified=True, checkpoint_sha256=digest,
