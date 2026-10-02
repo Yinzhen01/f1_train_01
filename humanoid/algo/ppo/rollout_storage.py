@@ -46,6 +46,7 @@ class RolloutStorage:
             self.action_sigma = None
             self.hidden_states = None
             self.next_proprio_obs = None
+            self.mu_metadata = None
         
         def clear(self):
             self.__init__()
@@ -87,10 +88,102 @@ class RolloutStorage:
         self.saved_hidden_states_c = None
 
         self.step = 0
+        # Opt-in metadata never changes the original PPO tensors or sampling RNG.
+        self.mu_startup_steps = None
+        self.mu_metadata = None
+        self.mu_metadata_recorded = None
+
+    def configure_mu_temporal(self, startup_steps=66):
+        if isinstance(startup_steps, bool) or not isinstance(startup_steps, int) or startup_steps < 0:
+            raise ValueError("mu startup_steps must be a nonnegative integer")
+        if self.step:
+            raise RuntimeError("Cannot enable temporal metadata during a rollout")
+        self.mu_startup_steps = startup_steps
+        shape = (self.num_transitions_per_env, self.num_envs)
+        self.mu_metadata = {key: torch.zeros(shape, device=self.observations.device, dtype=torch.long)
+                            for key in ("episode_ids", "control_ticks", "episode_lengths")}
+        self.mu_metadata_recorded = torch.zeros(shape[0], device=self.observations.device, dtype=torch.bool)
+
+    def clone_mu_metadata(self, episode_ids, control_ticks, episode_lengths, commands):
+        """Validate and snapshot pre-action metadata, before mutable env buffers advance."""
+        if self.mu_startup_steps is None:
+            raise RuntimeError("Temporal metadata is not enabled")
+        integer_dtypes = (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8)
+        result = {}
+        for key, value in (("episode_ids", episode_ids), ("control_ticks", control_ticks),
+                           ("episode_lengths", episode_lengths), ("commands", commands)):
+            if not isinstance(value, torch.Tensor) or value.device != self.observations.device:
+                raise ValueError("mu metadata tensors must share the storage device")
+            if key == "commands":
+                if value.ndim != 2 or value.shape[0] != self.num_envs or value.shape[1] not in (3, 4):
+                    raise ValueError("mu commands must have shape [num_envs, 3 or 4]")
+                if not value.is_floating_point() or not torch.isfinite(value).all():
+                    raise ValueError("mu commands must be finite floating-point values")
+                existing = self.mu_metadata.get("commands")
+                if existing is not None and (existing.shape[-1] != value.shape[-1] or existing.dtype != value.dtype):
+                    raise ValueError("mu command shape/dtype cannot change within storage")
+            elif value.shape != (self.num_envs,) or value.dtype not in integer_dtypes or (value < 0).any():
+                raise ValueError("mu IDs, ticks and lengths must be nonnegative integer [num_envs] tensors")
+            result[key] = value.detach().clone()
+        return result
+
+    def _record_mu_metadata(self, metadata):
+        if not isinstance(metadata, dict) or set(metadata) != {"episode_ids", "control_ticks", "episode_lengths", "commands"}:
+            raise ValueError("Each temporal transition requires all four pre-action metadata tensors")
+        values = self.clone_mu_metadata(**metadata)
+        if "commands" not in self.mu_metadata:
+            commands = values["commands"]
+            self.mu_metadata["commands"] = torch.zeros(self.num_transitions_per_env, *commands.shape,
+                                                       device=commands.device, dtype=commands.dtype)
+        for key, value in values.items():
+            self.mu_metadata[key][self.step].copy_(value)
+        self.mu_metadata_recorded[self.step] = True
+
+    def mu_temporal_data(self):
+        """Return time-major real neighbours and unique-rollout validity diagnostics."""
+        if self.mu_startup_steps is None or self.step != self.num_transitions_per_env:
+            raise RuntimeError("Temporal batches require a complete enabled rollout")
+        if not self.mu_metadata_recorded.all() or "commands" not in self.mu_metadata:
+            raise RuntimeError("Incomplete temporal metadata")
+        n, t = self.num_envs, self.num_transitions_per_env
+        indices = torch.arange(t * n, device=self.observations.device)
+        time = indices // n
+        # Clamp only for safe indexing; rollout-boundary frames can never be valid.
+        prev = (indices - n).clamp_min(0)
+        older = (indices - 2 * n).clamp_min(0)
+        boundary = time < 2
+        candidate = ~boundary
+        flat = {key: value.flatten(0, 1) for key, value in self.mu_metadata.items()}
+        dones = self.dones.flatten(0, 1).squeeze(-1).bool()
+        reasons = dict(
+            rollout_boundary=boundary,
+            previous_done=candidate & (dones[prev] | dones[older]),
+            episode_changed=candidate & ((flat["episode_ids"] != flat["episode_ids"][prev]) |
+                                          (flat["episode_ids"][prev] != flat["episode_ids"][older])),
+            tick_discontinuity=candidate & ((flat["control_ticks"] - flat["control_ticks"][prev] != 1) |
+                                            (flat["control_ticks"][prev] - flat["control_ticks"][older] != 1)),
+            command_changed=candidate & ((flat["commands"] != flat["commands"][prev]).any(-1) |
+                                          (flat["commands"][prev] != flat["commands"][older]).any(-1)),
+            startup=candidate & ((flat["episode_lengths"] < self.mu_startup_steps) |
+                                  (flat["episode_lengths"][prev] < self.mu_startup_steps) |
+                                  (flat["episode_lengths"][older] < self.mu_startup_steps)))
+        invalid = torch.zeros_like(boundary)
+        for reason in reasons.values():
+            invalid |= reason
+        valid = ~invalid
+        diagnostics = dict(total_samples=t*n, candidate_triplets=int(candidate.sum()),
+                           valid_triplets=int(valid.sum()), invalid_triplets=int(invalid.sum()),
+                           invalid_reasons={key: int(value.sum()) for key, value in reasons.items()},
+                           invalid_reason_counts_overlap=True, metadata_observed=True,
+                           startup_steps=self.mu_startup_steps)
+        return dict(indices=indices, prev_indices=prev, older_indices=older,
+                    valid_mask=valid, rollout_diagnostics=diagnostics)
 
     def add_transitions(self, transition: Transition):
         if self.step >= self.num_transitions_per_env:
             raise AssertionError("Rollout buffer overflow")
+        if self.mu_startup_steps is not None:
+            self._record_mu_metadata(transition.mu_metadata)
         self.observations[self.step].copy_(transition.observations)
         if self.privileged_observations is not None: self.privileged_observations[self.step].copy_(transition.critic_observations)
         self.actions[self.step].copy_(transition.actions)
@@ -124,6 +217,8 @@ class RolloutStorage:
 
     def clear(self):
         self.step = 0
+        if self.mu_metadata_recorded is not None:
+            self.mu_metadata_recorded.zero_()
 
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0
@@ -149,7 +244,8 @@ class RolloutStorage:
         trajectory_lengths = (done_indices[1:] - done_indices[:-1])
         return trajectory_lengths.float().mean(), self.rewards.mean()
 
-    def mini_batch_generator(self, num_mini_batches, num_epochs=8):
+    def mini_batch_generator(self, num_mini_batches, num_epochs=8, with_temporal=False):
+        temporal = self.mu_temporal_data() if with_temporal else None
         batch_size = self.num_envs * self.num_transitions_per_env
         mini_batch_size = batch_size // num_mini_batches
         indices = torch.randperm(num_mini_batches*mini_batch_size, requires_grad=False, device=self.device)
@@ -189,8 +285,17 @@ class RolloutStorage:
                 if self.num_single_obs is not None:
                     next_proprio_obs_batch = next_proprio_obs[batch_idx]
                     rewards_batch = rewards[batch_idx]
-                    yield next_proprio_obs_batch, rewards_batch, obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                    batch = (next_proprio_obs_batch, rewards_batch, obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch,
+                             old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None)
                 else:
-                    yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                    batch = (obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch,
+                             old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None)
+                if with_temporal:
+                    previous = temporal["prev_indices"][batch_idx]
+                    older = temporal["older_indices"][batch_idx]
+                    batch += (dict(prev_obs=observations[previous], older_obs=observations[older],
+                                   valid_mask=temporal["valid_mask"][batch_idx], batch_indices=batch_idx,
+                                   prev_indices=previous, older_indices=older, time_indices=batch_idx // self.num_envs,
+                                   env_indices=batch_idx % self.num_envs,
+                                   rollout_diagnostics=temporal["rollout_diagnostics"]),)
+                yield batch

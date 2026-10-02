@@ -30,6 +30,9 @@
 
 # Copyright (c) 2024, AgiBot Inc. All rights reserved.
 
+import json
+import math
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -85,9 +88,42 @@ class DHPPO:
         self.use_clipped_value_loss = use_clipped_value_loss
         self.num_short_obs = self.actor_critic.num_short_obs
         self.lin_vel_idx = lin_vel_idx
+        self.mu_regularizer = None
+        self.mu_latest = {}
+        self._mu_startup_steps = 66
+        self._mu_pending_metadata = None
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, None, self.device)
+        if self.mu_regularizer is not None:
+            self.storage.configure_mu_temporal(self._mu_startup_steps)
+
+    def configure_mu_temporal(self, regularizer, startup_steps=66):
+        """Opt in after source warm-start; the frozen teacher is not an optimizer member."""
+        if not callable(getattr(regularizer, "loss", None)) or not callable(getattr(regularizer, "teacher_unchanged", None)):
+            raise ValueError("mu regularizer requires loss and teacher_unchanged methods")
+        if isinstance(startup_steps, bool) or not isinstance(startup_steps, int) or startup_steps < 0:
+            raise ValueError("mu startup_steps must be a nonnegative integer")
+        if not regularizer.teacher_unchanged():
+            raise RuntimeError("mu teacher changed before configuration")
+        teacher = getattr(regularizer, "teacher", None)
+        if teacher is not None:
+            optimizer_ids = {id(p) for group in self.optimizer.param_groups for p in group["params"]}
+            if any(p.requires_grad or id(p) in optimizer_ids for p in teacher.parameters()):
+                raise ValueError("mu teacher must be frozen and excluded from the PPO optimizer")
+        if self.storage is not None:
+            self.storage.configure_mu_temporal(startup_steps)
+        self.mu_regularizer = regularizer
+        self._mu_startup_steps = startup_steps
+        self._mu_pending_metadata = None
+        self.mu_latest = {}
+
+    def set_mu_metadata(self, episode_ids, control_ticks, episode_lengths, commands):
+        if self.mu_regularizer is None or self.storage is None:
+            raise RuntimeError("Configure mu temporal storage before setting metadata")
+        if self._mu_pending_metadata is not None or self.transition.mu_metadata is not None:
+            raise RuntimeError("mu metadata already pending for this action")
+        self._mu_pending_metadata = self.storage.clone_mu_metadata(episode_ids, control_ticks, episode_lengths, commands)
 
     def test_mode(self):
         self.actor_critic.test()
@@ -96,6 +132,11 @@ class DHPPO:
         self.actor_critic.train()
 
     def act(self, obs, critic_obs):
+        if self.mu_regularizer is not None:
+            if self._mu_pending_metadata is None or self.transition.mu_metadata is not None:
+                raise RuntimeError("Each mu action requires fresh pre-action metadata")
+            self.transition.mu_metadata = self._mu_pending_metadata
+            self._mu_pending_metadata = None
         # Compute the actions and values
         self.transition.actions = self.actor_critic.act(obs).detach()
         self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
@@ -127,10 +168,21 @@ class DHPPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_state_estimator_loss = 0
-
-        generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
-        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
+        mu_enabled = self.mu_regularizer is not None
+        mu_loss_sum, mu_evaluations, mu_samples, mu_grad_norm = 0., 0, 0, None
+        mu_stat_sums = {}
+        if mu_enabled:
+            if not self.mu_regularizer.teacher_unchanged():
+                raise RuntimeError("mu teacher changed before PPO update")
+            mu_diagnostics = self.storage.mu_temporal_data()["rollout_diagnostics"]
+            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs, with_temporal=True)
+        else:
+            # Keep the disabled call signature and RNG stream exactly as before.
+            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        for batch in generator:
+                temporal = batch[-1] if mu_enabled else None
+                (obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch,
+                 old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch) = batch[:-1] if mu_enabled else batch
 
                 self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
                 state_estimator_input = obs_batch[:,-self.num_short_obs:]
@@ -179,10 +231,41 @@ class DHPPO:
                         self.value_loss_coef * value_loss - 
                         self.entropy_coef * entropy_batch.mean() +
                         torch.nn.MSELoss()(est_lin_vel, ref_lin_vel))
+                if mu_enabled:
+                    aux_loss, aux_stats = self.mu_regularizer.loss(obs_batch, temporal["prev_obs"],
+                                                                 temporal["older_obs"], temporal["valid_mask"])
+                    if not isinstance(aux_loss, torch.Tensor) or aux_loss.ndim != 0 or not torch.isfinite(aux_loss):
+                        raise ValueError("mu loss must be a finite scalar tensor")
+                    if not isinstance(aux_stats, dict):
+                        raise ValueError("mu stats must be a JSON-safe dictionary")
+                    json.dumps(aux_stats, allow_nan=False)
+                    if not torch.isfinite(loss):
+                        raise ValueError("Nonfinite PPO loss in mu update")
+                    # Diagnostic only: no .grad writes, optimizer changes or extra backward.
+                    if mu_grad_norm is None:
+                        parameters = [p for p in self.actor_critic.parameters() if p.requires_grad]
+                        grads = torch.autograd.grad(aux_loss, parameters, retain_graph=True, allow_unused=True) if aux_loss.requires_grad else ()
+                        squared = sum(float(g.detach().double().square().sum()) for g in grads if g is not None)
+                        mu_grad_norm = math.sqrt(squared)
+                        if not math.isfinite(mu_grad_norm):
+                            raise ValueError("Nonfinite mu auxiliary gradient norm")
+                    mu_loss_sum += float(aux_loss.detach())
+                    mu_evaluations += int(temporal["valid_mask"].sum())
+                    mu_samples += len(obs_batch)
+                    for key, value in aux_stats.items():
+                        if isinstance(value, (int, float)) and not isinstance(value, bool):
+                            mu_stat_sums[key] = mu_stat_sums.get(key, 0.) + value
+                    loss = loss + aux_loss
+                    if not torch.isfinite(loss):
+                        raise ValueError("Nonfinite combined PPO/mu loss")
                 
                 # Gradient step
                 self.optimizer.zero_grad()
                 loss.backward()
+                if mu_enabled:
+                    finite_grads = [torch.isfinite(p.grad).all() for p in self.actor_critic.parameters() if p.grad is not None]
+                    if not finite_grads or not torch.stack(finite_grads).all():
+                        raise ValueError("Nonfinite combined PPO/mu gradients")
                 nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
@@ -196,6 +279,22 @@ class DHPPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_state_estimator_loss /= num_updates
+        if mu_enabled:
+            if not torch.stack([torch.isfinite(p).all() for p in self.actor_critic.parameters()]).all():
+                raise ValueError("Nonfinite student parameters after mu update")
+            teacher_unchanged = bool(self.mu_regularizer.teacher_unchanged())
+            if not teacher_unchanged:
+                raise RuntimeError("mu teacher changed during PPO update")
+            self.mu_latest = {key: value/num_updates for key, value in mu_stat_sums.items()}
+            self.mu_latest.update(updates=1, loss=mu_loss_sum/num_updates, aux_loss=mu_loss_sum/num_updates,
+                                  aux_grad_norm=mu_grad_norm, valid_triplets=mu_diagnostics["valid_triplets"],
+                                  triplet_evaluations=mu_evaluations, evaluated_samples=mu_samples,
+                                  teacher_unchanged=teacher_unchanged, metadata_observed=True,
+                                  all_finite=True, rollout_diagnostics=mu_diagnostics,
+                                  anchor_coef=getattr(self.mu_regularizer, "anchor_coef", None),
+                                  temporal_coef=getattr(self.mu_regularizer, "temporal_coef", None))
+            json.dumps(self.mu_latest, allow_nan=False)
+            self._mu_pending_metadata = None
         self.storage.clear()
 
         return mean_value_loss, mean_surrogate_loss, mean_state_estimator_loss

@@ -27,6 +27,8 @@ from humanoid.amp.progress import PROGRESS_GROUPS, validate_progress, warm_start
 from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction, warm_start_direction, validate_direction_diagnostics
 from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain, warm_start_sustain, validate_sustain_diagnostics
 from humanoid.amp.jitter import JITTER_GROUPS, validate_jitter, warm_start_jitter, validate_jitter_diagnostics
+from humanoid.amp.mu_temporal import (MU_GROUPS, validate_mu, warm_start_mu,
+    validate_mu_diagnostics, validate_mu_loss_report, state_fingerprint)
 from humanoid.utils import get_args, task_registry
 from humanoid.utils.helpers import class_to_dict, update_cfg_from_args
 
@@ -41,7 +43,7 @@ def main():
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--smoke-certificate")
     parser.add_argument("--recover-interrupted", action="store_true")
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS+JITTER_GROUPS, default="recovery")
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS+JITTER_GROUPS+MU_GROUPS, default="recovery")
     extra, remaining = parser.parse_known_args(); sys.argv = [sys.argv[0]]+remaining
     args = get_args()
     repo = Path(LEGGED_GYM_ROOT_DIR)
@@ -57,11 +59,12 @@ def main():
     progressing = extra.experiment in PROGRESS_GROUPS
     sustaining = extra.experiment in SUSTAIN_GROUPS
     jittering = extra.experiment in JITTER_GROUPS
-    directing = extra.experiment in DIRECTION_GROUPS or sustaining or jittering
-    direction_key = 'jitter' if jittering else ('sustain' if sustaining else 'direction')
-    validate_bounded = validate_jitter if jittering else (validate_sustain if sustaining else validate_direction)
-    warm_start_bounded = warm_start_jitter if jittering else (warm_start_sustain if sustaining else warm_start_direction)
-    validate_bounded_diagnostics = validate_jitter_diagnostics if jittering else (validate_sustain_diagnostics if sustaining else validate_direction_diagnostics)
+    mu_training = extra.experiment in MU_GROUPS
+    directing = extra.experiment in DIRECTION_GROUPS or sustaining or jittering or mu_training
+    direction_key = 'mu_temporal' if mu_training else ('jitter' if jittering else ('sustain' if sustaining else 'direction'))
+    validate_bounded = validate_mu if mu_training else (validate_jitter if jittering else (validate_sustain if sustaining else validate_direction))
+    warm_start_bounded = warm_start_mu if mu_training else (warm_start_jitter if jittering else (warm_start_sustain if sustaining else warm_start_direction))
+    validate_bounded_diagnostics = validate_mu_diagnostics if mu_training else (validate_jitter_diagnostics if jittering else (validate_sustain_diagnostics if sustaining else validate_direction_diagnostics))
     resuming = refining or signaling or horizoning or contacting or progressing or directing
     if extra.recover_interrupted and not refining:
         raise ValueError("Interrupted recovery is restricted to the matched refinement groups")
@@ -69,7 +72,7 @@ def main():
         raise ValueError("This AMP experiment must start from scratch without old profiles")
     if directing:
         validate_bounded(experiment)
-        if not args.resume or args.checkpoint != (2500 if jittering else (2250 if sustaining else 2000)):
+        if not args.resume or args.checkpoint != (2500 if (jittering or mu_training) else (2250 if sustaining else 2000)):
             raise ValueError('Direction/sustain experiments require their exact approved source')
     elif progressing:
         validate_progress(experiment)
@@ -200,6 +203,13 @@ def main():
             actor_history=cfg.env.frame_stack, critic_history=cfg.env.c_frame_stack))
     print("[f1-amp-start] "+json.dumps(manifest), flush=True)
     runner.learn(args.max_iterations, init_at_random_ep_len=False)
+    mu_report = runner.alg.mu_loss_report() if mu_training else None
+    if mu_training:
+        validate_mu_loss_report(mu_report, experiment.cfg['mu_temporal'], args.max_iterations)
+        teacher_hash = state_fingerprint(runner.alg.ppo.mu_regularizer.teacher.state_dict())
+        if teacher_hash != runner.mu_initial_teacher_hash:
+            raise ValueError('Frozen source teacher changed during training')
+        mu_report['teacher_final_model_sha256'] = teacher_hash
     smoke_evaluation_verified = False
     if extra.mode == "smoke" and extra.experiment != "baseline":
         completed = runner.current_learning_iteration
@@ -220,6 +230,8 @@ def main():
         replay_window_count=0 if runner.alg.bridge.replay is None else runner.alg.bridge.replay.count,
         smoke_evaluation_verified=smoke_evaluation_verified,
         continuation=continuation, effectiveness_verified=False, dr_unlocked=False)
+    if mu_training:
+        certificate['mu_loss_report'] = mu_report
     if horizon_probe is not None:
         certificate['horizon_diagnostics'] = horizon_probe.report()
         validate_horizon_probe(certificate['horizon_diagnostics'], 60. if (contacting or progressing or directing) else experiment.cfg['horizon']['episode_length_s'],

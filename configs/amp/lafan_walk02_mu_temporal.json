@@ -1,0 +1,86 @@
+{
+  "experiment": "f1_amp_walk02_mu_temporal",
+  "source_clip_id": "LAFAN_WALK_02",
+  "candidate_id": "LAFAN_WALK_02_LEFT_HIP_ROLL_S092",
+  "motion": "resources/motions/amp_lafan_walk02_s092/motion.npz",
+  "motion_sha256": "3c24a7b2abc7fd4bada5a1840e466675bc43beda1fba49e0b98ee858037c173a",
+  "parent_sha256": "af51c637808a73c5f6f0a9e218930f500ab44b45bc53492fd04f874b2b475f07",
+  "protocol": "configs/amp/f1_100hz.json",
+  "normalizer_std_floor": 0.01,
+  "reward": {
+    "task_weight": 1,
+    "style_weight": 1,
+    "style_scale": 5,
+    "dt": 0.01
+  },
+  "discriminator_batch_size": 1024,
+  "recovery": {
+    "reset_clearance_m": 0.005,
+    "replay_capacity": 50000,
+    "replay_insert": 2048,
+    "discriminator_updates": 2,
+    "static_negative_fraction": 0.25
+  },
+  "seed": 5,
+  "smoke": {
+    "num_envs": 32,
+    "updates": 10
+  },
+  "formal": {
+    "num_envs": 4096,
+    "updates": 250
+  },
+  "evaluation_updates": [
+    2750
+  ],
+  "learnability_only": true,
+  "max_experiment_rounds": null,
+  "training_ready": false,
+  "scope": "Full original control2500 learning-state continuation; frozen source policy anchor and deterministic policy-mean temporal second-difference loss. No deployment filter, reward/dynamics change, DR or observation noise.",
+  "known_risks": [
+    "one clip and seed",
+    "temporal policy-output loss is not actual joint acceleration",
+    "source anchoring can reduce plasticity",
+    "off-policy neighboring observations from noisy training rollouts",
+    "full 32-initial-state physical and video evaluation required before adoption"
+  ],
+  "artifact_checkpoint_offset": 8800000,
+  "evaluation_duration_s": 60,
+  "mu_temporal": {
+    "group": "temporal",
+    "source_task": "TASK_20260926_110",
+    "source_config": "configs/amp/lafan_walk02_sustain_control.json",
+    "source_checkpoint_sha256": "07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31",
+    "source_completed_updates": 2500,
+    "learning_rate": 0.00005,
+    "episode_length_s": 60,
+    "style_floor": 0,
+    "bridge_gradient_penalty": 1,
+    "smoothness_scale": -0.02,
+    "anchor_coef": 1,
+    "temporal_coef": 0.01,
+    "control_dt": 0.01,
+    "action_scale": 0.5,
+    "startup_steps": 66,
+    "teacher": "frozen_full_source_actor_cnn_state_estimator",
+    "temporal_definition": "mean(((action_scale*(mu_t-2*mu_t1+mu_t2)/dt**2)/scale_joint)**2)",
+    "continuity": "same_episode_ticks_commands_all_three_no_prior_done_same_rollout",
+    "baseline_bundle_sha256": "de77d4a0c85cd581ae9dc9418d3fbce144730749b9f746f93b9671ec122a833b",
+    "baseline_analysis_sha256": "eb9002c5c5798ddb5277e65dd90f19f95c67d81385f17af59ab99ee41ef20002",
+    "normalization": "pooled_32_initial_states_post2s_absolute_P95_qmu_second_difference",
+    "acceleration_scales_rad_s2": {
+      "left_hip_pitch_joint": 2111.67649924755,
+      "left_hip_roll_joint": 1670.7300096750228,
+      "left_hip_yaw_joint": 923.8082990050318,
+      "left_knee_pitch_joint": 900.609664618969,
+      "left_ankle_pitch_joint": 2332.6044082641597,
+      "left_ankle_roll_joint": 735.3416234254836,
+      "right_hip_pitch_joint": 2410.4408025741564,
+      "right_hip_roll_joint": 1916.0323701798916,
+      "right_hip_yaw_joint": 1223.1887057423587,
+      "right_knee_pitch_joint": 1150.2685584127903,
+      "right_ankle_pitch_joint": 2849.940061569213,
+      "right_ankle_roll_joint": 1157.8007414937006
+    }
+  }
+}

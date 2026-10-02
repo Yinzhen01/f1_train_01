@@ -15,9 +15,33 @@ class AMPAlgorithmAdapter:
         self.latest = {}
         self.rollout_sums = {}
         self.rollout_steps = 0
+        self.mu_run_updates = 0
+        self.mu_run_sums = {}
+        self.mu_run_triplets = 0
+        self.mu_rollout_diagnostics = []
 
     def __getattr__(self, name):
         return getattr(self.ppo, name)
+
+    def act(self, observations, critic_observations):
+        if getattr(self.ppo, 'mu_regularizer', None) is not None:
+            # Metadata is sampled before action/environment stepping. Tensor
+            # clones in PPO prevent later auto-reset from rewriting this row.
+            self.ppo.set_mu_metadata(self.env.amp_episode, self.env.amp_steps(),
+                                     self.env.episode_length_buf, self.env.commands)
+        return self.ppo.act(observations, critic_observations)
+
+    def mu_loss_report(self):
+        regularizer = getattr(self.ppo, 'mu_regularizer', None)
+        if regularizer is None:
+            return None
+        result = {key: value/max(1, self.mu_run_updates) for key, value in self.mu_run_sums.items()}
+        result.update(updates=self.mu_run_updates, valid_triplets=self.mu_run_triplets,
+            teacher_unchanged=regularizer.teacher_unchanged(), metadata_observed=bool(self.mu_run_updates),
+            all_finite=all(torch.isfinite(torch.as_tensor(value)).item() for value in result.values()),
+            anchor_coef=regularizer.anchor_coef, temporal_coef=regularizer.temporal_coef,
+            rollout_diagnostics=list(self.mu_rollout_diagnostics))
+        return result
 
     def process_env_step(self, rewards, dones, infos):
         task = float(rewards.mean())
@@ -51,6 +75,18 @@ class AMPAlgorithmAdapter:
         self.rollout_sums.clear()
         self.rollout_steps = 0
         losses = self.ppo.update()
+        if getattr(self.ppo, 'mu_regularizer', None) is not None:
+            mu = dict(self.ppo.mu_latest)
+            self.mu_run_updates += 1
+            self.mu_run_triplets += int(mu['valid_triplets'])
+            self.mu_rollout_diagnostics.append(mu['rollout_diagnostics'])
+            for key in ('anchor_loss', 'temporal_loss', 'weighted_anchor_loss',
+                        'weighted_temporal_loss', 'aux_grad_norm'):
+                self.mu_run_sums[key] = self.mu_run_sums.get(key, 0.)+float(mu[key])
+            if not mu.get('teacher_unchanged') or not mu.get('all_finite'):
+                raise ValueError('Deterministic mu teacher/loss invariant failed')
+            self.latest.update({'mu_'+key: value for key, value in mu.items()
+                                if isinstance(value, (int, float, bool))})
         if not all(torch.isfinite(torch.as_tensor(x)) for x in losses):
             raise ValueError("Nonfinite PPO loss")
         stats = self.bridge.update_discriminator(self.experiment,

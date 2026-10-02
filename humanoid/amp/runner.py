@@ -20,6 +20,8 @@ class AMPOnPolicyRunner(DHOnPolicyRunner):
         signal = experiment.cfg.get("signal", experiment.cfg.get("horizon", experiment.cfg.get('contact_refinement', experiment.cfg.get('progress', experiment.cfg.get('direction', experiment.cfg.get('sustain', {}))))))
         if experiment.cfg.get('jitter'):
             signal = experiment.cfg['jitter']
+        if experiment.cfg.get('mu_temporal'):
+            signal = experiment.cfg['mu_temporal']
         d = AMPDiscriminator(experiment.spec, experiment.mean, experiment.std,
                              style_floor=signal.get("style_floor", 0.)).to(device)
         self.amp_trainer = DiscriminatorTrainer(d, bridge_gradient_penalty=signal.get("bridge_gradient_penalty", 0.))
@@ -55,6 +57,7 @@ class AMPOnPolicyRunner(DHOnPolicyRunner):
             amp_discriminator_state_dict=self.amp_trainer.discriminator.state_dict(),
             amp_optimizer_state_dict=self.amp_trainer.optimizer.state_dict(),
             amp_identity=self.amp_experiment.identity(),
+            mu_loss_report=self.alg.mu_loss_report(),
             amp_replay_state=None if self.alg.bridge.replay is None or not replay_checkpoint
                              else self.alg.bridge.replay.state_dict()), path)
 

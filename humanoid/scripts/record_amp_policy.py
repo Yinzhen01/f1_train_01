@@ -32,6 +32,7 @@ from humanoid.amp.progress import PROGRESS_GROUPS, validate_progress
 from humanoid.amp.direction import DIRECTION_GROUPS, validate_direction
 from humanoid.amp.sustain import SUSTAIN_GROUPS, validate_sustain
 from humanoid.amp.jitter import JITTER_GROUPS, validate_jitter
+from humanoid.amp.mu_temporal import MU_GROUPS, validate_mu
 from humanoid.amp.evaluation import validate_evaluation_budget, independent_mode_seeds
 from humanoid.amp.physics_diagnostic import (GROUPS as PHYSICS_GROUPS, apply_diagnostic_config,
     diagnostic_contract, physical_readback, reset_input_snapshot, cleared_history_diagnostics, validate_request,
@@ -71,7 +72,7 @@ def main():
     parser.add_argument("--checkpoint-file", type=Path, required=True)
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--expected-commit", required=True)
-    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS+JITTER_GROUPS, required=True)
+    parser.add_argument("--experiment", choices=("baseline", "recovery", "recovery_static")+GROUPS+SIGNAL_GROUPS+HORIZON_GROUPS+CONTACT_GROUPS+PROGRESS_GROUPS+DIRECTION_GROUPS+SUSTAIN_GROUPS+JITTER_GROUPS+MU_GROUPS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duration", type=float, default=20.)
     parser.add_argument("--extended-validation", action="store_true")
@@ -102,6 +103,8 @@ def main():
         validate_sustain(experiment)
     if extra.experiment in JITTER_GROUPS:
         validate_jitter(experiment)
+    if extra.experiment in MU_GROUPS:
+        validate_mu(experiment)
     state = torch.load(str(extra.checkpoint_file), map_location="cpu", weights_only=True)
     if state["amp_identity"] != experiment.identity() or args.task != experiment.cfg["experiment"]:
         raise ValueError("Evaluation task/data identity mismatch")
@@ -127,7 +130,7 @@ def main():
         from humanoid.envs.x1.x1_amp_physics_diagnostic_env import X1AMPPhysicsDiagnosticEnv
         cfg = apply_diagnostic_config(cfg, extra.physics_diagnostic)
         cls = X1AMPPhysicsDiagnosticEnv
-    capture_physics = extra.experiment in JITTER_GROUPS or extra.physics_diagnostic is not None
+    capture_physics = extra.experiment in JITTER_GROUPS or extra.experiment in MU_GROUPS or extra.physics_diagnostic is not None
     cfg.seed = args.seed
     # Longer observation horizon, never motion-time rescaling or playback.
     cfg.env.episode_length_s = extra.duration+.1

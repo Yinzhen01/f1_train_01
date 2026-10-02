@@ -101,6 +101,13 @@ def select_environment(experiment_name):
     from humanoid.envs.x1.x1_amp_recovery_config import X1AMPRecoveryCfg, X1AMPRecoveryCfgPPO
     from humanoid.envs.x1.x1_amp_recovery_env import X1AMPRecoveryEnv
     from .jitter import JITTER_GROUPS
+    from .mu_temporal import MU_GROUPS
+    if experiment_name in MU_GROUPS:
+        from .mu_temporal import apply_mu_config
+        from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
+        from humanoid.envs.x1.x1_amp_jitter_env import X1AMPJitterEnv
+        cfg = apply_mu_config(X1AMPRefineCfg(), experiment_name.split('_', 1)[1])
+        return cfg, X1AMPRecoveryCfgPPO(), X1AMPJitterEnv
     if experiment_name in JITTER_GROUPS:
         from .jitter import apply_jitter_config
         from humanoid.envs.x1.x1_amp_refine_config import X1AMPRefineCfg
