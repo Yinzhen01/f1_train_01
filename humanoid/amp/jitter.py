@@ -12,16 +12,17 @@ from .scaled_experiment import ScaledExperiment
 
 SUBSTEP_GROUPS = ('substep_accel', 'substep_torque')
 FILTER_GROUPS = ('target5', 'target8')
-JITTER_GROUPS = ('jitter_control', 'jitter_smooth') + tuple('jitter_'+g for g in SUBSTEP_GROUPS+FILTER_GROUPS)
+ANKLE_GROUPS = ('ankle_slew',)
+JITTER_GROUPS = ('jitter_control', 'jitter_smooth') + tuple('jitter_'+g for g in SUBSTEP_GROUPS+FILTER_GROUPS+ANKLE_GROUPS)
 SOURCE_CONFIG = 'configs/amp/lafan_walk02_sustain_control.json'
 SOURCE_SHA = '07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31'
 
 
 def jitter_contract(group):
-    if group not in ('control', 'smooth') + SUBSTEP_GROUPS + FILTER_GROUPS:
+    if group not in ('control', 'smooth') + SUBSTEP_GROUPS + FILTER_GROUPS + ANKLE_GROUPS:
         raise ValueError('Unknown jitter group')
     result = dict(group=group, round={'control': 19, 'smooth': 20, 'substep_accel': 21, 'substep_torque': 22,
-                                    'target5': 23, 'target8': 24}[group],
+                                    'target5': 23, 'target8': 24, 'ankle_slew': 25}[group],
         source_task='TASK_20260926_110', source_config=SOURCE_CONFIG,
         source_checkpoint_sha256=SOURCE_SHA, source_completed_updates=2500,
         learning_rate=5e-5, episode_length_s=60., style_floor=0., bridge_gradient_penalty=1.,
@@ -35,6 +36,10 @@ def jitter_contract(group):
             formula='alpha=1-exp(-2*pi*cutoff_hz*dt); y=alpha*clipped_raw+(1-alpha)*previous_y',
             reset_state='zero_action_default_pose', observation_action='previous_applied_action',
             update_rate_hz=100, deployment_requires_filter=True)
+    if group in ANKLE_GROUPS:
+        result['ankle_slew'] = dict(joints=['left_ankle_pitch_joint', 'right_ankle_pitch_joint'],
+            scale=-.2, first_difference=True, second_difference=True,
+            reset_guard_steps=3, action_source='applied_policy_action')
     return result
 
 
@@ -49,6 +54,9 @@ def apply_jitter_config(cfg, group):
             cfg.rewards.scales.substep_torque = cfg.substep_penalty['torque_scale']
     if group in FILTER_GROUPS:
         cfg.target_filter = copy.deepcopy(jitter_contract(group)['target_filter'])
+    if group in ANKLE_GROUPS:
+        cfg.ankle_slew = copy.deepcopy(jitter_contract(group)['ankle_slew'])
+        cfg.rewards.scales.ankle_slew = cfg.ankle_slew['scale']
     return cfg
 
 
@@ -59,7 +67,7 @@ def validate_jitter(experiment):
     source = ScaledExperiment(experiment.repo, experiment.repo/SOURCE_CONFIG)
     expected = copy.deepcopy(source.cfg); expected.pop('sustain')
     expected.update(experiment='f1_amp_walk02_jitter_'+c['group'], jitter=c, evaluation_updates=[2750])
-    if c['group'] in SUBSTEP_GROUPS + FILTER_GROUPS:
+    if c['group'] in SUBSTEP_GROUPS + FILTER_GROUPS + ANKLE_GROUPS:
         # User lifted the 20-experiment cap on 2026-10-02. Each run is still
         # bounded to the unchanged smoke/formal budget and requires a new gate.
         expected['max_experiment_rounds'] = None
@@ -81,6 +89,8 @@ def jitter_source(cfg):
         result['substep'] = copy.deepcopy(c['substep'])
     if c['group'] in FILTER_GROUPS:
         result['target_filter'] = copy.deepcopy(c['target_filter'])
+    if c['group'] in ANKLE_GROUPS:
+        result['ankle_slew'] = copy.deepcopy(c['ankle_slew'])
     return result
 
 
@@ -143,4 +153,11 @@ def validate_jitter_diagnostics(report, group, steps, num_envs):
     if group in FILTER_GROUPS:
         from .target_filter import validate_filter_diagnostics
         validate_filter_diagnostics(report, jitter_contract(group)['target_filter'], steps, num_envs)
+    if group in ANKLE_GROUPS:
+        spec = jitter_contract(group)['ankle_slew']
+        if (report.get('ankle_slew') != spec or report.get('ankle_slew_calls') != steps or
+            report.get('ankle_slew_cost_sum', 0.) <= 0 or
+            not math.isfinite(report.get('ankle_slew_cost_sum', float('nan'))) or
+            not math.isclose(report.get('ankle_slew_scale', float('nan')), .01*spec['scale'], rel_tol=1e-6)):
+            raise ValueError('Missing or changed ankle pitch slew reward')
     return True

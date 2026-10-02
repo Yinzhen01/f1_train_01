@@ -2,7 +2,7 @@
 import copy
 import numpy as np
 
-from humanoid.amp.jitter import jitter_contract, SUBSTEP_GROUPS, FILTER_GROUPS
+from humanoid.amp.jitter import jitter_contract, SUBSTEP_GROUPS, FILTER_GROUPS, ANKLE_GROUPS
 from humanoid.amp.target_filter import filter_alpha
 from tools.amp.sustain_audit import validate_sustain_updates
 
@@ -25,6 +25,10 @@ def compare_environment(source, target, group, smoke=False):
             raise ValueError('Wrong substep torque weight')
     if group in FILTER_GROUPS and after.pop('target_filter', None) != jitter_contract(group)['target_filter']:
         raise ValueError('Wrong target filter contract')
+    if group in ANKLE_GROUPS:
+        contract = jitter_contract(group)['ankle_slew']
+        if after.pop('ankle_slew', None) != contract or after['rewards']['scales'].pop('ankle_slew', None) != contract['scale']:
+            raise ValueError('Wrong ankle pitch slew contract')
     if smoke:
         after['env']['num_envs'] = source['env']['num_envs']
     if source != after:
