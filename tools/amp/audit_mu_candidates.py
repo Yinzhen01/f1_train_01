@@ -29,7 +29,7 @@ from tools.amp.audit_physics_diagnostic import (FORCE_THRESHOLD, common_prefix_s
     validate_telemetry, validate_runtime, worst_second)
 from tools.amp.inspect_rollout import episode, load_bundle
 from tools.amp.jitter_audit import validate_substep_arrays
-from tools.amp.mu_audit import compare_environment
+from tools.amp.mu_audit import compare_environment, validate_frozen_checkpoint
 
 SOURCE_PHYSICS_BUNDLE_SHA = '96d56e4219ebd5106567e80cc09ce53ceb17091c1018dda9a514d16108bc2f47'
 SPANS = dict(whole=(.01, 60.01), post2s=(2., 60.01), **WINDOWS)
@@ -112,6 +112,18 @@ def checkpoint_proof(path, manifest, completed):
             raise ValueError('Nonfinite saved inference/discriminator model')
     return dict(checkpoint_sha256=digest, model_state_sha256=state_fingerprint(state['model_state_dict']),
                 completed_updates=completed), state.get('mu_loss_report')
+
+
+def candidate_checkpoint_proof(path, manifest, experiment, source_checkpoint):
+    """Keep legacy checks; frozen groups also prove actual tensors and Adam state."""
+    model, loss = checkpoint_proof(path, manifest, 2750)
+    spec = experiment.cfg['mu_temporal']
+    validate_mu_loss_report(loss, spec, 250)
+    if spec.get('frozen_modules'):
+        actual = torch.load(path, weights_only=True, map_location='cpu')
+        validate_frozen_checkpoint(actual, source_checkpoint, loss, updates=250)
+        model['frozen_feature_checkpoint_verified'] = True
+    return model
 
 
 def target_summary(data, manifest, start, end):
@@ -286,13 +298,19 @@ def plot_cases(cases, geometry, output, mode, index, start, end, label):
     fig.tight_layout(); fig.savefig(output/(label+'.png'),dpi=120); plt.close(fig)
 
 
-def main():
+def parse_arguments(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('source-endpoint','source-physics','source-checkpoint','anchor-bundle',
                  'anchor-checkpoint','temporal-bundle','temporal-checkpoint','output'):
         p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--expected-commit',required=True)
-    a = p.parse_args()
+    p.add_argument('--anchor-group', choices=('anchor', 'freeze_anchor'), default='anchor')
+    p.add_argument('--temporal-group', choices=('temporal', 'freeze_temporal'), default='temporal')
+    return p.parse_args(argv)
+
+
+def main():
+    a = parse_arguments()
     if a.output.exists(): raise FileExistsError(a.output)
     if not re.fullmatch('[0-9a-f]{40}',a.expected_commit): raise ValueError('Expected full40hex candidate commit')
     torch.set_num_threads(2)
@@ -317,7 +335,9 @@ def main():
         checkpoint=source_checkpoint,code_commit=sm['code_commit'],runtime_readback=source_runtime,env0_raw_verification=source_raw))
     for group in ('anchor','temporal'):
         path = getattr(a,group+'_bundle'); checkpoint = getattr(a,group+'_checkpoint')
-        experiment = ScaledExperiment(ROOT,ROOT/('configs/amp/lafan_walk02_mu_'+group+'.json'))
+        registered_group = getattr(a, group+'_group')
+        config_path = ROOT/('configs/amp/lafan_walk02_mu_'+registered_group+'.json')
+        experiment = ScaledExperiment(ROOT,config_path)
         validate_mu(experiment)
         manifest,arrays = load_bundle(path)
         if (manifest['identity'] != experiment.identity() or manifest['code_commit'] != a.expected_commit or
@@ -332,16 +352,16 @@ def main():
         if (telemetry.get('physics_hz'),telemetry.get('control_hz'),telemetry.get('samples_per_control')) != (1000,100,10) or telemetry.get('reward_used') is not False:
             raise ValueError('Candidate lacks measured read-only native1kHz interval statistics')
         validate_substep_arrays(manifest,arrays)
-        compare_environment(om['environment'],manifest['environment'],group)
+        compare_environment(om['environment'],manifest['environment'],registered_group)
         if manifest['runtime'] != om['runtime']: raise ValueError('Candidate runtime PD/DOF/timing differs from original110')
         validate_runtime_timing(manifest['runtime']['control_dt'],manifest['runtime']['physics_dt'],manifest['environment']['control']['decimation'])
         initial = observed_initial_comparison(oa,arrays)
         if not initial['all_captured_fields_exact_equal']: raise ValueError('Candidate actual post-warmup initial states changed')
-        model,loss = checkpoint_proof(checkpoint,manifest,2750)
-        validate_mu_loss_report(loss,experiment.cfg['mu_temporal'],250)
+        model = candidate_checkpoint_proof(checkpoint,manifest,experiment,a.source_checkpoint)
         cases[group] = dict(manifest=manifest,arrays=arrays)
         provenance[group] = dict(bundle_path=str(path.resolve()),bundle_sha256=file_sha(path),checkpoint=model,
             code_commit=manifest['code_commit'],actual_post_warmup_initial=initial,
+            registered_group=registered_group,config_path=str(config_path.resolve()),
             raw1ms_available=False,raw1ms_waveform_and_spectrum='not evaluable; only ten-substep interval aggregates captured',
             full_shape_and_solver_readback_available=False)
     rows = {name:case_rows(case,geometry) for name,case in cases.items()}

@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -33,6 +34,10 @@ SPANS = dict(post2s=(2., 60.), near5s=(4., 6.),
 RUNS = ('source', '081', '082')
 FORMAL_COMMIT = 'dd24051df25867f49e6fd1b7ff5e7b6ffdff4fb3'
 GROUPS = {'081': 'anchor', '082': 'temporal'}
+GROUP_CHOICES = {'081': ('anchor', 'freeze_anchor'),
+                 '082': ('temporal', 'freeze_temporal')}
+LEGACY_GRADIENT_LIMITATION = (
+    'Training auxiliary gradient logs are first-minibatch diagnostics; main PPO gradients are not recorded.')
 METRICS = ('normalized_temporal_loss', 'qmu_second_difference_rms_rad_s2',
            'anchor_pd_target_rms_rad')
 
@@ -68,19 +73,78 @@ def validate_fixed_source_shas(endpoint_sha, checkpoint_sha):
         raise ValueError('Fixed source bundle/checkpoint SHA mismatch')
 
 
-def validate_candidate_binding(run, checkpoint_identity, training, expected_identity, source_model_hash):
+def candidate_groups(anchor_group='anchor', temporal_group='temporal', expected_commit=FORMAL_COMMIT):
+    """Explicit role-preserving opt-in; unchanged legacy defaults stay hard-bound."""
+    groups = {'081': anchor_group, '082': temporal_group}
+    if any(group not in GROUP_CHOICES[run] for run, group in groups.items()):
+        raise ValueError('Candidate groups must preserve anchor/temporal roles')
+    if not isinstance(expected_commit, str) or not re.fullmatch('[0-9a-f]{40}', expected_commit):
+        raise ValueError('Expected candidate formal commit must be a full lowercase Git SHA')
+    return groups
+
+
+def validate_candidate_binding(run, checkpoint_identity, training, expected_identity, source_model_hash,
+                               group=None, expected_commit=FORMAL_COMMIT):
     """Pure guard: labels, full mu contract and formal commit cannot be swapped."""
     if run not in GROUPS:
         raise ValueError('Unknown fixed candidate label')
+    group = GROUPS[run] if group is None else group
+    candidate_groups(group if run == '081' else 'anchor',
+                     group if run == '082' else 'temporal', expected_commit)
     proof=training.get('continuation') or {}
-    expected=mu_contract(GROUPS[run])
+    expected=mu_contract(group)
     if (checkpoint_identity != expected_identity or training.get('identity') != expected_identity or
-            training.get('code_commit') != FORMAL_COMMIT or proof.get('mu_contract') != expected or
+            training.get('code_commit') != expected_commit or proof.get('mu_contract') != expected or
             proof.get('source_sha256') != SOURCE_SHA or proof.get('source_completed_updates') != 2500 or
             proof.get('target_completed_updates') != 2750 or proof.get('teacher_frozen') is not True or
             proof.get('teacher_source_model_sha256') != source_model_hash or
             proof.get('student_initial_model_sha256') != source_model_hash):
         raise ValueError('Candidate full identity/contract/formal-commit binding mismatch: '+run)
+
+
+def validate_freeze_candidate(checkpoint, training, source_path, experiment):
+    """New groups need actual checkpoint/Adam evidence, not self-reported flags."""
+    spec = experiment.cfg['mu_temporal']
+    if not spec.get('frozen_modules'):
+        return None
+    from tools.amp.mu_audit import (validate_frozen_checkpoint,
+        validate_mu_checkpoint_report, validate_mu_loss_report)
+    completion = training.get('completion') or {}
+    proof = training.get('continuation') or {}
+    if (training.get('mode') != 'formal' or training.get('updates') != 250 or
+            training.get('num_envs') != 4096 or completion.get('updates') != 250 or
+            completion.get('num_envs') != 4096 or
+            completion.get('identity') != training.get('identity') or
+            completion.get('code_commit') != training.get('code_commit') or
+            completion.get('continuation') != proof):
+        raise ValueError('Freeze fixed-input audit requires the complete original formal protocol')
+    report = completion.get('mu_loss_report') or {}
+    validate_mu_loss_report(report, spec, 250, proof, num_envs=4096,
+        rollout_steps=training['ppo_config']['runner']['num_steps_per_env'])
+    validate_mu_checkpoint_report(checkpoint.get('mu_loss_report') or {}, report, spec, 250, proof)
+    validate_frozen_checkpoint(checkpoint, source_path, report, updates=250)
+    return dict(frozen_feature_checkpoint_verified=True, additional_updates=250,
+        source_features_sha256=report['frozen_features_initial_sha256'],
+        candidate_features_sha256=report['frozen_features_final_sha256'],
+        teacher_final_model_sha256=report['teacher_final_model_sha256'],
+        checkpoint_report_matches_completion=True,
+        frozen_parameters_and_adam_unchanged=True, active_adam_steps_verified=True)
+
+
+def gradient_evidence_limitations(groups):
+    old = [run for run, group in groups.items() if not group.startswith('freeze_')]
+    frozen = [run for run, group in groups.items() if group.startswith('freeze_')]
+    result = []
+    if old:
+        result.append(LEGACY_GRADIENT_LIMITATION if not frozen else
+            'Legacy candidates '+','.join(old)+': '+LEGACY_GRADIENT_LIMITATION)
+    if frozen:
+        result.append('Freeze candidates '+','.join(frozen)+
+            ': main/auxiliary/ES norms and actor gradient cosine are computed every minibatch; '
+            'saved all-minibatch diagnostics are minibatch/update aggregates, not individual gradient vectors '
+            'or a causal proof. aux_grad_norm_all_batches is the aggregate auxiliary metric; '
+            'the retained aux_grad_norm is still the legacy first-minibatch metric.')
+    return result
 
 
 def validate_complete_cohorts(rows):
@@ -190,7 +254,7 @@ def checkpoint_statistics(states, checkpoints, joint_names):
     return result
 
 
-def main():
+def build_parser():
     parser=argparse.ArgumentParser(description=__doc__)
     old=ROOT/'../f1-amp-sustain/outputs/amp-sustain/TASK_20260926_110'
     current=ROOT/'outputs/amp-mu-temporal'
@@ -199,8 +263,17 @@ def main():
             ('081', current/'TASK_20261002_081', 2750), ('082', current/'TASK_20261002_082', 2750)):
         parser.add_argument('--'+run+'-checkpoint', type=Path, default=directory/('model_880%d.pt' % number))
         parser.add_argument('--'+run+'-training-manifest', type=Path, default=directory/'model_amp_manifest.pt')
+    parser.add_argument('--anchor-group', choices=GROUP_CHOICES['081'], default=GROUPS['081'])
+    parser.add_argument('--temporal-group', choices=GROUP_CHOICES['082'], default=GROUPS['082'])
+    parser.add_argument('--expected-commit', default=FORMAL_COMMIT,
+        help='Exact formal training commit; defaults to the original 081/082 commit')
     parser.add_argument('--output', type=Path, required=True)
-    args=parser.parse_args()
+    return parser
+
+
+def main():
+    args=build_parser().parse_args()
+    groups=candidate_groups(args.anchor_group, args.temporal_group, args.expected_commit)
     if args.output.exists():
         raise FileExistsError('Refusing to overwrite existing diagnostic directory: '+str(args.output))
     torch.set_num_threads(2)
@@ -231,13 +304,14 @@ def main():
     if manifest['checkpoint_sha256'] != source_sha or manifest['identity'] != training['source']['identity']:
         raise ValueError('Original observation endpoint is not bound to the source checkpoint')
     experiments={'source': ScaledExperiment(ROOT, ROOT/SOURCE_CONFIG)}
-    for run, group in GROUPS.items():
+    for run, group in groups.items():
         experiments[run]=ScaledExperiment(ROOT, ROOT/('configs/amp/lafan_walk02_mu_'+group+'.json'))
     expected_identities={run: experiment.identity() for run, experiment in experiments.items()}
     if checkpoints['source']['amp_identity'] != expected_identities['source']:
         raise ValueError('Original policy identity does not match its fixed ScaledExperiment')
     states={run: checkpoints[run]['model_state_dict'] for run in RUNS}
     source_hash=state_fingerprint(states['source'])
+    frozen_checks={}
     for run in RUNS:
         state=states[run]
         if (state.keys() != states['source'].keys() or
@@ -248,7 +322,7 @@ def main():
         if run != 'source':
             proof=training[run]['continuation']
             validate_candidate_binding(run, checkpoints[run]['amp_identity'], training[run],
-                                       expected_identities[run], source_hash)
+                expected_identities[run], source_hash, groups[run], args.expected_commit)
             validate_mu_certificate(experiments[run], proof)
             if (proof['source_sha256'] != source_sha or proof['source_completed_updates'] != 2500 or
                     proof['target_completed_updates'] != 2750 or not proof['teacher_frozen'] or
@@ -256,6 +330,10 @@ def main():
                     proof['student_initial_model_sha256'] != source_hash or
                     proof['mu_contract']['acceleration_scales_rad_s2'] != ACCELERATION_SCALES):
                 raise ValueError('Candidate source/teacher/fixed-scale provenance mismatch: '+run)
+            checked=validate_freeze_candidate(checkpoints[run], training[run],
+                                               args.source_checkpoint, experiments[run])
+            if checked is not None:
+                frozen_checks[run]=checked
     cls, _=cpu_ppo_classes(ROOT)
     cfg=manifest['environment']['env']
     if manifest['environment']['control']['action_scale'] != .5:
@@ -303,6 +381,8 @@ def main():
         'humanoid/amp/jitter.py', 'humanoid/amp/scaled_experiment.py',
         'humanoid/amp/dataset.py', 'humanoid/amp/features.py',
         'humanoid/algo/ppo/actor_critic_dh.py', 'humanoid/envs/base/legged_robot.py')
+    if frozen_checks:
+        dependencies+=('tools/amp/mu_audit.py', 'humanoid/amp/feature_freeze.py')
     report=dict(schema_version=2,
         purpose='Fixed original observations through unchanged complete deterministic policies',
         source_endpoint=dict(path=str(args.source_bundle.resolve()), sha256=endpoint_sha,
@@ -311,7 +391,7 @@ def main():
         source_file_sha256={name: sha256_file(ROOT/name) for name in dependencies},
         script_sha256=sha256_file(__file__),
         fixed_source_binding=dict(expected_source_endpoint_sha256=BASELINE_BUNDLE_SHA,
-            expected_source_checkpoint_sha256=SOURCE_SHA, candidate_formal_commit=FORMAL_COMMIT,
+            expected_source_checkpoint_sha256=SOURCE_SHA, candidate_formal_commit=args.expected_commit,
             expected_scaled_experiment_identities=expected_identities,
             source_and_candidates_verified=True, complete_unique32_per_span_run_verified=True),
         protocol=dict(initial_states=32, modes=manifest['modes'], environments_per_mode=16,
@@ -333,7 +413,10 @@ def main():
             'PD command second differences are not actual joint acceleration or a safety threshold.',
             'No candidate trajectories, physical1kHz waveforms, falls or survival are measured here.',
             'Parameter L2 changes and optimizer moments are descriptive, not a proven causal mechanism.',
-            'Training auxiliary gradient logs are first-minibatch diagnostics; main PPO gradients are not recorded.'])
+            *gradient_evidence_limitations(groups)])
+    if frozen_checks:
+        report['fixed_source_binding'].update(candidate_groups=groups,
+            independent_frozen_candidate_checks=frozen_checks)
     write_report(args.output, report)
     print(json.dumps(dict(output=str((args.output/'report.json').resolve()),
         source_action_parity_max=report['source_action_parity']['max_action_abs_error'],
