@@ -300,3 +300,22 @@ history_refreshed均false。前后checkout unchanged、单次fetch计数1；没�
 root仅追加092一条运行账本，62/67条；初次读回因checkedAt末位小数零被
 PowerShell日期序列化省略而拒绝，随后只读恢复证明wire行完整匹配实际写入模板、
 唯一差异为同UTC时刻的格式，其他字段核验不变。没有第二次写入、追加或重启。
+
+092最终实际21:51:06–21:53:36运行150秒、终态5，原生START/COMPLETE/硬件各1，
+新b7代码/d16指纹/原110字节与硬件绑定全部核验；五个实际产物和完整日志已下载。
+独立生产审核实际exit0、8.0483秒、stderr0；audit83234B SHA
+`dd68d1f321007043f2e3b0cbe4497a26937d387111625e94b30558d89544e48f`，
+canonical facts SHA`a4963a77f598faea1a430d32d7600ac99e853ea5b8c94943f7c468c7f0d94f43`。
+新安全资源[`head_native_smoke_TASK_20261004_092.json`](../resources/amp_admission/head_native_smoke_TASK_20261004_092.json)
+2050B/SHA`b099a8adece531c2bb72bdfe16ed473ca95998a86b7f686d5611e3cfa009211e`，
+严格JSON、exact31/type/deepvalue与真实审计逐项一致，当前identity/d16与原driver
+validator实际通过；本地祖先检查未mock、无fetch，未放宽任何准入。
+
+这仍只证明基础流程。GPU源hidden/rawmu误差0，独立CPU最大约0.000201；冻结31
+张量字节精确不变，仅末层2张量修改。候选验证曲率平方下降仍为约5.8%、不足10%；
+f32训练env2最大变化0.05000002058389352rad严格超0.05，offline_admitted=false。
+16条警告与logs_clean=false保留，源-only1秒recorder不是60秒或指定窗口质量证明。
+短测模式仍不执行正式证书history恢复分支，兼容版实际fetch必须在后续正式入口
+核验。原110继续保留，不继承短测头、不重跑092；正式队列尚未启动。
+092账单独立快照扣费0.18、runtime2、gift余额18.14，单位及最终结算未知；root仅
+更新092终态、其他字段核验不变，62/67条。整体抖动目标仍未完成、DR/noise关闭。
