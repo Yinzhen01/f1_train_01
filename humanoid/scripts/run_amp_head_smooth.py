@@ -139,7 +139,9 @@ def ensure_smoke_ancestry(repo, commit):
         trusted = False
     if not trusted:
         raise ValueError('Head history origin is not the registered HTTPS repository')
-    fetched = _head_history_git(repo, 'fetch', '--no-tags', '--no-write-fetch-head',
+    # Cloud Git 2.25.1 rejects --no-write-fetch-head (actual probe091).
+    # Allow only normal FETCH_HEAD metadata; keep the one-shot/checkout guards.
+    fetched = _head_history_git(repo, 'fetch', '--no-tags',
                                '--deepen=64', 'origin', head)
     if fetched.returncode != 0:
         raise ValueError('Head history refresh failed; no retry or diagnostic echo')

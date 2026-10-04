@@ -26,7 +26,7 @@ TOP = ('git', 'rev-parse', '--show-toplevel')
 TRACKED = ('git', 'status', '--porcelain', '--untracked-files=no')
 UNTRACKED = ('git', 'ls-files', '--others', '--exclude-standard', '--',
              'humanoid', 'configs', 'resources')
-FETCH = ('git', 'fetch', '--no-tags', '--no-write-fetch-head', '--deepen=64', 'origin', HEAD)
+FETCH = ('git', 'fetch', '--no-tags', '--deepen=64', 'origin', HEAD)
 
 
 def load_driver():
@@ -193,6 +193,21 @@ class SmokeAncestryTests(unittest.TestCase):
         self.assertTrue(all(command[:2] not in (('git', 'checkout'), ('git', 'reset'),
             ('git', 'update-ref'), ('git', 'pull'), ('git', 'merge')) for command in commands))
 
+    def test_compatible_fetch_keeps_exact_single_bounded_command_without_optional_flag(self):
+        # Synthetic command regression, not a fabricated Git 2.25/native run.
+        result, caught, calls, out, err = self.invoke()
+        self.assertIsNone(caught)
+        self.assertTrue(result['ancestor_verified'])
+        fetches = self.fetches(calls)
+        self.assertEqual(len(fetches), 1)
+        self.assertEqual(tuple(fetches[0].args[0]),
+            ('git', 'fetch', '--no-tags', '--deepen=64', 'origin', HEAD))
+        self.assertNotIn('--no-write-fetch-head', fetches[0].args[0])
+        self.assertNotEqual(fetches[0].args[0][-1], COMMIT)
+        self.assert_captured(fetches[0])
+        self.assertEqual(self.commands(calls)[-1], MERGE)
+        self.assertEqual(out + err, '')
+
     def test_only_trusted_https_origin_path_allows_repair(self):
         bad_urls = (
             'http://github.com/Yinzhen01/f1_train_01.git',
@@ -236,7 +251,7 @@ class SmokeAncestryTests(unittest.TestCase):
 
     def test_fetch_failure_is_terminal_without_retry_or_diagnostic_leak(self):
         secret = b'https://token:synthetic-secret@github.com/Yinzhen01/f1_train_01.git'
-        for rc in (1, 128, -9):
+        for rc in (1, 128, 129, -9):
             with self.subTest(rc=rc):
                 caught, calls = self.assert_rejected(changes={FETCH: response(rc, secret, secret)})
                 self.assertNotIn('synthetic-secret', str(caught))

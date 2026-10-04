@@ -22,7 +22,7 @@ TOP = ('rev-parse', '--show-toplevel')
 TRACKED = ('status', '--porcelain', '--untracked-files=no')
 UNTRACKED = ('ls-files', '--others', '--exclude-standard', '--', 'humanoid', 'configs', 'resources')
 MERGE = ('merge-base', '--is-ancestor', probe.SMOKE_COMMIT, 'HEAD')
-FETCH = ('fetch', '--no-tags', '--no-write-fetch-head', '--deepen=64', 'origin', HEAD)
+FETCH = ('fetch', '--no-tags', '--deepen=64', 'origin', HEAD)
 REMOTE = ('remote', 'get-url', 'origin')
 SENTINEL = 'synthetic-secret-never-output'
 
@@ -56,7 +56,7 @@ class HeadGitProbeTests(unittest.TestCase):
             return probe._certificate()
 
     def invoke(self, *, initial=128, final=0, changes=None, sequences=None, expected=HEAD,
-               failure=None, helper_error=None, main=False):
+               failure=None, helper_error=None, main=False, real_fingerprint=False):
         driver = probe._load_driver()
         original = driver._head_history_git
         routes = {
@@ -88,9 +88,11 @@ class HeadGitProbeTests(unittest.TestCase):
         wrapped_helper=driver.ensure_smoke_ancestry
         helper_mock = patch.object(driver,'ensure_smoke_ancestry',
             side_effect=helper_error if helper_error is not None else wrapped_helper)
+        fingerprint_mock = contextlib.nullcontext() if real_fingerprint else \
+            patch.object(probe,'_runtime_fingerprint',return_value=probe.FINGERPRINT)
         with patch.object(probe.subprocess,'run',side_effect=run) as git, \
                 patch.object(probe,'_certificate',return_value={'synthetic_only':True}), \
-                patch.object(probe,'_runtime_fingerprint',return_value=probe.FINGERPRINT), \
+                fingerprint_mock, \
                 patch.object(probe,'_load_driver',return_value=driver), helper_mock as helper, \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
@@ -199,6 +201,18 @@ class HeadGitProbeTests(unittest.TestCase):
                 self.assertIsNone(result); self.assertIsInstance(error,probe.ProbeRejected)
                 self.assertEqual(calls,[]); self.assertEqual(count,0)
 
+    def test_historical_probe_rejects_changed_runtime_fingerprint_before_helper_or_fetch(self):
+        # Only Git/certificate responses are synthetic.  The pure hash reads
+        # current files, so the original087 probe must reject the newer driver.
+        result,error,calls,count,out,err=self.invoke(real_fingerprint=True)
+        self.assertIsNone(result)
+        self.assertIsInstance(error,probe.ProbeRejected)
+        self.assertEqual(error.args,('fingerprint_mismatch',))
+        self.assertEqual(count,0)
+        self.assertNotIn(FETCH,self.commands(calls))
+        self.assertNotIn(('--version',),self.commands(calls))
+        self.assertEqual(out+err,'')
+
     def test_dirty_or_wrong_checkout_has_no_helper_or_fetch(self):
         cases=({TOP:row(0,str(probe.ROOT.parent).encode())},{CURRENT:row(0,b'a'*40)},
             {TRACKED:row(0,b' M docs/state.md')},{UNTRACKED:row(0,b'configs/unknown.json')},
@@ -299,7 +313,7 @@ class HeadGitProbeTests(unittest.TestCase):
             probe._certificate()
         read.assert_not_called()
 
-    def test_fresh_import_and_actual_pure_hash_function_do_not_import_torch_or_isaac(self):
+    def test_fresh_historical_fp_rejection_does_not_import_torch_or_isaac(self):
         code="""import builtins,sys
 before=set(sys.modules)
 original=builtins.__import__
@@ -310,7 +324,12 @@ def guarded(name,*args,**kwargs):
 builtins.__import__=guarded
 from tools.amp import probe_head_git_history as p
 p._load_driver()
-assert p._runtime_fingerprint()==p.FINGERPRINT
+try:
+    p._runtime_fingerprint()
+except p.ProbeRejected as error:
+    assert error.args==('fingerprint_mismatch',)
+else:
+    raise AssertionError('Historical probe must reject the newer runtime FP')
 assert not any(name.split('.')[0] in ('torch','isaacgym') for name in set(sys.modules)-before)
 """
         # This launches only a stdlib import/hash interpreter, never Git/native.

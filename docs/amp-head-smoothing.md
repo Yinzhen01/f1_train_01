@@ -262,3 +262,33 @@ canonical事实SHA为`df1b26f1133fae70db9dac099f1d9db5d73c30b0a9ad10213ab98e5486
 原文、URL和认证字段；未知原因仍为unknown。实际新增25项mock测试通过（主线程
 0.322秒、exit0），原21项history测试通过（0.081秒、exit0）。纯哈希与导入检查
 确认运行指纹仍为`71073f3f`，没有导入Torch/Isaac；不是云端探针结果。
+
+### 091实际Git诊断与兼容修复
+
+独立诊断`TASK_20261004_091`使用`b51fbb7bae0923169a52e9ac895bee95dcf51a63`，
+21:38:04–21:38:22实际运行18秒、平台终态5。info/logs单次只读查询exit0；
+START、capabilities、transport、COMPLETE各1，严格JSON与代码/证书/运行指纹绑定
+均通过。实际Git版本为2.25.1，唯一原helper fetch返回129，stderr固定分类
+`unsupported_no_write_fetch_head=true`（2399B，原文不保存或回显），其余分类false。
+帮助没列选项本身不算证据；这里有真实fetch拒绝该选项的证据。
+认证/网络分类未命中不代表其可用，不能倒填090被抑制的传输原文。
+
+`diagnostic_completed=true`只是诊断结束；helper_succeeded/ancestor_verified/
+history_refreshed均false。前后checkout unchanged、单次fetch计数1；没有策略、
+采集、拟合、PPO或模型下载，所有离线/正式/效果/DR准入false。控制台2232B SHA
+`26086849e0ee6eb80809ecc9ebb782656df6a8b57b9e657ca454785303314d8f`，
+安全marker读回留在`outputs/amp-head-smooth/TASK_20261004_091/`。
+
+最小修复仅从driver唯一fetch移除`--no-write-fetch-head`，允许Git正常写
+`.git/FETCH_HEAD`元数据，不修改HEAD、分支或工作文件。仍保留exit128+实际缺失
+对象+浅仓库条件、固定HTTPS origin、当前HEAD目标、--no-tags/--deepen=64、
+前后干净检查、60秒捕获、单次无fallback和最终原祖先核验。奖励、物理、数学
+阈值、唯一求解及原110模型未变。修改driver仍会改变运行指纹，新实际纯哈希为
+`d16a2f9d28805b41038d00fa5bc58503cb1f6ea71c3a36bb25496ac45bfd325e`。
+087证书和b51探针继续保持历史固定；不能改其指纹假装适配新代码。新QA08实际
+851项CPU回归通过（93.324秒、exit0），22源码/测试pre/post哈希不变。新增兼容
+命令与旧探针拒绝新运行指纹的负例均实际通过；没有本地真实Git fetch/训练/仿真。
+完整QA日志SHA为`50f1d2bccab3f1a74412efd0e0cd0dc5e881db9635aad57caad3391dcfcbd382`。
+091账单独立快照三类分页完整，唯一记录扣费0/runtime0，gift余额18.32；单位和
+最终结算仍未知。root仅更新091终态ledger，其他字段核验不变，原模型与账号不切换。
+仍须实际native smoke/独立新证书后才再次运行既定正式队列，当前目标尚未完成。
