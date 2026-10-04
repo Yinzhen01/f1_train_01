@@ -165,9 +165,10 @@ class NativeRecorderRequestTests(unittest.TestCase):
         command = self.command('smoke')
         self.assertEqual(command[1:3], ['-m', 'humanoid.scripts.record_amp_head_policy'])
         for key, value in (('--num_envs', '2'), ('--seed', '5'), ('--duration', '1'),
-                           ('--sim_device', 'cuda:0'), ('--rl_device', 'cuda:0')):
+                           ('--sim_device', 'cuda:0'), ('--rl_device', 'cuda:0'),
+                           ('--pipeline', 'gpu')):
             self.assertEqual(command[command.index(key)+1], value)
-        self.assertIn('--use_gpu_pipeline', command)
+        self.assertNotIn('--use_gpu_pipeline', command)
         self.assertNotIn('--head-artifact', command)
         self.assertNotIn('--resume', command)
         with self.assertRaises(ValueError):
@@ -194,6 +195,45 @@ class NativeRecorderRequestTests(unittest.TestCase):
                 ('--train-cohort', 'train.pt'), ('--validation-cohort', 'validation.pt')):
             self.assertEqual(command[command.index(key)+1], value)
         self.assertNotIn('--resume', command)
+
+    def test_all_four_native_routes_use_actual_pipeline_cli_not_derived_attribute(self):
+        # TASK_20261004_081's real parser accepts --pipeline, not a CLI option
+        # named after gymutil's derived args.use_gpu_pipeline attribute. These
+        # isolated command expressions do not execute Isaac Gym or any child.
+        body = main_node().body
+        collection_loop = next(node for node in body if isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name) and node.target.id == 'split')
+        collection_command = next(node for node in collection_loop.body
+            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                and target.id == 'command' for target in node.targets))
+        namespace = dict(sys=SimpleNamespace(executable='synthetic_python'), split='train',
+            extra=SimpleNamespace(mode='smoke'), source=Path('source.pt'), commit=COMMIT,
+            paths={'train': Path('train.pt')}, duration=2,
+            experiment=SimpleNamespace(cfg={'experiment': 'source_task'}), num_envs=4,
+            SEEDS={'train': 305}, exclusion_args=['--source-exclusion-index', 'index.npz'])
+        invoke_nodes([collection_command], namespace)
+        sealed_gate = next(node for node in body if isinstance(node, ast.If)
+            and any(isinstance(item, ast.Call) and isinstance(item.func, ast.Name)
+                    and item.func.id == 'sealed_recording_command' for item in ast.walk(node)))
+        sealed_call = next(node.value for node in sealed_gate.body
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'check_call')
+        sealed_namespace = dict(namespace, paths={role: Path(role+'.pt')
+            for role in ('sealed', 'train', 'validation')})
+        sealed_command = eval(compile(ast.Expression(sealed_call.args[0]), str(DRIVER), 'eval'),
+                              sealed_namespace)
+        pair_command = self.driver.sealed_recording_command(source=Path('source.pt'),
+            head=Path('head.pt'), head_sha='9'*64, commit=COMMIT, output=Path('pair.pt'),
+            task='source_task', sealed=Path('sealed.pt'), train=Path('train.pt'),
+            validation=Path('validation.pt'))
+        for route, command in (('train_validation', namespace['command']),
+                ('policy', self.command('smoke')), ('sealed_source', sealed_command),
+                ('sealed_pair', pair_command)):
+            with self.subTest(route=route):
+                self.assertEqual(command.count('--pipeline'), 1)
+                self.assertEqual(command[command.index('--pipeline')+1], 'gpu')
+                self.assertNotIn('--use_gpu_pipeline', command)
+                self.assertNotIn('--resume', command)
 
     def test_sealed_evidence_is_never_loaded_until_after_the_single_fit(self):
         body = main_node().body

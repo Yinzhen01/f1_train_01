@@ -41,7 +41,7 @@ def policy_recording_command(*, mode, source, head, head_sha, commit, output, ta
         '--mode', mode, '--source-checkpoint', str(source),
         '--expected-commit', commit, '--output', str(output), '--duration', str(duration),
         '--task', task, '--headless', '--num_envs', str(count), '--seed', '5',
-        '--sim_device', 'cuda:0', '--rl_device', 'cuda:0', '--use_gpu_pipeline',
+        '--sim_device', 'cuda:0', '--rl_device', 'cuda:0', '--pipeline', 'gpu',
         '--armature_mode', 'nominal']
     if mode == 'formal':
         if head is None or not re.fullmatch('[0-9a-f]{64}', head_sha or ''):
@@ -64,7 +64,7 @@ def sealed_recording_command(*, source, head, head_sha, commit, output, task,
         '--sealed-cohort', str(sealed), '--train-cohort', str(train),
         '--validation-cohort', str(validation), '--task', task, '--headless',
         '--num_envs', '8', '--seed', '705', '--sim_device', 'cuda:0',
-        '--rl_device', 'cuda:0', '--use_gpu_pipeline', '--armature_mode', 'nominal']
+        '--rl_device', 'cuda:0', '--pipeline', 'gpu', '--armature_mode', 'nominal']
 
 
 def validate_smoke_certificate(certificate, *, identity, fingerprint, repo):
@@ -214,7 +214,7 @@ def main():
             '--expected-commit', commit, '--output', str(paths[split]),
             '--duration', str(duration), '--task', experiment.cfg['experiment'],
             '--headless', '--num_envs', str(num_envs), '--seed', str(SEEDS[split]),
-            '--sim_device', 'cuda:0', '--rl_device', 'cuda:0', '--use_gpu_pipeline',
+            '--sim_device', 'cuda:0', '--rl_device', 'cuda:0', '--pipeline', 'gpu',
             '--armature_mode', 'nominal']+exclusion_args
         if split == 'validation':
             command += ['--exclude-cohort', str(paths['train'])]
@@ -320,7 +320,7 @@ def main():
             '--expected-commit', commit, '--output', str(paths['sealed']),
             '--duration', '20', '--task', experiment.cfg['experiment'], '--headless',
             '--num_envs', '8', '--seed', '705', '--sim_device', 'cuda:0', '--rl_device', 'cuda:0',
-            '--use_gpu_pipeline', '--armature_mode', 'nominal',
+            '--pipeline', 'gpu', '--armature_mode', 'nominal',
             '--exclude-cohort', str(paths['train']), '--exclude-cohort', str(paths['validation'])]
             +exclusion_args, cwd=str(repo))
         sealed_manifest, sealed_arrays = _read_bundle(paths['sealed'], torch)
