@@ -12,7 +12,7 @@ import torch
 from humanoid.scripts.collect_amp_head_cohort import (
     SCHEMA, SOURCE_SHA, SOURCE_MODEL_SHA, SOURCE_ENDPOINT_SHA, BUDGETS,
     SEEDS, FrozenActorCapture, audit_arrays, cohort_contract,
-    fingerprint_cohort, validate_source_runtime)
+    fingerprint_cohort, validate_initialization_proof, validate_source_runtime)
 from .head_smoothing import Episode
 from .learnability import assert_no_domain_randomization
 from .mu_temporal import state_fingerprint
@@ -35,6 +35,7 @@ def audit_cohort(manifest, arrays, *, split, mode, identity, code_commit,
     contract = cohort_contract(split, mode, SEEDS[split], n, seconds)
     if any(manifest.get(key) != value for key, value in contract.items()):
         raise ValueError('Cohort role/seed/budget/episode IDs changed')
+    validate_initialization_proof(manifest.get('initialization'), contract)
     constants = dict(type=SCHEMA, source_checkpoint_sha256=SOURCE_SHA,
         source_model_state_sha256=SOURCE_MODEL_SHA, identity=identity,
         source_completed_updates=2500, code_commit=code_commit,

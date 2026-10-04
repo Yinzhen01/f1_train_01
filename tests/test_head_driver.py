@@ -286,6 +286,33 @@ class DriverGuardStructureTests(unittest.TestCase):
                 invoke_nodes([guard], namespace(**args))
 
 
+class NativeArtifactRouteTests(unittest.TestCase):
+    def test_actual_smoke_and_formal_paths_use_sdk_exported_data_discovery_route(self):
+        # Execute the driver's actual expressions with a synthetic path. No
+        # folder/artifact is written and no native/upload success is claimed.
+        names = ('log_dir', 'base_number', 'paths')
+        assignments = {target.id: node for node in main_node().body
+            if isinstance(node, ast.Assign) for target in node.targets
+            if isinstance(target, ast.Name) and target.id in names}
+        self.assertEqual(set(assignments), set(names))
+        repo = Path('synthetic_repo')
+        stamp = '20261004T110000Z'
+        experiment = 'f1_amp_head_smooth_v1'
+        offsets = dict(train=1, validation=2, head=3, report=4,
+                       policy_probe=5, sealed=6, sealed_policy=7)
+        for mode, number in (('smoke', 7000000), ('formal', 7100000)):
+            with self.subTest(mode=mode):
+                namespace = dict(repo=repo, cfg={'experiment': experiment},
+                    extra=SimpleNamespace(mode=mode), stamp=stamp)
+                invoke_nodes([assignments[key] for key in names], namespace)
+                expected = repo/'logs'/experiment/'exported_data'/(mode+'_'+stamp)
+                self.assertEqual(namespace['log_dir'], expected)
+                self.assertEqual(namespace['base_number'], number)
+                self.assertEqual(namespace['paths'], {
+                    role: expected/('model_%d.pt' % (number+offset))
+                    for role, offset in offsets.items()})
+
+
 class MemoryTensor:
     """Tiny ndarray proxy ONLY for isolated AST serialization-order spies."""
     def __init__(self, value):
@@ -319,6 +346,19 @@ class MemoryTorch:
 
 
 class DriverOneSolveReadbackTests(unittest.TestCase):
+    def test_sdk_discovery_hold_follows_closed_final_report_and_completion_marker(self):
+        tail = main_node().body[-3:]
+        self.assertIsInstance(tail[0], ast.With)
+        events = []
+        marker = Mock(side_effect=lambda name, value: events.append(('marker', name, value)))
+        sleeper = Mock(side_effect=lambda seconds: events.append(('hold', seconds)))
+        report = {'fixture': 'not_native_completion'}
+        invoke_nodes(tail[1:], dict(report=report, _marker=marker,
+                                   time=SimpleNamespace(sleep=sleeper)))
+        self.assertEqual(events, [('marker', 'complete', report), ('hold', 60)])
+        marker.assert_called_once_with('complete', report)
+        sleeper.assert_called_once_with(60)
+
     def isolated_fit(self, *, mode='formal', f64_pass=True, f32_pass=True):
         gate = next(node for node in main_node().body if isinstance(node, ast.If)
             and isinstance(node.test, ast.UnaryOp) and isinstance(node.test.operand, ast.Call)

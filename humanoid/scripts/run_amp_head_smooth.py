@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 
 CONFIG = 'configs/amp/head_smooth_v1.json'
@@ -112,6 +113,9 @@ def main():
     import numpy as np
     import torch
     from humanoid import LEGGED_GYM_ROOT_DIR
+    # The environment package initializes task_registry before utils reimports
+    # it. Importing utils first creates a real partially initialized cycle.
+    import humanoid.envs  # noqa: F401
     from humanoid.algo.ppo.actor_critic_dh import ActorCriticDH
     from humanoid.amp.head_artifact import (
         ORIGINAL110_PARENT, assemble_head_artifact, validate_head_artifact)
@@ -173,7 +177,9 @@ def main():
     if cfg[extra.mode] != dict(num_envs=num_envs, duration_s=duration):
         raise ValueError('Head source cohort budget changed')
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    log_dir = repo/'logs'/cfg['experiment']/(extra.mode+'_'+stamp)
+    # Match the existing GM policy-PT discovery route; this does not establish
+    # actual upload success, which must be checked in task logs/model rows.
+    log_dir = repo/'logs'/cfg['experiment']/'exported_data'/(extra.mode+'_'+stamp)
     log_dir.mkdir(parents=True, exist_ok=False)
     base_number = 7000000 if extra.mode == 'smoke' else 7100000
     paths = {name: log_dir/('model_%d.pt' % (base_number+offset))
@@ -345,6 +351,10 @@ def main():
     with paths['report'].open('xb') as stream:
         torch.save(dict(report_json=json.dumps(report, allow_nan=False)), stream)
     _marker('complete', report)
+    # Same bounded discovery hold as the existing native diagnostic entry.
+    # This is not an upload receipt: platform logs/models still must prove all
+    # five/seven exact artifact bytes before any independent admission.
+    time.sleep(60)
 
 
 if __name__ == '__main__':

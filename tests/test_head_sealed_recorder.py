@@ -19,7 +19,7 @@ from humanoid.scripts.record_amp_head_sealed import (
     SCHEMA, ARM_SCHEMA, ARMS, arm_command, assemble_sealed_pair,
     audit_sealed_arm, audit_sealed_inputs, initial_sealed_matches,
     sealed_recorder_contract, _write_bundle)
-from test_head_workflow import source_fixture
+from test_head_workflow import initialization_fixture, native_sim_fixture, source_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,7 +77,7 @@ def synthetic_cohort(role, offset, index, earlier):
     cfg['env'].update(num_envs=8, episode_length_s=20.1)
     cfg['normalization'] = dict(clip_actions=100.)
     source = source_runtime_fixture()
-    runtime['physics_sim_parameters'] = copy.deepcopy(source['environment']['sim'])
+    runtime['physics_sim_parameters'] = native_sim_fixture(source['environment']['sim'])
     manifest = dict(contract, source_checkpoint_sha256=SOURCE_SHA,
         source_model_state_sha256=SOURCE_MODEL_SHA, identity=IDENTITY,
         source_completed_updates=2500, code_commit=COMMIT,
@@ -85,6 +85,7 @@ def synthetic_cohort(role, offset, index, earlier):
         parent_frozen=True, no_training=True, effectiveness_verified=False,
         dr_unlocked=False, source_regression=copy.deepcopy(SOURCE_PROOF),
         previous_cohorts=copy.deepcopy(earlier), environment=cfg, runtime=runtime,
+        initialization=initialization_fixture(8),
         source_runtime_proof=validate_source_runtime(cfg, runtime, source, contract),
         fingerprints=fingerprints, history_proof=history, episodes=episodes,
         deduplication=dedupe, fit_eligible=role != 'sealed')
@@ -157,7 +158,7 @@ def arm_fixture(arm, inputs, sealed_arrays, ticks=100):
     source = source_runtime_fixture()
     cfg, runtime = copy.deepcopy(source['environment']), copy.deepcopy(source['runtime'])
     cfg['seed'], cfg['env']['num_envs'] = 705, 8
-    runtime['physics_sim_parameters'] = copy.deepcopy(source['environment']['sim'])
+    runtime['physics_sim_parameters'] = native_sim_fixture(source['environment']['sim'])
     proof = validate_source_runtime(cfg, runtime, source, contract)
     manifest = dict(contract, type=ARM_SCHEMA, arm=arm, code_commit=COMMIT,
         implementation_fingerprint=IMPLEMENTATION, source_identity=IDENTITY,

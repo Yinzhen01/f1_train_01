@@ -30,7 +30,7 @@ from tools.amp import audit_head_stage as stage
 from test_head_artifact import synthetic_source, synthetic_provenance
 from test_head_cohort import fixture as array_fixture
 from test_head_policy_recorder import rollout_fixture
-from test_head_workflow import source_fixture
+from test_head_workflow import initialization_fixture, native_sim_fixture, source_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,7 +121,7 @@ def synthetic_pipeline(directory):
             env, runtime = copy.deepcopy(source_manifest['environment']), copy.deepcopy(source_manifest['runtime'])
             env['seed'] = SEEDS[split]
             env['env'].update(num_envs=4, episode_length_s=2.1)
-            runtime['physics_sim_parameters'] = copy.deepcopy(env['sim'])
+            runtime['physics_sim_parameters'] = native_sim_fixture(env['sim'])
             prior = [] if split == 'train' else [dict(sha256=stage.file_sha(paths['train']),
                 split='train', seed=305, num_envs=4, duration_s=2., episode_ids=manifests['train']['episode_ids'])]
             manifest = dict(contract, source_checkpoint_sha256=parent['file_sha256'],
@@ -130,6 +130,7 @@ def synthetic_pipeline(directory):
                 policy_deterministic=True, parent_frozen=True, no_training=True,
                 effectiveness_verified=False, dr_unlocked=False, source_regression=copy.deepcopy(proof),
                 environment=env, runtime=runtime,
+                initialization=initialization_fixture(4),
                 source_runtime_proof=validate_source_runtime(env, runtime, source_manifest, contract),
                 fingerprints=fingerprints, history_proof=history, episodes=episodes,
                 deduplication=dedupe, fit_eligible=False, previous_cohorts=prior,
@@ -189,7 +190,7 @@ def synthetic_pipeline(directory):
         data[name+'_initial_foot_state'][..., 6] = 1.
     env, runtime = copy.deepcopy(source_manifest['environment']), copy.deepcopy(source_manifest['runtime'])
     env['env'].update(num_envs=2, episode_length_s=1.1)
-    runtime['physics_sim_parameters'] = copy.deepcopy(env['sim'])
+    runtime['physics_sim_parameters'] = native_sim_fixture(env['sim'])
     episodes = audit_rollout_arrays(data, contract)
     resets, cleared, matches = {}, {}, {}
     for name in ('standing', 'reference'):

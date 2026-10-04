@@ -37,6 +37,9 @@ from humanoid.scripts.collect_amp_head_cohort import (
 from humanoid.scripts.record_amp_head_policy import (
     audit_rollout_arrays, initial_source_matches, recorder_contract)
 from humanoid.scripts.run_amp_head_smooth import SMOKE_SCHEMA
+from tools.amp.audit_head_sealed import (
+    ARM_START, ARM_COMPLETE, PAIR_COMPLETE, audit_sealed_artifacts,
+    metrics_for_case)
 
 SCHEMA = 'head_stage_artifact_audit_v1'
 START, COHORT, COMPLETE = ('[head-smooth-start] ', '[head-cohort-complete] ',
@@ -185,15 +188,18 @@ def marker_records(text, marker):
     return rows
 
 
-def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None):
+def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None, sealed=None):
     starts, cohorts, ends = (marker_records(text, marker) for marker in (START, COHORT, COMPLETE))
-    require(len(starts) == len(ends) == 1 and len(cohorts) == 2,
+    require(sealed is None or (mode == 'formal' and policy is not None),
+            'sealed log requires admitted formal physical stage')
+    splits = ('train', 'validation', 'sealed') if sealed is not None else ('train', 'validation')
+    require(len(starts) == len(ends) == 1 and len(cohorts) == len(splits),
             'missing/duplicate native START/COHORT/COMPLETE')
     _same(starts[0][2], report['start'], 'native START')
     _same(ends[0][2], report, 'native COMPLETE')
     require(starts[0][1] <= cohorts[0][0] < cohorts[0][1] <= cohorts[1][0] <
             cohorts[1][1] <= ends[0][0], 'native stage order mismatch')
-    for split, row in zip(('train', 'validation'), cohorts):
+    for split, row in zip(splits, cohorts):
         _same(row[2], dict(split=split, mode=mode, fit_eligible=audits[split]['fit_eligible'],
                           episodes=audits[split]['episodes'],
                           deduplication_passed=audits[split]['deduplication']['passed']),
@@ -205,9 +211,27 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None):
     if policy is not None:
         _same(policy_starts[0][2], policy['start'], 'actual native recorder START')
         _same(policy_ends[0][2], policy['complete'], 'actual native recorder COMPLETE')
-        require(cohorts[-1][1] <= policy_starts[0][0] < policy_starts[0][1] <=
+        require(cohorts[1][1] <= policy_starts[0][0] < policy_starts[0][1] <=
                 policy_ends[0][0] < policy_ends[0][1] <= ends[0][0],
                 'native recorder must follow train/validation and precede stage COMPLETE')
+    arm_starts, arm_ends, pair_ends = (marker_records(text, marker) for marker in
+                                     (ARM_START, ARM_COMPLETE, PAIR_COMPLETE))
+    require(len(arm_starts) == len(arm_ends) == (2 if sealed is not None else 0) and
+            len(pair_ends) == (1 if sealed is not None else 0),
+            'missing/duplicate/unbound sealed arm/pair markers')
+    if sealed is not None:
+        require(policy_ends[0][1] <= cohorts[2][0] < cohorts[2][1] <= arm_starts[0][0],
+                'sealed cohort must follow original32 physical recorder')
+        previous = cohorts[2][1]
+        for i, arm in enumerate(('source', 'candidate')):
+            _same(arm_starts[i][2], sealed['log_records'][arm]['start'], 'native sealed '+arm+' START')
+            _same(arm_ends[i][2], sealed['log_records'][arm]['complete'], 'native sealed '+arm+' COMPLETE')
+            require(previous <= arm_starts[i][0] < arm_starts[i][1] <= arm_ends[i][0],
+                    'fresh sealed source/candidate process order differs')
+            previous = arm_ends[i][1]
+        _same(pair_ends[0][2], sealed['log_records']['pair_complete'], 'native sealed pair COMPLETE')
+        require(previous <= pair_ends[0][0] < pair_ends[0][1] <= ends[0][0],
+                'sealed pair must complete before stage COMPLETE')
     exits = list(re.finditer(r'(?m)^【SDK】训练进程状态码：([0-9]+)\r?$', text))
     completions = list(re.finditer(r'(?m)^\[SDK\]\[INFO\] [0-9 :\-]+ '
         r'Task\(([^)]+)\) status updated to: Completed , ret:(True|False)\r?$', text))
@@ -217,7 +241,7 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None):
             'missing/mismatched native SDK exit0/task Completed receipt')
     numbers = 7000000 if mode == 'smoke' else 7100000
     uploads = {}
-    for offset in range(1, 6 if policy is not None else 5):
+    for offset in range(1, 8 if sealed is not None else (6 if policy is not None else 5)):
         name = 'model_%d.pt' % (numbers+offset)
         found = list(re.finditer(r'(?m)^\[SDK\]\[INFO\] [0-9 :\-]+ PT file \('
             +re.escape(name)+r'\) uploaded successfully\r?$', text))
@@ -228,7 +252,7 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None):
             'offline stage contains PPO training markers')
     scanned, warnings = text, []
     spans = [(lower, upper) for lower, upper, _ in
-             starts+cohorts+ends+policy_starts+policy_ends]
+             starts+cohorts+ends+policy_starts+policy_ends+arm_starts+arm_ends+pair_ends]
     trace_pattern = r'Traceback \(most recent call last\):\r?\n((?:[ \t].*\r?\n)+)([^\r\n]+)'
     traces = list(re.finditer(trace_pattern, text))
     require(len(traces) == text.count('Traceback (most recent call last):'),
@@ -261,8 +285,9 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None):
                                  character_scope=[position, position+len(line)], cause_verified=False))
         position += len(line)
     clean = not warnings and not diagnostics['escaped_invalid_utf8'] and not diagnostics['control_bytes']
-    return dict(start_singleton=True, complete_singleton=True, cohort_completions=2,
+    return dict(start_singleton=True, complete_singleton=True, cohort_completions=len(splits),
                 native_recorder_verified=policy is not None,
+                native_sealed_pair_verified=sealed is not None,
                 sdk_native_exit_code=0, sdk_completed_task=task_id, upload_receipts=uploads,
                 logs_clean=clean, wrapper_warnings=warnings,
                 raw_log_preserved=True, **diagnostics)
@@ -476,7 +501,8 @@ def _parity_record(value, arrays):
 
 def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report,
                      cloud_log, platform_info, expected_commit, repo=ROOT,
-                     expected_parent=ORIGINAL110_PARENT, policy_rollout=None):
+                     expected_parent=ORIGINAL110_PARENT, policy_rollout=None,
+                     sealed_cohort=None, sealed_policy=None):
     """Audit actual files. Explicit synthetic parent override is TEST-ONLY."""
     synthetic = dict(expected_parent) != dict(ORIGINAL110_PARENT)
     platform_bytes = Path(platform_info).read_bytes()
@@ -504,18 +530,34 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         'dr_unlocked', 'solver_runs', 'admitted_to_physical_test', 'float64_fit', 'exported_head',
         'status', 'head_sha256', 'archive_audit', 'frozen_audit', 'provenance_report_json'}
     require(type(actual) is dict, 'malformed fitted stage report')
-    require(not {'sealed_cohort', 'sealed_policy'} & set(actual),
-            'formal sealed physical-pair independent audit is pending; no admission certificate')
+    sealed_fields = {'sealed_cohort', 'sealed_policy'} & set(actual)
+    require(mode != 'smoke' or not sealed_fields,
+            'formal sealed physical-pair independent audit is pending for a formal stage; not smoke')
+    require(not sealed_fields or sealed_fields == {'sealed_cohort', 'sealed_policy'},
+            'both formal sealed artifact references mandatory')
+    has_sealed = bool(sealed_fields)
     has_policy = 'policy_probe' in actual
     if has_policy:
         expected_fields.add('policy_probe')
+    if has_sealed:
+        expected_fields.update(sealed_fields)
     require(set(actual) == expected_fields, 'missing/extra fitted stage report fields')
     require(has_policy == (policy_rollout is not None), 'referenced fifth policy artifact missing/unbound')
     require(mode != 'smoke' or has_policy, 'new smoke admission requires actual new recorder probe')
+    require(has_sealed == (sealed_cohort is not None and sealed_policy is not None) and
+            ((sealed_cohort is None) == (sealed_policy is None)),
+            'referenced sixth/seventh sealed files missing/unbound')
+    require(not (mode == 'formal' and has_policy) or has_sealed,
+            'admitted formal physical stage requires all seven artifacts')
     if has_policy:
         paths['policy_rollout'] = Path(policy_rollout)
         require(len({path.resolve() for path in paths.values()}) == 5, 'five stage paths must be distinct')
         hashes['policy_rollout'] = file_sha(policy_rollout)
+    if has_sealed:
+        require(mode == 'formal' and has_policy, 'sealed stage is formal admitted-head only')
+        paths.update(sealed_cohort=Path(sealed_cohort), sealed_policy=Path(sealed_policy))
+        require(len({path.resolve() for path in paths.values()}) == 7, 'seven stage paths must be distinct')
+        hashes.update(sealed_cohort=file_sha(sealed_cohort), sealed_policy=file_sha(sealed_policy))
     n, seconds = BUDGETS[mode]
     start = actual['start']
     for key, value in dict(schema='head_smooth_native_stage_v1', mode=mode,
@@ -534,6 +576,7 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
     require(source_proof['sha256'] == SOURCE_ENDPOINT_SHA and
             source_proof['derived_index']['sha256'] == INDEX_SHA, 'not the fixed source/index bytes')
     _source_proof(start['source_exclusions'], source_proof)
+    protected_exclusions = copy.deepcopy(exclusions)
     manifests, arrays, audits, parities = {}, {}, {}, {}
     policy = source_policy(source, repo, binding['model_state_sha256'])
     for split in ('train', 'validation'):
@@ -626,7 +669,8 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
             actual['admitted_to_physical_test'] is bool(admitted and mode == 'formal'),
             'recorded stage/export admission mismatch')
     math_report = {key: value for key, value in actual.items() if key not in
-                   ('head_sha256', 'archive_audit', 'frozen_audit', 'provenance_report_json', 'policy_probe')}
+                   ('head_sha256', 'archive_audit', 'frozen_audit', 'provenance_report_json',
+                    'policy_probe', 'sealed_cohort', 'sealed_policy')}
     math_text = actual['provenance_report_json']
     require(type(math_text) is str, 'missing bound pre-export report bytes')
     _same(_json(math_text), math_report, 'bound pre-export report')
@@ -642,8 +686,41 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
             source_manifest=source_manifest, exclusions=exclusions, experiment=experiment)
     else:
         policy_audit = None
+    sealed_audit, regression_metrics = None, None
+    if has_sealed:
+        require(admitted and actual['admitted_to_physical_test'] is True,
+                'unadmitted head cannot have a sealed physical pair')
+        manifest, data = _read_bundle(paths['sealed_cohort'], torch)
+        manifests['sealed'], arrays['sealed'] = manifest, data
+        paired_manifest, paired_arrays = _read_bundle(paths['sealed_policy'], torch)
+        sealed_audit = audit_sealed_artifacts(paired_manifest, paired_arrays,
+            cohorts={split: dict(manifest=manifests[split], arrays=arrays[split],
+                sha256=hashes['sealed_cohort' if split == 'sealed' else split])
+                for split in ('train', 'validation', 'sealed')},
+            artifact=artifact, archive=archive, identity=identity, binding=binding,
+            commit=expected_commit, fingerprint=fp, source_proof=source_proof,
+            source_manifest=source_manifest, exclusions=protected_exclusions,
+            sealed_reference=actual['sealed_cohort'], pair_reference=actual['sealed_policy'],
+            pair_sha=hashes['sealed_policy'], head_sha=hashes['head'], experiment=experiment)
+        audits['sealed'] = sealed_audit['cohort_inputs']['audits']['sealed']
+        parities['sealed'] = forward_parity(policy, data,
+            action_clip=manifest['environment']['normalization']['clip_actions'],
+            expected_model_fingerprint=binding['model_state_sha256'])
+        if experiment is not None:
+            from humanoid.amp.recovery import foot_collision_vertices
+            from tools.amp.audit_physics_diagnostic import fast_geometry
+            geometry = fast_geometry(foot_collision_vertices(experiment.kinematics.path))
+            probe_manifest, probe_arrays = _read_bundle(paths['policy_rollout'], torch)
+            regression_metrics = dict(rows=metrics_for_case(
+                dict(manifest=probe_manifest, arrays=probe_arrays), geometry),
+                known_regression_only=True, novel_holdout=False,
+                source_baseline_comparison_included=False,
+                limitation='Original32 candidate rows are known regression starts. '
+                    'Comparison with immutable original110 trajectories is a separate audit, '
+                    'not inferred from an exclusion index containing only state/history fingerprints.')
     text, diagnostics = read_log(cloud_log)
-    logs = validate_log(text, actual, audits, platform['task_id'], mode, diagnostics, policy=policy_audit)
+    logs = validate_log(text, actual, audits, platform['task_id'], mode, diagnostics,
+                        policy=policy_audit, sealed=sealed_audit)
     for name, path in paths.items():
         require(file_sha(path) == hashes[name], 'artifact changed during audit '+name)
     require(file_sha(source_checkpoint) == binding['file_sha256'], 'immutable parent changed during audit')
@@ -658,8 +735,10 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         platform_info_sha256=platform_sha, cloud_log_sha256=diagnostics['raw_log_sha256'],
         cohort_arrays_verified=True, source_forward_verified=True, head_archive_verified=True,
         native_recorder_verified=has_policy, policy_rollout_audit=policy_audit,
+        native_sealed_pair_verified=has_sealed, sealed_pair_audit=sealed_audit,
+        original32_candidate_metrics=regression_metrics,
         cohorts={split: dict(episodes=audits[split]['episodes'], history=audits[split]['history'],
-            deduplication=audits[split]['deduplication']) for split in ('train', 'validation')},
+            deduplication=audits[split]['deduplication']) for split in audits},
         native_recorded_source_parity=actual['source_parity'], recomputed_cpu_source_parity=parities,
         exported_float32_report=exported, recorded_float64_solver_admitted=fitted['admitted'],
         offline_admitted=admitted, formal_admission=False, solver_runs=1, auditor_solver_runs=0,
@@ -697,6 +776,8 @@ def main():
         parser.add_argument('--'+name, type=Path, required=True)
     parser.add_argument('--expected-commit', required=True)
     parser.add_argument('--policy-rollout', type=Path)
+    parser.add_argument('--sealed-cohort', type=Path)
+    parser.add_argument('--sealed-policy', type=Path)
     args = vars(parser.parse_args())
     output = args.pop('output')
     require(not output.exists(), 'audit output already exists')

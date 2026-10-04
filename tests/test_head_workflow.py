@@ -19,7 +19,7 @@ from humanoid.amp.head_workflow import (audit_cohort, exclusion_add_cohort,
 from humanoid.amp.learnability import NO_DR_SWITCHES
 from humanoid.amp.mu_temporal import state_fingerprint
 from humanoid.scripts.collect_amp_head_cohort import (BUDGETS, SEEDS, SCHEMA,
-    SOURCE_SHA, SOURCE_MODEL_SHA, SOURCE_ENDPOINT_SHA, FrozenActorCapture,
+    SOURCE_SHA, SOURCE_MODEL_SHA, SOURCE_ENDPOINT_SHA, INITIAL_FIELDS, FrozenActorCapture,
     audit_arrays, cohort_contract, empty_exclusion_index, fingerprint_cohort,
     validate_source_runtime)
 from test_head_cohort import fixture as array_fixture
@@ -45,9 +45,34 @@ def source_fixture():
     cfg.update(seed=5, env=dict(num_envs=16, episode_length_s=60.1, frame_stack=66),
         control=dict(action_scale=.5, stiffness={'ankle_pitch': 35.}),
         sim=dict(dt=.001, physx=physx))
+    native_dt = float(np.float32(.001))
     runtime = dict(dof_properties={'armature': [.1]}, p_gains=[35.], d_gains=[1.5],
-        control_dt=.01, physics_dt=.001)
+        control_dt=10*native_dt, physics_dt=native_dt)
     return dict(environment=cfg, runtime=runtime)
+
+
+def native_sim_fixture(sim):
+    """Synthetic native float32 ABI readback; never changes config literals."""
+    result = copy.deepcopy(sim)
+    result['dt'] = float(np.float32(result['dt']))
+    for key in ('contact_offset', 'rest_offset', 'max_depenetration_velocity'):
+        result['physx'][key] = float(np.float32(result['physx'][key]))
+    return result
+
+
+def initialization_fixture(n):
+    """Native serialization shape only; all values are synthetic, not proof."""
+    shapes = dict(root_states=(n, 13), dof_pos=(n, 12), dof_vel=(n, 12),
+        actions=(n, 12), last_actions=(n, 12), last_last_actions=(n, 12),
+        commands=(n, 4), gait_start=(n,), episode_length_buf=(n,),
+        phase_length_buf=(n,), rsi_indices=(n,))
+    reset = {key: np.zeros(shape).tolist() for key, shape in shapes.items()}
+    reset.update(obs_history_sha256='a'*64, critic_history_sha256='b'*64)
+    cleared = {name: dict(elements=100, nonzero=0, nonfinite=0, negative_zero=0)
+               for name in ('obs_history', 'critic_history')}
+    return dict(protocol='original_reference_reset_then_native_10ms_zero_action_warmup',
+        reset_inputs=reset, cleared_histories=cleared,
+        all12_initial_fields=list(INITIAL_FIELDS), actual_initial_full_obs=True)
 
 
 def cohort_fixture(split='train', *, failed_env=None, exclusions=None):
@@ -68,7 +93,7 @@ def cohort_fixture(split='train', *, failed_env=None, exclusions=None):
     cfg, runtime = copy.deepcopy(source['environment']), copy.deepcopy(source['runtime'])
     cfg['seed'] = SEEDS[split]
     cfg['env'].update(num_envs=n, episode_length_s=seconds+.1)
-    runtime['physics_sim_parameters'] = copy.deepcopy(source['environment']['sim'])
+    runtime['physics_sim_parameters'] = native_sim_fixture(source['environment']['sim'])
     runtime_proof = validate_source_runtime(cfg, runtime, source, contract)
     manifest = dict(contract)
     manifest.update(type=SCHEMA, source_checkpoint_sha256=SOURCE_SHA,
@@ -78,6 +103,7 @@ def cohort_fixture(split='train', *, failed_env=None, exclusions=None):
         parent_frozen=True, no_training=True, effectiveness_verified=False,
         dr_unlocked=False, source_regression=dict(sha256=SOURCE_ENDPOINT_SHA),
         environment=cfg, runtime=runtime, source_runtime_proof=runtime_proof,
+        initialization=initialization_fixture(n),
         fingerprints=fingerprints, history_proof=history, episodes=episodes,
         deduplication=dedupe, fit_eligible=False)
     return manifest, arrays, exclusions
@@ -123,7 +149,7 @@ class CohortWorkflowAdmissionTests(unittest.TestCase):
                 audit(manifest, arrays, index, split=other)
         manifest, arrays, index = cohort_fixture()
         changes = [dict(seed=505), dict(mode='formal'), dict(num_envs=8), dict(duration_s=20.),
-            dict(fps=50), dict(expected_ticks=199), dict(initialization='standing'),
+            dict(fps=50), dict(expected_ticks=199), dict(initialization_mode='standing'),
             dict(episode_ids=list(reversed(manifest['episode_ids']))), dict(split='sealed')]
         for changed in changes:
             current = copy.deepcopy(manifest)
@@ -132,6 +158,45 @@ class CohortWorkflowAdmissionTests(unittest.TestCase):
                 audit(current, arrays, index)
         with self.assertRaises(ValueError):
             audit(manifest, arrays, index, mode='formal')
+
+    def test_native_initialization_dictionary_is_preserved_and_required(self):
+        manifest, arrays, index = cohort_fixture()
+        original = copy.deepcopy(manifest['initialization'])
+        result = audit(manifest, arrays, index)
+        self.assertTrue(result['smoke_eligible'])
+        self.assertEqual(manifest['initialization_mode'], 'reference_only')
+        self.assertEqual(manifest['initialization'], original)
+        mutations = ('missing', 'old_role_string', 'protocol', 'fields', 'bool',
+                     'missing_reset', 'extra_reset', 'reset_shape', 'reset_nan',
+                     'missing_hash', 'bad_hash', 'missing_clear', 'nonzero',
+                     'nonfinite', 'int_bool', 'negative_zero', 'zero_elements')
+        for kind in mutations:
+            current = copy.deepcopy(manifest)
+            proof = current['initialization']
+            if kind == 'missing': current.pop('initialization')
+            elif kind == 'old_role_string': current['initialization'] = 'reference_only'
+            elif kind == 'protocol': proof['protocol'] = 'standing'
+            elif kind == 'fields': proof['all12_initial_fields'] = proof['all12_initial_fields'][:-1]
+            elif kind == 'bool': proof['actual_initial_full_obs'] = 1
+            elif kind == 'missing_reset': proof['reset_inputs'].pop('dof_pos')
+            elif kind == 'extra_reset': proof['reset_inputs']['invented'] = []
+            elif kind == 'reset_shape': proof['reset_inputs']['dof_pos'] = [[0.]*12]
+            elif kind == 'reset_nan': proof['reset_inputs']['dof_pos'][0][0] = float('nan')
+            elif kind == 'missing_hash': proof['reset_inputs'].pop('obs_history_sha256')
+            elif kind == 'bad_hash': proof['reset_inputs']['obs_history_sha256'] = 'wrong'
+            elif kind == 'missing_clear': proof['cleared_histories'].pop('obs_history')
+            elif kind == 'nonzero': proof['cleared_histories']['obs_history']['nonzero'] = 1
+            elif kind == 'nonfinite': proof['cleared_histories']['obs_history']['nonfinite'] = 1
+            elif kind == 'int_bool': proof['cleared_histories']['obs_history']['nonzero'] = False
+            elif kind == 'negative_zero': proof['cleared_histories']['obs_history']['negative_zero'] = 101
+            else: proof['cleared_histories']['obs_history']['elements'] = 0
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                audit(current, arrays, index)
+
+    def test_cleared_native_negative_zeros_do_not_mean_uncleared_history(self):
+        manifest, arrays, index = cohort_fixture()
+        manifest['initialization']['cleared_histories']['obs_history']['negative_zero'] = 37
+        self.assertTrue(audit(manifest, arrays, index)['smoke_eligible'])
 
     def test_source_code_hash_and_dr_timing_mismatch_fail_closed(self):
         manifest, arrays, index = cohort_fixture()

@@ -63,8 +63,54 @@ def cohort_contract(split, mode, seed, num_envs, duration_s):
         raise ValueError('Head cohort permits only registered reference seeds/budgets')
     return dict(type=SCHEMA, split=split, mode=mode, seed=seed,
                 num_envs=num_envs, duration_s=float(duration_s), fps=100,
-                expected_ticks=int(duration_s * 100), initialization='reference_only',
+                expected_ticks=int(duration_s * 100), initialization_mode='reference_only',
                 episode_ids=[episode_id(split, seed, i) for i in range(num_envs)])
+
+
+def validate_initialization_proof(initialization, contract):
+    """Keep the reference role separate from the actual native reset evidence.
+
+    The native manifest's ``initialization`` is a proof dictionary, not the
+    role string. Checking the dictionary does not recreate a simulator reset
+    or independently establish that these recorded values came from PhysX.
+    """
+    expected_keys = {'protocol', 'reset_inputs', 'cleared_histories',
+                     'all12_initial_fields', 'actual_initial_full_obs'}
+    if (type(initialization) is not dict or set(initialization) != expected_keys
+            or initialization['protocol'] !=
+                'original_reference_reset_then_native_10ms_zero_action_warmup'
+            or initialization['all12_initial_fields'] != list(INITIAL_FIELDS)
+            or initialization['actual_initial_full_obs'] is not True):
+        raise ValueError('Missing/changed actual native reference initialization proof')
+    n = contract['num_envs']
+    shapes = dict(root_states=(n, 13), dof_pos=(n, 12), dof_vel=(n, 12),
+        actions=(n, 12), last_actions=(n, 12), last_last_actions=(n, 12),
+        commands=(n, 4), gait_start=(n,), episode_length_buf=(n,),
+        phase_length_buf=(n,), rsi_indices=(n,))
+    reset = initialization['reset_inputs']
+    hashes = {'obs_history_sha256', 'critic_history_sha256'}
+    if type(reset) is not dict or set(reset) != set(shapes) | hashes:
+        raise ValueError('Missing/extra actual native reference reset inputs')
+    for key, shape in shapes.items():
+        value = np.asarray(reset[key])
+        if (value.shape != shape or value.dtype.kind not in 'biuf'
+                or not np.isfinite(value).all()):
+            raise ValueError('Invalid actual native reference reset input: '+key)
+    for key in hashes:
+        if (not isinstance(reset[key], str)
+                or re.fullmatch('[0-9a-f]{64}', reset[key]) is None):
+            raise ValueError('Missing actual cleared reference history hash')
+    cleared = initialization['cleared_histories']
+    if type(cleared) is not dict or set(cleared) != {'obs_history', 'critic_history'}:
+        raise ValueError('Missing actual cleared reference histories')
+    for row in cleared.values():
+        if (type(row) is not dict
+                or set(row) != {'elements', 'nonzero', 'nonfinite', 'negative_zero'}
+                or any(type(value) is not int for value in row.values())
+                or row['elements'] <= 0 or row['nonzero'] != 0 or row['nonfinite'] != 0
+                or not 0 <= row['negative_zero'] <= row['elements']):
+            raise ValueError('Actual reference input histories were not cleared')
+    return True
 
 
 def episode_id(split, seed, env_index):
@@ -275,14 +321,25 @@ def validate_source_runtime(environment, runtime, source_manifest, contract):
             raise ValueError('Actual native source DOF/PD/timing readback changed: '+key)
     sim = runtime['physics_sim_parameters']
     cfg_sim = source_manifest['environment']['sim']
-    if sim.get('dt') != cfg_sim['dt']:
+    # SimParams/PhysX expose C++ float32 fields through Python floats. Compare
+    # native dt to the original native readback, not the pre-ABI config literal.
+    # For fields missing from the old endpoint, require the exact configured
+    # float32 representation. This is not a tolerance or a physics change.
+    if (type(sim.get('dt')) is not float
+            or sim['dt'] != source_manifest['runtime']['physics_dt']):
         raise ValueError('Actual native physics dt differs from original source')
+    floating = {'contact_offset', 'rest_offset', 'max_depenetration_velocity'}
     for key in ('solver_type', 'num_position_iterations', 'num_velocity_iterations',
                 'contact_offset', 'rest_offset', 'max_depenetration_velocity', 'contact_collection'):
-        if sim.get('physx', {}).get(key) != cfg_sim['physx'][key]:
+        value = sim.get('physx', {}).get(key)
+        expected_value = (float(np.float32(cfg_sim['physx'][key])) if key in floating
+                          else cfg_sim['physx'][key])
+        expected_type = float if key in floating else int
+        if type(value) is not expected_type or value != expected_value:
             raise ValueError('Actual native source PhysX readback changed/missing: '+key)
     return dict(configuration_exact_except=['seed', 'env.num_envs', 'env.episode_length_s'],
         dof_pd_timing_exact=True, native_physx_parameters_exact=True,
+        native_float_abi='exact float32 configured PhysX fields; dt equals original native readback',
         source_physical_shape_readback='not present in old endpoint; current shapes preserved, not fabricated')
 
 
@@ -658,6 +715,7 @@ def _native_main(extra, remaining):
             evaluation_protocol=SCHEMA, effectiveness_verified=False, dr_unlocked=False,
             limitation='Smoke validates implementation only. Sealed cohort cannot be fitted. '
                 'Archive success is not training continuation, physical improvement or deployment acceptance.')
+        validate_initialization_proof(manifest['initialization'], contract)
         packed = io.BytesIO()
         np.savez_compressed(packed, **arrays)
         extra.output.parent.mkdir(parents=True, exist_ok=True)

@@ -467,6 +467,9 @@ def _native_main(extra, remaining):
     from isaacgym import gymapi  # must precede torch and all transitive torch imports.
     import torch
     from humanoid import LEGGED_GYM_ROOT_DIR
+    # Match the native environment-first registry bootstrap; utils-first has
+    # a circular import through envs/base/legged_robot_config.
+    import humanoid.envs  # noqa: F401
     from humanoid.amp.head_artifact import validate_head_artifact
     from humanoid.amp.mu_temporal import state_fingerprint
     from humanoid.amp.physics_diagnostic import validate_source_state

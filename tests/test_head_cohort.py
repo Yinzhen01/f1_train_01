@@ -89,7 +89,8 @@ class CohortProtocolTests(unittest.TestCase):
                 contract = cohort_contract(split, mode, seed, n, duration)
                 self.assertEqual(contract['type'], SCHEMA)
                 self.assertEqual(contract['expected_ticks'], int(duration*100))
-                self.assertEqual(contract['initialization'], 'reference_only')
+                self.assertEqual(contract['initialization_mode'], 'reference_only')
+                self.assertNotIn('initialization', contract)
                 self.assertEqual(len(set(contract['episode_ids'])), n)
                 self.assertEqual(contract['episode_ids'][0], episode_id(split, seed, 0))
         for args in (('train', 'smoke', 5, 4, 2.), ('train', 'smoke', 305, 8, 2.),
@@ -230,14 +231,18 @@ class CohortProtocolTests(unittest.TestCase):
         environment = dict(seed=5, env=dict(num_envs=16, episode_length_s=60.1, frame_stack=66),
             control=dict(action_scale=.5, stiffness={'ankle_pitch': 35.}),
             sim=dict(dt=.001, physx=physx))
+        native_dt = float(np.float32(.001))
         runtime = dict(dof_properties={'armature': [0.1]}, p_gains=[35.], d_gains=[1.5],
-            control_dt=.01, physics_dt=.001)
+            control_dt=10*native_dt, physics_dt=native_dt)
         source = dict(environment=environment, runtime=runtime)
         current = copy.deepcopy(environment)
         current.update(seed=305)
         current['env'].update(num_envs=4, episode_length_s=2.1)
         actual_runtime = copy.deepcopy(runtime)
-        actual_runtime['physics_sim_parameters'] = dict(dt=.001, physx=copy.deepcopy(physx))
+        read_physx = copy.deepcopy(physx)
+        for key in ('contact_offset', 'rest_offset', 'max_depenetration_velocity'):
+            read_physx[key] = float(np.float32(read_physx[key]))
+        actual_runtime['physics_sim_parameters'] = dict(dt=native_dt, physx=read_physx)
         proof = validate_source_runtime(current, actual_runtime, source, contract)
         self.assertTrue(proof['dof_pd_timing_exact'])
         for mutation in ('scale', 'stiffness', 'history', 'dof', 'p_gain', 'sim', 'missing_sim', 'seed'):
