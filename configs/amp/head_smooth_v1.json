@@ -1,0 +1,20 @@
+{
+  "schema": "actor_head_offline_v1",
+  "experiment": "f1_amp_head_smooth_v1",
+  "source_config": "configs/amp/lafan_walk02_sustain_control.json",
+  "source_task": "TASK_20260926_110",
+  "source_checkpoint_sha256": "07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31",
+  "source_model_state_sha256": "c06fbd97e32a483d46a2738014215de2721ad7db4b2b86547645ab72d4c555bc",
+  "source_exclusions": {
+    "path": "resources/amp_inputs/source110_exclusions_v1.npz",
+    "sha256": "cf621dc289c74796e37d4d6f547308a17808d4e96c53fb2edb87339f0b326df2"
+  },
+  "head_keys": ["actor.6.weight", "actor.6.bias"],
+  "solver": {"temporal_weight": 1.0, "ridge": 0.000001, "fir_taps": 21},
+  "smoke": {"num_envs": 4, "duration_s": 2},
+  "formal": {"num_envs": 8, "duration_s": 20},
+  "seeds": {"train": 305, "validation": 505, "sealed": 705},
+  "physical_acceptance_required": true,
+  "effectiveness_verified": false,
+  "dr_unlocked": false
+}
