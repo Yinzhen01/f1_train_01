@@ -32,8 +32,23 @@ class AMPOnPolicyRunner(DHOnPolicyRunner):
         self.amp_experiment = experiment
 
     def log(self, locs, width=80, pad=35):
+        component_schema = self.amp_experiment.cfg.get('mu_temporal', {}).get('component_gradient_schema')
+        non_scalar_keys = ('mu_component_gradient_schema', 'mu_component_gradient_records')
+        if component_schema:
+            from .feature_freeze import validate_component_gradient_records
+            if self.alg.latest.get(non_scalar_keys[0]) != component_schema:
+                raise ValueError('Missing registered component schema in real runner log')
+            validate_component_gradient_records(self.alg.latest.get(non_scalar_keys[1]), 1,
+                minibatches_per_update=8, start_update=self.alg.updates,
+                aggregate=self.alg.latest, prefix='mu_')
+        elif any(key in self.alg.latest for key in non_scalar_keys):
+            raise ValueError('Unregistered component telemetry in legacy runner')
         super().log(locs, width, pad)
         for key, value in self.alg.latest.items():
+            if key in non_scalar_keys:
+                # Actual scalar records stay in structured logs/checkpoints;
+                # TensorBoard add_scalar cannot accept a schema string/list.
+                continue
             self.writer.add_scalar("AMP/"+key, value, locs["it"])
         name = evaluation_checkpoint_name(locs["it"] + 1,
             self.amp_experiment.cfg.get("evaluation_updates", []))

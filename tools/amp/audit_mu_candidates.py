@@ -304,9 +304,24 @@ def parse_arguments(argv=None):
                  'anchor-checkpoint','temporal-bundle','temporal-checkpoint','output'):
         p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--expected-commit',required=True)
-    p.add_argument('--anchor-group', choices=('anchor', 'freeze_anchor'), default='anchor')
-    p.add_argument('--temporal-group', choices=('temporal', 'freeze_temporal'), default='temporal')
-    return p.parse_args(argv)
+    p.add_argument('--anchor-group', '--first-group',
+        choices=('anchor', 'freeze_anchor', 'freeze_split_temporal01'), default='anchor')
+    p.add_argument('--temporal-group', '--second-group',
+        choices=('temporal', 'freeze_temporal', 'freeze_split_temporal05'), default='temporal')
+    args = p.parse_args(argv)
+    split = (args.anchor_group == 'freeze_split_temporal01',
+             args.temporal_group == 'freeze_split_temporal05')
+    if any(split) and not all(split):
+        p.error('Split temporal comparison requires both explicit 0.01 and 0.05 groups')
+    return args
+
+
+def candidate_case_names(args):
+    """Legacy argument slots are not scientific labels for two temporal groups."""
+    if (args.anchor_group, args.temporal_group) == (
+            'freeze_split_temporal01', 'freeze_split_temporal05'):
+        return {'anchor': 'temporal01', 'temporal': 'temporal05'}
+    return {'anchor': 'anchor', 'temporal': 'temporal'}
 
 
 def main():
@@ -330,6 +345,7 @@ def main():
     source_checkpoint,_ = checkpoint_proof(a.source_checkpoint,om,2500)
     geometry = fast_geometry(foot_collision_vertices(source_experiment.kinematics.path))
     cases = dict(original=source)
+    case_names = candidate_case_names(a)
     provenance = dict(original=dict(bundle_path=str(a.source_physics.resolve()),bundle_sha256=SOURCE_PHYSICS_BUNDLE_SHA,
         endpoint_bundle_path=str(a.source_endpoint.resolve()),endpoint_bundle_sha256=BASELINE_BUNDLE_SHA,
         checkpoint=source_checkpoint,code_commit=sm['code_commit'],runtime_readback=source_runtime,env0_raw_verification=source_raw))
@@ -358,8 +374,9 @@ def main():
         initial = observed_initial_comparison(oa,arrays)
         if not initial['all_captured_fields_exact_equal']: raise ValueError('Candidate actual post-warmup initial states changed')
         model = candidate_checkpoint_proof(checkpoint,manifest,experiment,a.source_checkpoint)
-        cases[group] = dict(manifest=manifest,arrays=arrays)
-        provenance[group] = dict(bundle_path=str(path.resolve()),bundle_sha256=file_sha(path),checkpoint=model,
+        case_name = case_names[group]
+        cases[case_name] = dict(manifest=manifest,arrays=arrays)
+        provenance[case_name] = dict(bundle_path=str(path.resolve()),bundle_sha256=file_sha(path),checkpoint=model,
             code_commit=manifest['code_commit'],actual_post_warmup_initial=initial,
             registered_group=registered_group,config_path=str(config_path.resolve()),
             raw1ms_available=False,raw1ms_waveform_and_spectrum='not evaluable; only ten-substep interval aggregates captured',
@@ -369,7 +386,8 @@ def main():
         for row in rank_worst_initial_states(records,key)] for key in ('substep_accel_rms','speed_error_abs_m_s',
             'contact_proxy_slip_mean_m_s','heading_rms_deg','target_second_difference_rms_rad_s2')} for name,records in rows.items()}
     pairs = {}
-    for left,right in (('original','anchor'),('original','temporal'),('anchor','temporal')):
+    first, second = case_names['anchor'], case_names['temporal']
+    for left,right in (('original',first),('original',second),(first,second)):
         records = paired_rows(cases[left],cases[right],geometry)
         pairs[left+'_vs_'+right] = dict(rows=records,equal_initial_condition_means=paired_means(records))
     report = dict(schema_version=2,script_sha256=file_sha(__file__),expected_candidate_commit=a.expected_commit,

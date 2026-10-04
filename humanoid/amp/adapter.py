@@ -21,6 +21,9 @@ class AMPAlgorithmAdapter:
         self.mu_rollout_diagnostics = []
         self.mu_gradient_sums = {}
         self.mu_gradient_minibatches = 0
+        self.mu_component_records = []
+        self.mu_component_start_update = None
+        self.mu_component_batches = None
 
     def __getattr__(self, name):
         return getattr(self.ppo, name)
@@ -46,6 +49,14 @@ class AMPAlgorithmAdapter:
         if getattr(self.ppo, 'feature_freeze_guard', None) is not None:
             result.update({key: value/max(1, self.mu_run_updates) for key, value in self.mu_gradient_sums.items()})
             result.update(self.ppo.feature_freeze_guard.report(), gradient_minibatches=self.mu_gradient_minibatches)
+        component_schema = getattr(regularizer, 'component_gradient_schema', None)
+        if component_schema is not None:
+            from .feature_freeze import validate_component_gradient_records
+            result.update(component_gradient_schema=component_schema,
+                          component_gradient_records=[dict(record) for record in self.mu_component_records])
+            validate_component_gradient_records(result['component_gradient_records'], self.mu_run_updates,
+                minibatches_per_update=self.mu_component_batches or self.ppo.num_learning_epochs*self.ppo.num_mini_batches,
+                start_update=self.mu_component_start_update or self.updates+1, aggregate=result)
         return result
 
     def process_env_step(self, rewards, dones, infos):
@@ -96,6 +107,29 @@ class AMPAlgorithmAdapter:
                 self.mu_gradient_minibatches += mu['gradient_minibatches']
                 for key in GRADIENT_FIELDS:
                     self.mu_gradient_sums[key] = self.mu_gradient_sums.get(key, 0.)+mu[key]
+            component_schema = getattr(self.ppo.mu_regularizer, 'component_gradient_schema', None)
+            if component_schema is not None:
+                from .feature_freeze import (COMPONENT_GRADIENT_FIELDS, validate_component_gradient_report,
+                                            validate_component_gradient_records)
+                validate_component_gradient_report(mu)
+                raw_records = mu.get('component_gradient_records')
+                if not isinstance(raw_records, list):
+                    raise ValueError('Missing actual component minibatch records in PPO update')
+                records = [dict(record, completed_update=self.updates+1) for record in raw_records]
+                batches = mu['gradient_minibatches']
+                validate_component_gradient_records(records, 1, minibatches_per_update=batches,
+                                                    start_update=self.updates+1, aggregate=mu)
+                if self.mu_component_start_update is None:
+                    self.mu_component_start_update = self.updates+1
+                    self.mu_component_batches = batches
+                if (batches != self.mu_component_batches or
+                        self.updates+1 != self.mu_component_start_update+self.mu_run_updates-1):
+                    raise ValueError('Actual component update sequence or minibatch budget changed')
+                self.mu_component_records.extend(dict(record) for record in records)
+                for key in COMPONENT_GRADIENT_FIELDS:
+                    self.mu_gradient_sums[key] = self.mu_gradient_sums.get(key, 0.)+mu[key]
+                self.latest.update(mu_component_gradient_schema=component_schema,
+                                   mu_component_gradient_records=records)
             self.latest.update({'mu_'+key: value for key, value in mu.items()
                                 if isinstance(value, (int, float, bool))})
         if not all(torch.isfinite(torch.as_tensor(x)) for x in losses):

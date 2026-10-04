@@ -17,7 +17,12 @@ from .refinement import restore_learning_state
 from .scaled_experiment import ScaledExperiment
 from .sustain import apply_sustain_config
 
-MU_SUBGROUPS = ('anchor', 'temporal', 'freeze_anchor', 'freeze_temporal')
+MU_TEMPORAL_COEFFICIENTS = {
+    'anchor': 0., 'temporal': .01,
+    'freeze_anchor': 0., 'freeze_temporal': .01,
+    'freeze_split_temporal01': .01, 'freeze_split_temporal05': .05,
+}
+MU_SUBGROUPS = tuple(MU_TEMPORAL_COEFFICIENTS)
 MU_GROUPS = tuple('mu_'+group for group in MU_SUBGROUPS)
 BASELINE_BUNDLE_SHA = 'de77d4a0c85cd581ae9dc9418d3fbce144730749b9f746f93b9671ec122a833b'
 BASELINE_ANALYSIS_SHA = 'eb9002c5c5798ddb5277e65dd90f19f95c67d81385f17af59ab99ee41ef20002'
@@ -45,7 +50,7 @@ def mu_contract(group):
         source_completed_updates=2500, learning_rate=5e-5,
         episode_length_s=60., style_floor=0., bridge_gradient_penalty=1.,
         smoothness_scale=-.02, anchor_coef=1.,
-        temporal_coef=.01 if group.endswith('temporal') else 0.,
+        temporal_coef=MU_TEMPORAL_COEFFICIENTS[group],
         control_dt=.01, action_scale=.5, startup_steps=66,
         teacher='frozen_full_source_actor_cnn_state_estimator',
         temporal_definition='mean(((action_scale*(mu_t-2*mu_t1+mu_t2)/dt**2)/scale_joint)**2)',
@@ -62,6 +67,8 @@ def mu_contract(group):
             optimizer_freeze='retain_all_original_slots_and_moments_skip_grad_none',
             gradient_diagnostics='every_minibatch_main_aux_es_actor_cosine_before_global_clip',
             gradient_diagnostics_changes_update=False)
+    if group in ('freeze_split_temporal01', 'freeze_split_temporal05'):
+        result.update(component_gradient_schema='weighted_actor_split_v1')
     return result
 
 
@@ -188,7 +195,8 @@ def warm_start_mu(runner, experiment, checkpoint):
         raise ValueError('Student differs from full original source')
     regularizer = DeterministicMuLoss(student,
         [spec['acceleration_scales_rad_s2'][name] for name in experiment.spec.joint_names],
-        spec['anchor_coef'], spec['temporal_coef'], spec['control_dt'], spec['action_scale'])
+        spec['anchor_coef'], spec['temporal_coef'], spec['control_dt'], spec['action_scale'],
+        component_gradient_schema=spec.get('component_gradient_schema'))
     teacher_hash = state_fingerprint(regularizer.teacher.state_dict())
     if teacher_hash != source_hash or any(p.requires_grad for p in regularizer.teacher.parameters()):
         raise ValueError('Teacher is not frozen full original source')
@@ -233,4 +241,16 @@ def validate_mu_loss_report(report, spec, updates):
                 report.get('main_grad_norm', 0.) <= 0 or
                 report.get('combined_grad_norm_preclip', 0.) <= 0):
             raise ValueError('Missing actual all-minibatch gradient/clip evidence')
+    if spec.get('component_gradient_schema'):
+        from .feature_freeze import (validate_component_gradient_report,
+            validate_component_gradient_records)
+        validate_component_gradient_report(report)
+        if report.get('component_gradient_schema') != spec['component_gradient_schema']:
+            raise ValueError('Wrong weighted actor gradient schema')
+        validate_component_gradient_records(report.get('component_gradient_records'), updates,
+            minibatches_per_update=8, start_update=spec['source_completed_updates']+1,
+            aggregate=report)
+        if not any(record['valid_triplets'] > 0 and record['actor_temporal_grad_norm'] > 0.
+                   for record in report['component_gradient_records']):
+            raise ValueError('Enabled temporal term has no actual actor component gradient')
     return True

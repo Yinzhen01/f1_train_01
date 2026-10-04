@@ -31,7 +31,11 @@ class DeterministicMuLoss:
                    'teacher_unchanged')
 
     def __init__(self, actor_critic, acceleration_scale, anchor_coef,
-                 temporal_coef, dt=.01, action_scale=.5):
+                 temporal_coef, dt=.01, action_scale=.5, *, component_gradient_schema=None):
+        from .feature_freeze import COMPONENT_GRADIENT_SCHEMA
+        if component_gradient_schema not in (None, COMPONENT_GRADIENT_SCHEMA):
+            raise ValueError('Unknown deterministic mu component-gradient schema')
+        self._component_gradient_schema = component_gradient_schema
         if (not isinstance(actor_critic, nn.Module) or
                 not callable(getattr(actor_critic, 'act_inference', None)) or
                 any(not isinstance(getattr(actor_critic, name, None), nn.Module)
@@ -125,6 +129,11 @@ class DeterministicMuLoss:
     def action_scale(self):
         return self._action_scale
 
+    @property
+    def component_gradient_schema(self):
+        """Opt-in measurement contract, not an optimization or controller change."""
+        return self._component_gradient_schema
+
     def _student_parameters(self):
         seen = set()
         for name in ('actor', 'long_history', 'state_estimator'):
@@ -172,7 +181,8 @@ class DeterministicMuLoss:
     def latest_stats(self):
         return self.report()
 
-    def loss(self, observations, previous_observations, older_observations, valid_mask):
+    def loss(self, observations, previous_observations, older_observations, valid_mask,
+             *, return_components=False):
         """Return a differentiable scalar and JSON-safe, detached fixed-field stats.
 
         All three observations are finite floating ``[batch, observation]``
@@ -180,7 +190,16 @@ class DeterministicMuLoss:
         on that device. Empty batches and empty triplet selections are finite
         differentiable zeroes. A zero coefficient still reports its unweighted
         diagnostic term; no branch uses detached rollout means.
+
+        The legacy two-tuple is unchanged. An explicitly registered component
+        schema permits a three-tuple whose last item contains the two WEIGHTED
+        scalar tensors from this same forward graph. The caller must release
+        them after the real backward; no tensor/graph is retained as telemetry.
         """
+        if not isinstance(return_components, bool):
+            raise ValueError('return_components must be a boolean')
+        if return_components and self.component_gradient_schema is None:
+            raise ValueError('Differentiable loss components require the opt-in schema')
         inputs = (observations, previous_observations, older_observations)
         if any(not isinstance(value, torch.Tensor) or value.ndim != 2 or
                not value.is_floating_point() for value in inputs):
@@ -219,6 +238,9 @@ class DeterministicMuLoss:
             zero = sum(parameter.reshape(-1)[:0].sum()
                        for parameter in self._student_parameters() if parameter.requires_grad)
             self._latest_stats = self._stats(0., 0., 0., 0., 0, 0, True)
+            if return_components:
+                return zero, dict(self._latest_stats), dict(weighted_anchor=zero,
+                                                           weighted_temporal=zero)
             return zero, dict(self._latest_stats)
         current_mu = self.actor_critic.act_inference(observations)
         with torch.no_grad():
@@ -255,4 +277,7 @@ class DeterministicMuLoss:
             raise ValueError('Frozen teacher changed during deterministic inference')
         values = terms[:4].detach().cpu().tolist()
         self._latest_stats = self._stats(*values, valid_triplets, batch_size, True)
+        if return_components:
+            return auxiliary, dict(self._latest_stats), dict(weighted_anchor=weighted_anchor,
+                                                            weighted_temporal=weighted_temporal)
         return auxiliary, dict(self._latest_stats)

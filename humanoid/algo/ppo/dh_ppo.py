@@ -181,6 +181,12 @@ class DHPPO:
         mu_stat_sums = {}
         gradient_sums = {}
         frozen = self.feature_freeze_guard is not None
+        component_schema = getattr(self.mu_regularizer, 'component_gradient_schema', None) if mu_enabled else None
+        component_records = []
+        if component_schema is not None:
+            from humanoid.amp.feature_freeze import COMPONENT_GRADIENT_SCHEMA
+            if component_schema != COMPONENT_GRADIENT_SCHEMA or not frozen:
+                raise ValueError('Component gradient telemetry requires the registered frozen-feature path')
         if frozen:
             self.feature_freeze_guard.validate()
         if mu_enabled:
@@ -245,8 +251,13 @@ class DHPPO:
                         self.entropy_coef * entropy_batch.mean() +
                         estimator_loss)
                 if mu_enabled:
-                    aux_loss, aux_stats = self.mu_regularizer.loss(obs_batch, temporal["prev_obs"],
-                                                                 temporal["older_obs"], temporal["valid_mask"])
+                    if component_schema is not None:
+                        aux_loss, aux_stats, components = self.mu_regularizer.loss(
+                            obs_batch, temporal["prev_obs"], temporal["older_obs"], temporal["valid_mask"],
+                            return_components=True)
+                    else:
+                        aux_loss, aux_stats = self.mu_regularizer.loss(obs_batch, temporal["prev_obs"],
+                                                                     temporal["older_obs"], temporal["valid_mask"])
                     if not isinstance(aux_loss, torch.Tensor) or aux_loss.ndim != 0 or not torch.isfinite(aux_loss):
                         raise ValueError("mu loss must be a finite scalar tensor")
                     if not isinstance(aux_stats, dict):
@@ -270,7 +281,11 @@ class DHPPO:
                             mu_stat_sums[key] = mu_stat_sums.get(key, 0.) + value
                     if frozen:
                         from humanoid.amp.feature_freeze import gradient_diagnostics
-                        diagnostic = gradient_diagnostics(self.actor_critic, loss, aux_loss, estimator_loss)
+                        if component_schema is not None:
+                            diagnostic = gradient_diagnostics(self.actor_critic, loss, aux_loss, estimator_loss,
+                                                              components=components)
+                        else:
+                            diagnostic = gradient_diagnostics(self.actor_critic, loss, aux_loss, estimator_loss)
                         for key, value in diagnostic.items():
                             gradient_sums[key] = gradient_sums.get(key, 0.)+value
                     loss = loss + aux_loss
@@ -295,6 +310,15 @@ class DHPPO:
                     gradient_sums['combined_grad_norm_preclip'] = gradient_sums.get('combined_grad_norm_preclip', 0.)+preclip
                     factor = float(torch.clamp(self.max_grad_norm/(norm+1e-6), max=1.))
                     gradient_sums['global_clip_factor'] = gradient_sums.get('global_clip_factor', 0.)+factor
+                    if component_schema is not None:
+                        # Only JSON-safe scalars survive the actual real backward
+                        # and clipping. Never persist a tensor/graph or sampled
+                        # substitute minibatch as diagnostic evidence.
+                        component_records.append(dict(diagnostic,
+                            combined_grad_norm_preclip=preclip, global_clip_factor=factor,
+                            minibatch_index=len(component_records)+1,
+                            batch_size=len(obs_batch), valid_triplets=int(temporal['valid_mask'].sum())))
+                        del components
                     self.feature_freeze_guard.validate()
                 self.optimizer.step()
                 if frozen:
@@ -330,6 +354,16 @@ class DHPPO:
                 self.mu_latest.update(self.feature_freeze_guard.report(), gradient_minibatches=num_updates)
                 from humanoid.amp.feature_freeze import validate_gradient_report
                 validate_gradient_report(self.mu_latest)
+                if component_schema is not None:
+                    from humanoid.amp.feature_freeze import validate_component_gradient_records
+                    self.mu_latest.update(component_gradient_schema=component_schema,
+                                          component_gradient_records=component_records)
+                    # The adapter assigns the actual restored/global update
+                    # number. Here only this real update's local N minibatches
+                    # are validated, allowing tiny CPU PPO fixtures with N != 8.
+                    validate_component_gradient_records(
+                        [dict(record, completed_update=1) for record in component_records], 1,
+                        minibatches_per_update=num_updates, start_update=1, aggregate=self.mu_latest)
             self._mu_pending_metadata = None
         self.storage.clear()
 

@@ -34,8 +34,8 @@ SPANS = dict(post2s=(2., 60.), near5s=(4., 6.),
 RUNS = ('source', '081', '082')
 FORMAL_COMMIT = 'dd24051df25867f49e6fd1b7ff5e7b6ffdff4fb3'
 GROUPS = {'081': 'anchor', '082': 'temporal'}
-GROUP_CHOICES = {'081': ('anchor', 'freeze_anchor'),
-                 '082': ('temporal', 'freeze_temporal')}
+GROUP_CHOICES = {'081': ('anchor', 'freeze_anchor', 'freeze_split_temporal01'),
+                 '082': ('temporal', 'freeze_temporal', 'freeze_split_temporal05')}
 LEGACY_GRADIENT_LIMITATION = (
     'Training auxiliary gradient logs are first-minibatch diagnostics; main PPO gradients are not recorded.')
 METRICS = ('normalized_temporal_loss', 'qmu_second_difference_rms_rad_s2',
@@ -78,6 +78,9 @@ def candidate_groups(anchor_group='anchor', temporal_group='temporal', expected_
     groups = {'081': anchor_group, '082': temporal_group}
     if any(group not in GROUP_CHOICES[run] for run, group in groups.items()):
         raise ValueError('Candidate groups must preserve anchor/temporal roles')
+    split = (anchor_group == 'freeze_split_temporal01', temporal_group == 'freeze_split_temporal05')
+    if any(split) and not all(split):
+        raise ValueError('Split temporal comparison requires both explicit 0.01 and 0.05 groups')
     if not isinstance(expected_commit, str) or not re.fullmatch('[0-9a-f]{40}', expected_commit):
         raise ValueError('Expected candidate formal commit must be a full lowercase Git SHA')
     return groups
@@ -89,8 +92,10 @@ def validate_candidate_binding(run, checkpoint_identity, training, expected_iden
     if run not in GROUPS:
         raise ValueError('Unknown fixed candidate label')
     group = GROUPS[run] if group is None else group
-    candidate_groups(group if run == '081' else 'anchor',
-                     group if run == '082' else 'temporal', expected_commit)
+    if group not in GROUP_CHOICES[run]:
+        raise ValueError('Candidate group does not match the explicit argument slot')
+    if not isinstance(expected_commit, str) or not re.fullmatch('[0-9a-f]{40}', expected_commit):
+        raise ValueError('Expected candidate formal commit must be a full lowercase Git SHA')
     proof=training.get('continuation') or {}
     expected=mu_contract(group)
     if (checkpoint_identity != expected_identity or training.get('identity') != expected_identity or
@@ -144,6 +149,11 @@ def gradient_evidence_limitations(groups):
             'saved all-minibatch diagnostics are minibatch/update aggregates, not individual gradient vectors '
             'or a causal proof. aux_grad_norm_all_batches is the aggregate auxiliary metric; '
             'the retained aux_grad_norm is still the legacy first-minibatch metric.')
+    split = [run for run, group in groups.items() if group.startswith('freeze_split_')]
+    if split:
+        result.append('Split candidates '+','.join(split)+
+            ': additional weighted-anchor/weighted-temporal actor scalar records must cover every actual minibatch; '
+            'they are not gradient vectors or a proven motion-quality mechanism.')
     return result
 
 
@@ -263,8 +273,8 @@ def build_parser():
             ('081', current/'TASK_20261002_081', 2750), ('082', current/'TASK_20261002_082', 2750)):
         parser.add_argument('--'+run+'-checkpoint', type=Path, default=directory/('model_880%d.pt' % number))
         parser.add_argument('--'+run+'-training-manifest', type=Path, default=directory/'model_amp_manifest.pt')
-    parser.add_argument('--anchor-group', choices=GROUP_CHOICES['081'], default=GROUPS['081'])
-    parser.add_argument('--temporal-group', choices=GROUP_CHOICES['082'], default=GROUPS['082'])
+    parser.add_argument('--anchor-group', '--first-group', choices=GROUP_CHOICES['081'], default=GROUPS['081'])
+    parser.add_argument('--temporal-group', '--second-group', choices=GROUP_CHOICES['082'], default=GROUPS['082'])
     parser.add_argument('--expected-commit', default=FORMAL_COMMIT,
         help='Exact formal training commit; defaults to the original 081/082 commit')
     parser.add_argument('--output', type=Path, required=True)
@@ -370,7 +380,10 @@ def main():
             for span, (start, end) in SPANS.items():
                 for run in RUNS:
                     metrics=span_metrics(time, outputs[run], outputs['source'], scales, start, end, clip)
-                    rows.append(dict(mode=mode, env=index, span=span, run=run, metrics=metrics))
+                    row = dict(mode=mode, env=index, span=span, run=run, metrics=metrics)
+                    if groups['081'] == 'freeze_split_temporal01':
+                        row['registered_group'] = 'source' if run == 'source' else groups[run]
+                    rows.append(row)
     validate_complete_cohorts(rows)
     unchanged={run: state_fingerprint(policy.state_dict()) == initial_hashes[run] and
         all(parameter.grad is None for parameter in policy.parameters()) for run, policy in policies.items()}
@@ -417,6 +430,10 @@ def main():
     if frozen_checks:
         report['fixed_source_binding'].update(candidate_groups=groups,
             independent_frozen_candidate_checks=frozen_checks)
+    if groups['081'] == 'freeze_split_temporal01':
+        report['protocol']['argument_slot_labels'] = dict(source='original110_control2500',
+            **{'081': 'temporal01', '082': 'temporal05'})
+        report['limitations'].append('081/082 are legacy CLI argument slots only; these are new 0.01/0.05 tasks, not the historical 081/082 checkpoints.')
     write_report(args.output, report)
     print(json.dumps(dict(output=str((args.output/'report.json').resolve()),
         source_action_parity_max=report['source_action_parity']['max_action_abs_error'],

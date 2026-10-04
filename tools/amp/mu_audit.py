@@ -18,6 +18,10 @@ from tools.amp.jitter_audit import (compare_environment as compare_control_envir
 
 LOSS_FIELDS = ('anchor_loss', 'temporal_loss', 'weighted_anchor_loss',
                'weighted_temporal_loss', 'aux_grad_norm')
+# Native X1AMPRecoveryCfgPPO inherits these unchanged from X1DHStandCfgPPO.
+# Independently read back from the actual control/freeze Gradmotion manifests;
+# eight batches are TWO epochs times FOUR minibatches, not four times two.
+PPO_EPOCHS, PPO_MINIBATCHES, PPO_ROLLOUT_STEPS = 2, 4, 24
 
 
 def _number(value, name, count=False):
@@ -55,7 +59,34 @@ def _loss_fields(report, spec, prefix=''):
         for key in ('frozen_features_unchanged', 'frozen_optimizer_unchanged'):
             if report.get(prefix+key) is not True:
                 raise ValueError('Missing frozen feature invariant: '+prefix+key)
+    if spec.get('component_gradient_schema'):
+        from humanoid.amp.feature_freeze import validate_component_gradient_report
+        if report.get(prefix+'component_gradient_schema') != spec['component_gradient_schema']:
+            raise ValueError('Changed weighted actor gradient schema')
+        validate_component_gradient_report(report, prefix)
     return _number(report.get(prefix+'valid_triplets'), prefix+'valid_triplets', count=True)
+
+
+def _component_records(report, spec, updates, start_update=2501, prefix='', formal=False):
+    """Bind actual labeled minibatches to all scalar means and real PPO size."""
+    if not spec.get('component_gradient_schema'):
+        return None
+    from humanoid.amp.feature_freeze import validate_component_gradient_records
+    if report.get(prefix+'component_gradient_schema') != spec['component_gradient_schema']:
+        raise ValueError('Changed weighted actor gradient schema')
+    records = report.get(prefix+'component_gradient_records')
+    validate_component_gradient_records(records, updates, minibatches_per_update=8,
+        start_update=start_update, aggregate=report, prefix=prefix)
+    if _number(report.get(prefix+'gradient_minibatches'),
+               prefix+'gradient_minibatches', count=True) != 8*updates:
+        raise ValueError('Missing actual weighted actor minibatches')
+    # Registered native smoke/formal PPO: 24 steps, 2 epochs, 4 minibatches.
+    # Batch size is evidence, not an arbitrary positive number or a valid-count
+    # denominator that may silently change across records.
+    expected_batch = (4096 if formal else 32)*PPO_ROLLOUT_STEPS//PPO_MINIBATCHES
+    if any(record['batch_size'] != expected_batch for record in records):
+        raise ValueError('Weighted actor minibatch differs from real PPO sample budget')
+    return records
 
 
 def compare_environment(source, target, group, smoke=False):
@@ -111,14 +142,30 @@ def validate_mu_source(experiment, continuation, checkpoint):
 
 def validate_mu_updates(rows, group, formal=False, report=None):
     spec = mu_contract(group)
-    validate_jitter_updates(rows, formal)  # Exact2501..2510/2750 and original AMP gates.
-    triplets = 0
+    scalar_rows = rows
+    if spec.get('component_gradient_schema'):
+        # The original AMP validator intentionally accepts scalar rows only.
+        # Remove exactly the two new non-scalar/string fields from that view;
+        # audit both separately below, retaining every old scalar gate.
+        scalar_rows = [{key: value for key, value in row.items()
+            if key not in ('mu_component_gradient_schema', 'mu_component_gradient_records')}
+            for row in rows]
+        if any(not isinstance(value, Real) for row in scalar_rows for value in row.values()):
+            raise ValueError('Non-numeric scalar in weighted actor optimization logs')
+    validate_jitter_updates(scalar_rows, formal)  # Exact2501..2510/2750 and original AMP gates.
+    triplets, component_records = 0, []
     for row in rows:
         count = _loss_fields(row, spec, 'mu_')
         if _number(row.get('mu_updates'), 'mu_updates', count=True) != 1:
             raise ValueError('Wrong per-update deterministic mu optimization count')
         if count == 0 and (row['mu_temporal_loss'] != 0 or row['mu_weighted_temporal_loss'] != 0):
             raise ValueError('Temporal loss observed without a valid three-frame input')
+        records = _component_records(row, spec, 1, start_update=row['iteration'],
+                                     prefix='mu_', formal=formal)
+        if records is not None:
+            if sum(record['valid_triplets'] for record in records) != PPO_EPOCHS*count:
+                raise ValueError('Actual weighted actor batches lost or invented rollout triplets')
+            component_records.extend(records)
         triplets += count
     if triplets <= 0:
         raise ValueError('No real contiguous deterministic mu triplets during the run')
@@ -138,6 +185,9 @@ def validate_mu_updates(rows, group, formal=False, report=None):
             if (report['gradient_minibatches'] != sum(row['mu_gradient_minibatches'] for row in rows) or
                     any(row.get('mu_gradient_minibatches') != 8 for row in rows)):
                 raise ValueError('Missing actual every-minibatch gradient telemetry')
+        records = _component_records(report, spec, len(rows), formal=formal)
+        if records is not None and records != component_records:
+            raise ValueError('Saved weighted actor records differ from actual ordered update logs')
     return True
 
 
@@ -232,6 +282,15 @@ def validate_mu_loss_report(report, spec, updates, continuation, rows=None,
         observed_triplets += valid
     if observed_triplets != count:
         raise ValueError('Deterministic mu report lost or invented contiguous triplets')
+    records = _component_records(report, spec, updates, formal=updates == 250)
+    if records is not None:
+        # Each valid rollout sample appears once per PPO epoch. Keep the
+        # per-update reconciliation, not merely a pooled total that could hide
+        # samples moved between updates with equal run aggregates.
+        for index, item in enumerate(diagnostics):
+            actual = records[index*8:(index+1)*8]
+            if sum(record['valid_triplets'] for record in actual) != PPO_EPOCHS*item['valid_triplets']:
+                raise ValueError('Saved weighted actor records disagree with rollout continuity')
     if rows is not None:
         validate_mu_updates(rows, spec['group'], formal=updates == 250, report=report)
         if any(row['mu_valid_triplets'] != item['valid_triplets']
