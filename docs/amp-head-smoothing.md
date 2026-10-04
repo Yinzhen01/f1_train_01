@@ -319,3 +319,28 @@ f32训练env2最大变化0.05000002058389352rad严格超0.05，offline_admitted=
 核验。原110继续保留，不继承短测头、不重跑092；正式队列尚未启动。
 092账单独立快照扣费0.18、runtime2、gift余额18.14，单位及最终结算未知；root仅
 更新092终态、其他字段核验不变，62/67条。整体抖动目标仍未完成、DR/noise关闭。
+
+### 正式03实际启动请求
+
+2026-10-04 22:10:30.1262447唯一run请求：`TASK_20261004_094`，名称
+`f1-amp-head-smooth-v1-formal-20261004-03`。实际create/run均exit0，先保存唯一
+request，再完整draft回读与exact dry-run；没有重试、旧任务重跑或账号/机型回退。
+固定HEAD`647e797099080c312b6ebce170dc4167b3a75740`/运行指纹d16、092证书b099、
+原110/model8802500、V124与一4090D；不续跑PPO、不采用092拒绝头、DR/noise关闭。
+预检实际exit0、15.442秒，oldest22:09:02.0602225、expires22:14:02.0602225；
+从最老证据计算300秒、绑定commit/指纹/账号池/停用清单，create和run均在窗口内。
+原851项实际QA与22当前源码哈希、新证书exact31/实际audit/原模型字节独立核验，
+仅为启动准入，不代表新数据或候选效果准入。根唯一ledger append实际exit0、
+63/68条、非目标全部字段核验不变；checkedAt使用DateTime避免旧格式误拒绝。
+预检/计划/dry-run/request/回读/账本快照保存在ignored
+`outputs/amp-head-smooth/launch-formal-20261004-03/`，临时payload已精确清理。
+目前只确认平台接收启动请求，实际native/cloudhistory/采集/拟合/门禁/效果待核验；
+不得将创建成功、短测结束或对话单轮结束当作抖动修复完成。
+
+22:13:25.3127664首份实际094快照状态3、start22:10:40。backend与原生START均完整
+647/d16，原110 SHA与typed GPU绑定通过；正式预算为8×20.0秒、seeds305/505、
+PPO0/optimizer_state_reused=false。唯一HISTORY marker实际required b7/head647、
+ancestor_verified/history_refreshed=true，首次证明兼容版正式云端历史读取成功。
+前置missing ancestor前缀随后已恢复，不当终态错误。训练8段cohort已COMPLETE、
+fitEligible/deduplicationPassed=true；验证采集中、stageCOMPLETE0，未声称拟合或
+数学通过。首console32774B/SHA1872d704ec48dff79ca1f59f6d7dffe1e80828aa86b74cafeede2d26a5096582。
