@@ -225,16 +225,23 @@ class DriverGuardStructureTests(unittest.TestCase):
                 self.assertFalse((node.module or '').startswith(('humanoid.', 'isaacgym', 'torch')))
 
     def test_exact_native_platform_single_gpu_class_guard_executes_with_cpu_stubs(self):
-        guard = next(node for node in main_node().body if isinstance(node, ast.If)
-            and any(isinstance(child, ast.Constant) and isinstance(child.value, str)
-                    and 'Real fitting is Gradmotion' in child.value for child in ast.walk(node)))
+        from humanoid.amp.native_hardware import read_hardware, validate_hardware_record
+        guard = next(node for node in main_node().body if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == 'validate_hardware_record')
         def namespace(platform='linux', available=True, count=1, gpu='NVIDIA GeForce RTX 4090 D'):
             cuda = SimpleNamespace(is_available=lambda: available, device_count=lambda: count,
-                get_device_name=lambda index: gpu)
-            return dict(sys=SimpleNamespace(platform=platform), torch=SimpleNamespace(cuda=cuda))
+                get_device_name=lambda index: gpu,
+                get_device_properties=lambda index: SimpleNamespace(total_memory=25393692672,
+                                                                      major=8, minor=9))
+            torch_fixture = SimpleNamespace(cuda=cuda, __version__='CPU-fixture-only',
+                                            version=SimpleNamespace(cuda='12.1'))
+            return dict(hardware=read_hardware(torch_fixture, platform),
+                        validate_hardware_record=validate_hardware_record)
         invoke_nodes([guard], namespace())
+        invoke_nodes([guard], namespace(gpu='NVIDIA GeForce RTX 4090'))
         for changed in (dict(platform='win32'), dict(available=False), dict(count=0), dict(count=2),
-                dict(gpu='NVIDIA GeForce RTX 4090'), dict(gpu='NVIDIA A100')):
+                dict(gpu='NVIDIA GeForce RTX 4090 Laptop'), dict(gpu='NVIDIA A100')):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 invoke_nodes([guard], namespace(**changed))
 

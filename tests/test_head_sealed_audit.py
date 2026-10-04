@@ -260,10 +260,13 @@ class SealedArtifactAuditTests(unittest.TestCase):
         self.assertTrue(result['logs_clean'])
 
     def log_fixture(self):
-        report = dict(start=dict(fixture='SYNTHETIC_LOG_ONLY'))
+        from test_head_stage_audit import hardware_fixture
+        report = dict(start=dict(fixture='SYNTHETIC_LOG_ONLY',
+                                native_hardware=hardware_fixture()))
         audits = self.result['cohort_inputs']['audits']
         policy = dict(start=dict(fixture='synthetic_original32_start'), complete=dict(fixture='synthetic_original32_end'))
-        text = stage.START+json.dumps(report['start'])+'\n'
+        text = stage.HARDWARE+json.dumps(report['start']['native_hardware'])+'\n'
+        text += stage.START+json.dumps(report['start'])+'\n'
         def cohort(role):
             return stage.COHORT+json.dumps(dict(split=role, mode='formal',
                 fit_eligible=audits[role]['fit_eligible'], episodes=audits[role]['episodes'],

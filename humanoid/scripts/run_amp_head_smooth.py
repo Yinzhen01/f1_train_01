@@ -124,16 +124,20 @@ def main():
     from humanoid.amp.head_workflow import (
         identity_digest, audit_cohort, forward_parity, fit_episodes, exclusion_add_cohort)
     from humanoid.amp.refinement import select_environment, locate_source
+    from humanoid.amp.native_hardware import read_hardware, validate_hardware_record
     from humanoid.amp.scaled_experiment import ScaledExperiment, implementation_fingerprint
     from humanoid.scripts.collect_amp_head_cohort import (
         file_sha, _read_bundle, source_exclusions, registered_source_exclusions,
         BUDGETS, SEEDS)
     from humanoid.utils.helpers import class_to_dict
 
-    if (sys.platform != 'linux' or not torch.cuda.is_available()
-            or torch.cuda.device_count() != 1 or
-            '4090D' not in torch.cuda.get_device_name(0).replace(' ', '')):
-        raise ValueError('Real fitting is Gradmotion Linux / one 4090D only')
+    # ESKU000001 is independently checked in the actual Gradmotion task API.
+    # That SKU's native readback (TASK_20261004_080) omits D in the device name.
+    # Accept only the two exact 4090-family names plus single-card CUDA/24GiB/
+    # Ada 8.9 readback; do not claim this identifies the silicon as 4090D.
+    hardware = read_hardware(torch, sys.platform)
+    _marker('hardware', hardware)
+    validate_hardware_record(hardware)
     repo = Path(LEGGED_GYM_ROOT_DIR)
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=str(repo)).decode().strip()
     if (not re.fullmatch('[0-9a-f]{40}', extra.expected_commit) or commit != extra.expected_commit
@@ -188,11 +192,12 @@ def main():
                                   ('sealed', 6), ('sealed_policy', 7))}
     start = dict(schema='head_smooth_native_stage_v1', mode=extra.mode,
         code_commit=commit, implementation_fingerprint=fingerprint,
+        native_hardware=hardware,
         identity=identity, source_checkpoint_sha256=file_sha(source),
         source_exclusions=source_proof, num_envs=num_envs, duration_s=duration,
         seeds=dict(train=305, validation=505), ppo_updates_added=0,
         optimizer_state_reused=False, effectiveness_verified=False, dr_unlocked=False,
-        platform_evidence='hardware guard is not platform authentication; '
+        platform_evidence='4090-family runtime readback is not SKU/silicon authentication; '
             'registered Gradmotion task/run/log/artifact audit is required separately')
     _marker('start', start)
     manifests, arrays, audits, parities = {}, {}, {}, {}

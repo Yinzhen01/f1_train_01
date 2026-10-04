@@ -45,6 +45,14 @@ def platform_fixture():
         '--expected-commit '+COMMIT+' --headless')))
 
 
+def hardware_fixture():
+    """Explicit synthetic typed runtime record, never native hardware evidence."""
+    return dict(schema='head_native_runtime_hardware_v1', platform='linux', cuda_available=True,
+        cuda_device_count=1, devices=[dict(index=0, name='NVIDIA GeForce RTX 4090',
+            total_memory_bytes=25393692672, compute_capability=[8, 9])],
+        torch_version='2.4.1', torch_cuda_version='12.1')
+
+
 def bundle(path, manifest, arrays):
     memory = io.BytesIO()
     np.savez_compressed(memory, **arrays)
@@ -156,6 +164,7 @@ def synthetic_pipeline(directory):
     fitted.update(audit_origin='float64_closed_form_training', candidate_head_dtype='float64',
                   direction_scale=0., unconstrained_training_output_change_peak_rad=0.)
     start = dict(schema='head_smooth_native_stage_v1', mode='smoke', code_commit=COMMIT,
+        native_hardware=hardware_fixture(),
         implementation_fingerprint=FP, identity=identity, source_checkpoint_sha256=parent['file_sha256'],
         source_exclusions=proof, num_envs=4, duration_s=2., seeds=dict(train=305, validation=505),
         ppo_updates_added=0, optimizer_state_reused=False, effectiveness_verified=False, dr_unlocked=False)
@@ -234,7 +243,7 @@ def synthetic_pipeline(directory):
         archive=archive, source_proof=proof, source_manifest=source_manifest, exclusions=index)
     paths['report'] = directory/'model_7000004.pt'
     torch.save(dict(report_json=json.dumps(report)), paths['report'])
-    log = stage.START+json.dumps(start)+'\n'
+    log = stage.HARDWARE+json.dumps(start['native_hardware'])+'\n'+stage.START+json.dumps(start)+'\n'
     for split in ('train', 'validation'):
         log += stage.COHORT+json.dumps(dict(split=split, mode='smoke', fit_eligible=False,
             episodes=audits[split]['episodes'], deduplication_passed=True))+'\n'
@@ -296,6 +305,11 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         self.assertFalse(facts['native_verified'])
         self.assertNotIn('smoke_certificate', result)
         self.assertTrue(facts['native_recorder_verified'])
+        self.assertTrue(facts['native_hardware_record_verified'])
+        self.assertTrue(facts['logs']['native_hardware_log_bound'])
+        self.assertEqual(facts['native_hardware'], hardware_fixture())
+        self.assertEqual(facts['native_hardware']['devices'][0]['name'], 'NVIDIA GeForce RTX 4090')
+        self.assertIn('does not establish', facts['hardware_evidence_scope'])
         self.assertTrue(facts['logs_clean'])
         self.assertFalse(facts['offline_admitted'])
         self.assertFalse(facts['formal_admission'])
@@ -307,6 +321,81 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         self.assertEqual(result['audit_facts_sha256'], stage.canonical_sha(facts))
         self.assertTrue(torch.equal(rng, torch.get_rng_state()))
         self.assertEqual(before, {key: stage.file_sha(path) for key, path in self.args.items() if isinstance(path, Path)})
+
+    def test_required_typed_hardware_missing_unsupported_and_malformed_records_rejected(self):
+        def changed(path, value):
+            record = hardware_fixture()
+            cursor = record
+            for key in path[:-1]:
+                cursor = cursor[key]
+            cursor[path[-1]] = value
+            return record
+
+        invalid = [None, {}, dict(hardware_fixture(), sku='ESKU000001')]
+        cases = [
+            (('schema',), 'head_native_runtime_hardware_v0'),
+            (('platform',), 'win32'),
+            (('cuda_available',), False), (('cuda_available',), 1),
+            (('cuda_device_count',), 0), (('cuda_device_count',), 2),
+            (('cuda_device_count',), True), (('cuda_device_count',), 1.),
+            (('devices',), []),
+            (('devices', 0, 'index'), True), (('devices', 0, 'index'), 1),
+            (('devices', 0, 'name'), 'NVIDIA A100-SXM4-80GB'),
+            (('devices', 0, 'name'), 'NVIDIA L20'),
+            (('devices', 0, 'name'), 'NVIDIA GeForce RTX 4090 Laptop GPU'),
+            (('devices', 0, 'name'), 'NVIDIA GeForce RTX 4090Dextra'),
+            (('devices', 0, 'name'), 'RTX 4090'),
+            (('devices', 0, 'name'), 'NVIDIA\tGeForce RTX 4090'),
+            (('devices', 0, 'name'), 4090),
+            (('devices', 0, 'total_memory_bytes'), 23*1024**3-1),
+            (('devices', 0, 'total_memory_bytes'), 25*1024**3+1),
+            (('devices', 0, 'total_memory_bytes'), 25393692672.),
+            (('devices', 0, 'compute_capability'), [8, 0]),
+            (('devices', 0, 'compute_capability'), [True, 9]),
+            (('devices', 0, 'compute_capability'), [8., 9]),
+            (('torch_version',), ''), (('torch_version',), None),
+            (('torch_cuda_version',), ''), (('torch_cuda_version',), None),
+        ]
+        invalid.extend(changed(path, value) for path, value in cases)
+        missing = hardware_fixture(); missing.pop('cuda_available'); invalid.append(missing)
+        extra = hardware_fixture(); extra['devices'][0]['sku'] = 'ESKU000001'; invalid.append(extra)
+        for number, record in enumerate(invalid):
+            report = copy.deepcopy(self.fixture['report'])
+            if record is None:
+                report['start'].pop('native_hardware')
+            else:
+                report['start']['native_hardware'] = record
+            self.refresh_report_binding(report)
+            with self.subTest(case=number), self.assertRaisesRegex(ValueError, 'Native head hardware:'):
+                self.audit()
+
+    def test_valid_hardware_cannot_override_unregistered_platform_resource(self):
+        raw = platform_fixture()
+        raw['data']['taskBaseInfo']['goodsId'] = 'ESKU000002'
+        self.args['platform_info'].write_text(json.dumps(raw), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'wrong owner/terminal status/resource/GPU count'):
+            self.audit()
+
+    def test_hardware_marker_missing_duplicate_tampered_or_after_start_rejected(self):
+        hardware = stage.HARDWARE+json.dumps(self.fixture['report']['start']['native_hardware'])+'\n'
+        start = stage.START+json.dumps(self.fixture['report']['start'])+'\n'
+        changed = hardware_fixture(); changed['devices'][0]['name'] = 'NVIDIA GeForce RTX 4090 D'
+        wrong = stage.HARDWARE+json.dumps(changed)+'\n'
+        log = self.fixture['log']
+        mutations = [log.replace(hardware, ''), log+hardware,
+            log.replace(hardware, wrong), log.replace(hardware, '').replace(start, start+hardware)]
+        for number, value in enumerate(mutations):
+            with self.subTest(case=number), self.assertRaises(ValueError):
+                stage.validate_log(value, self.fixture['report'], self.fixture['audits'], TASK, 'smoke',
+                    dict(escaped_invalid_utf8=False, control_bytes=0), policy=self.fixture['policy'])
+        report = copy.deepcopy(self.fixture['report'])
+        report['start'].pop('native_hardware')
+        no_record = log.replace(hardware, '').replace(start, stage.START+json.dumps(report['start'])+'\n')
+        no_record = no_record.replace(stage.COMPLETE+json.dumps(self.fixture['report']),
+                                      stage.COMPLETE+json.dumps(report))
+        with self.assertRaisesRegex(ValueError, 'Native head hardware:'):
+            stage.validate_log(no_record, report, self.fixture['audits'], TASK, 'smoke',
+                dict(escaped_invalid_utf8=False, control_bytes=0), policy=self.fixture['policy'])
 
     def test_wrong_parent_and_modified_learning_archive_rejected(self):
         parent = dict(self.args['expected_parent'], file_sha256='3'*64)

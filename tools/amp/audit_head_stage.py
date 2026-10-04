@@ -30,6 +30,7 @@ from humanoid.amp.head_workflow import (
     audit_cohort, exclusion_add_cohort, fit_episodes, forward_parity, identity_digest)
 from humanoid.amp.mu_temporal import state_fingerprint
 from humanoid.amp.learnability import assert_no_domain_randomization
+from humanoid.amp.native_hardware import validate_hardware_record
 from humanoid.amp.scaled_experiment import ScaledExperiment, implementation_fingerprint
 from humanoid.scripts.collect_amp_head_cohort import (
     BUDGETS, SEEDS, SOURCE_ENDPOINT_SHA, INITIAL_FIELDS, PHYSICS_FIELDS,
@@ -46,6 +47,7 @@ START, COHORT, COMPLETE = ('[head-smooth-start] ', '[head-cohort-complete] ',
                             '[head-smooth-complete] ')
 INDEX_SHA = 'cf621dc289c74796e37d4d6f547308a17808d4e96c53fb2edb87339f0b326df2'
 POLICY_START, POLICY_COMPLETE = '[head-policy-start] ', '[head-policy-complete] '
+HARDWARE = '[head-smooth-hardware] '
 SOURCE_BODIES = ['left_knee_pitch_link', 'right_knee_pitch_link',
                  'left_ankle_roll_link', 'right_ankle_roll_link']
 
@@ -197,6 +199,12 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None, 
             'missing/duplicate native START/COHORT/COMPLETE')
     _same(starts[0][2], report['start'], 'native START')
     _same(ends[0][2], report, 'native COMPLETE')
+    hardware = marker_records(text, HARDWARE)
+    require(validate_hardware_record(report['start'].get('native_hardware')) is True,
+            'missing/invalid native START hardware snapshot')
+    require(len(hardware) == 1, 'missing/duplicate native hardware marker')
+    _same(hardware[0][2], report['start']['native_hardware'], 'native hardware snapshot')
+    require(hardware[0][1] <= starts[0][0], 'native hardware must be captured before START')
     require(starts[0][1] <= cohorts[0][0] < cohorts[0][1] <= cohorts[1][0] <
             cohorts[1][1] <= ends[0][0], 'native stage order mismatch')
     for split, row in zip(splits, cohorts):
@@ -252,7 +260,7 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None, 
             'offline stage contains PPO training markers')
     scanned, warnings = text, []
     spans = [(lower, upper) for lower, upper, _ in
-             starts+cohorts+ends+policy_starts+policy_ends+arm_starts+arm_ends+pair_ends]
+             starts+cohorts+ends+hardware+policy_starts+policy_ends+arm_starts+arm_ends+pair_ends]
     trace_pattern = r'Traceback \(most recent call last\):\r?\n((?:[ \t].*\r?\n)+)([^\r\n]+)'
     traces = list(re.finditer(trace_pattern, text))
     require(len(traces) == text.count('Traceback (most recent call last):'),
@@ -287,6 +295,7 @@ def validate_log(text, report, audits, task_id, mode, diagnostics, policy=None, 
     clean = not warnings and not diagnostics['escaped_invalid_utf8'] and not diagnostics['control_bytes']
     return dict(start_singleton=True, complete_singleton=True, cohort_completions=len(splits),
                 native_recorder_verified=policy is not None,
+                native_hardware_log_bound=True,
                 native_sealed_pair_verified=sealed is not None,
                 sdk_native_exit_code=0, sdk_completed_task=task_id, upload_receipts=uploads,
                 logs_clean=clean, wrapper_warnings=warnings,
@@ -560,6 +569,11 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         hashes.update(sealed_cohort=file_sha(sealed_cohort), sealed_policy=file_sha(sealed_policy))
     n, seconds = BUDGETS[mode]
     start = actual['start']
+    # Required for every new REAL stage. The helper validates exact schema and
+    # genuine types without conversions; SKU/platform checks remain separate.
+    # RTX 4090's reported driver name is not proof of RTX 4090D silicon.
+    hardware = start.get('native_hardware')
+    require(validate_hardware_record(hardware) is True, 'native hardware validation did not pass')
     for key, value in dict(schema='head_smooth_native_stage_v1', mode=mode,
             code_commit=expected_commit, implementation_fingerprint=fp, identity=identity,
             source_checkpoint_sha256=binding['file_sha256'], num_envs=n, duration_s=seconds,
@@ -730,6 +744,9 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
     facts = dict(schema=SCHEMA, mode=mode, verified=True, synthetic_fixture_only=synthetic,
         native_verified=not synthetic, platform=platform, identity=identity, code_commit=expected_commit,
         implementation_fingerprint=fp, source_checkpoint_sha256=binding['file_sha256'],
+        native_hardware=hardware, native_hardware_record_verified=True,
+        hardware_evidence_scope='Bound actual runtime snapshot plus supplied platform ESKU000001/gpu1 metadata. '
+            'Supported driver name RTX4090 or RTX4090D does not establish the device silicon is RTX4090D.',
         source_model_state_sha256=binding['model_state_sha256'], source_endpoint_sha256=SOURCE_ENDPOINT_SHA,
         source_index_sha256=INDEX_SHA, artifact_sha256=hashes,
         platform_info_sha256=platform_sha, cloud_log_sha256=diagnostics['raw_log_sha256'],
