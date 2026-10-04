@@ -9,11 +9,13 @@ import datetime
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 
 
 CONFIG = 'configs/amp/head_smooth_v1.json'
@@ -67,6 +69,87 @@ def sealed_recording_command(*, source, head, head_sha, commit, output, task,
         '--rl_device', 'cuda:0', '--pipeline', 'gpu', '--armature_mode', 'nominal']
 
 
+def _head_history_git(repo, *arguments):
+    """Capture Git transport diagnostics: they may contain credentials."""
+    environment = os.environ.copy()
+    environment['GIT_TERMINAL_PROMPT'] = '0'
+    environment['GIT_ALLOW_PROTOCOL'] = 'https'
+    try:
+        result = subprocess.run(['git']+list(arguments), cwd=str(repo), env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        raise ValueError('Head history operation unavailable or timed out') from None
+    if (type(result.returncode) is not int or type(result.stdout) is not bytes
+            or type(result.stderr) is not bytes):
+        raise ValueError('Invalid head history Git readback')
+    return result
+
+
+def ensure_smoke_ancestry(repo, commit):
+    """Repair only a missing commit in a verified shallow checkout, never bypass it."""
+    if not isinstance(commit, str) or re.fullmatch('[0-9a-f]{40}', commit) is None:
+        raise ValueError('Invalid head history required commit')
+    repo = Path(repo).resolve()
+    ancestry = ('merge-base', '--is-ancestor', commit, 'HEAD')
+    initial = _head_history_git(repo, *ancestry)
+    if initial.returncode not in (0, 128):
+        raise ValueError('Head smoke ancestry is not established')
+    head_record = _head_history_git(repo, 'rev-parse', 'HEAD')
+    head_bytes = head_record.stdout.strip()
+    if head_record.returncode != 0 or re.fullmatch(b'[0-9a-f]{40}', head_bytes) is None:
+        raise ValueError('Invalid head history checkout HEAD')
+    head = head_bytes.decode('ascii')
+    if initial.returncode == 0:
+        return dict(ancestor_verified=True, history_refreshed=False,
+                    required_commit=commit, head_commit=head)
+    missing = _head_history_git(repo, 'rev-parse', '--verify', '--quiet', commit+'^{commit}')
+    if missing.returncode != 1 or missing.stdout.strip():
+        raise ValueError('Required head smoke commit is not confirmed missing')
+    shallow = _head_history_git(repo, 'rev-parse', '--is-shallow-repository')
+    if shallow.returncode != 0 or shallow.stdout.strip() != b'true':
+        raise ValueError('Missing head smoke commit outside a verified shallow checkout')
+
+    def unchanged_checkout():
+        root = _head_history_git(repo, 'rev-parse', '--show-toplevel')
+        current = _head_history_git(repo, 'rev-parse', 'HEAD')
+        tracked = _head_history_git(repo, 'status', '--porcelain', '--untracked-files=no')
+        untracked = _head_history_git(repo, 'ls-files', '--others', '--exclude-standard',
+                                      '--', 'humanoid', 'configs', 'resources')
+        try:
+            actual_root = Path(root.stdout.decode('utf-8').strip()).resolve()
+        except (UnicodeError, OSError, ValueError):
+            raise ValueError('Invalid head history checkout root') from None
+        if (any(row.returncode != 0 for row in (root, current, tracked, untracked))
+                or actual_root != repo or current.stdout.strip() != head_bytes
+                or tracked.stdout.strip() or untracked.stdout.strip()):
+            raise ValueError('Head history checkout changed or is not clean')
+
+    unchanged_checkout()
+    remote = _head_history_git(repo, 'remote', 'get-url', 'origin')
+    try:
+        remote_text = remote.stdout.decode('utf-8').strip()
+        url = urlsplit(remote_text)
+        trusted = (remote.returncode == 0 and remote_text
+            and not any(ord(c) <= 32 or ord(c) == 127 for c in remote_text)
+            and '?' not in remote_text and '#' not in remote_text and url.scheme == 'https'
+            and url.hostname == 'github.com' and url.port in (None, 443)
+            and url.path in ('/Yinzhen01/f1_train_01', '/Yinzhen01/f1_train_01.git')
+            and not url.query and not url.fragment)
+    except (UnicodeError, ValueError):
+        trusted = False
+    if not trusted:
+        raise ValueError('Head history origin is not the registered HTTPS repository')
+    fetched = _head_history_git(repo, 'fetch', '--no-tags', '--no-write-fetch-head',
+                               '--deepen=64', 'origin', head)
+    if fetched.returncode != 0:
+        raise ValueError('Head history refresh failed; no retry or diagnostic echo')
+    unchanged_checkout()
+    if _head_history_git(repo, *ancestry).returncode != 0:
+        raise ValueError('Head smoke ancestry remains unproved after one history refresh')
+    return dict(ancestor_verified=True, history_refreshed=True,
+                required_commit=commit, head_commit=head)
+
+
 def validate_smoke_certificate(certificate, *, identity, fingerprint, repo):
     """A new head-specific independently audited real native probe is required."""
     expected = dict(schema=SMOKE_SCHEMA, mode='smoke', identity=identity,
@@ -86,7 +169,6 @@ def validate_smoke_certificate(certificate, *, identity, fingerprint, repo):
     commit = certificate.get('code_commit', '')
     if not re.fullmatch('[0-9a-f]{40}', commit):
         raise ValueError('Missing actual new head native code commit')
-    subprocess.check_call(['git', 'merge-base', '--is-ancestor', commit, 'HEAD'], cwd=str(repo))
     for key in ('cloud_log_sha256', 'train_sha256', 'validation_sha256',
                 'head_sha256', 'policy_rollout_sha256', 'audit_report_sha256'):
         if (not re.fullmatch('[0-9a-f]{64}', certificate.get(key, ''))
@@ -94,6 +176,15 @@ def validate_smoke_certificate(certificate, *, identity, fingerprint, repo):
             raise ValueError('Missing independently checked new cloud evidence: '+key)
     if certificate['train_sha256'] == certificate['validation_sha256']:
         raise ValueError('New training/validation cloud artifacts cannot be identical')
+    ancestry = ['git', 'merge-base', '--is-ancestor', commit, 'HEAD']
+    try:
+        subprocess.check_call(ancestry, cwd=str(repo))
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 128:
+            raise
+        proof = ensure_smoke_ancestry(repo, commit)
+        subprocess.check_call(ancestry, cwd=str(repo))
+        _marker('history', proof)
 
 
 def main():
