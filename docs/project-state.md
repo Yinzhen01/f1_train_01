@@ -61,6 +61,14 @@ run请求22:10:30.1262447；明确绑定发布`647e7970`与d16定义、新092流
 typed硬件匹配。首次正式cloud history单marker真实验证required b7为祖先，
 history_refreshed=true；此前missing ancestor前缀已恢复，不是最终fatal。
 训练组8段已COMPLETE且整段资格/去重通过；验证组采集中，尚未完成拟合或门禁。
+094现已实际终态5，22:10:40–22:15:03共263秒；fullArgo严格marker解析确认
+train/validation各8段合格、solver1、completionStatus=offline_rejected。
+日志记录各val曲率平方改善约5.787%–5.823%，均不足10%；本轮f32 train峰值
+0.049999990232rad未超0.05，不沿用092的舍入超界结论。未进入物理验收。
+当前这仅为记录报告，四实际PT尚未齐，独立formal审计未执行、不发准入。
+账单完整快照观察扣gift0.36/runtime4/gift余额17.78，单位/最终结算未知。
+本地下载已有数据进展：第一件288861152B完整，其余请求片段保留；安全中断与
+120秒读取截止不等于云任务被停止或HTTP/认证失败，正在按唯一Range方案恢复。
 
 2026-10-04：`experiment/f1-amp-mu-component`真实短测041/042均失败，
 完成两次更新/16批后在第三次更新的梯度相加allclose检查异常退出；无2510完成

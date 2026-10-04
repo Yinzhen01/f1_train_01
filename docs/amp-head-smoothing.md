@@ -344,3 +344,22 @@ ancestor_verified/history_refreshed=true，首次证明兼容版正式云端历�
 前置missing ancestor前缀随后已恢复，不当终态错误。训练8段cohort已COMPLETE、
 fitEligible/deduplicationPassed=true；验证采集中、stageCOMPLETE0，未声称拟合或
 数学通过。首console32774B/SHA1872d704ec48dff79ca1f59f6d7dffe1e80828aa86b74cafeede2d26a5096582。
+
+094第三份info实际终态5、22:10:40–22:15:03运行263秒，backend仍647；完整
+Argo505789B/SHA709b04c63d582137acd5208ac2a4852734711a9665522b532fe7256547e60cf4。
+全日志严格解析START/COMPLETE/HISTORY/HARDWARE各1，两个cohort各8段合格，
+stage记录offline_rejected/solver1/physical/effect/DR false。记录alpha为
+0.03084892698216238，各val曲率平方改善约5.787%–5.823%、不足10%，f32 train
+峰值0.049999990232437286未超0.05；独立数组/模型审计仍待四实际7100001..4齐全。
+预START missing ancestor随后HISTORY已修复；两Traceback均位于stageCOMPLETE后，
+白名单类别Pika ConnectionResetError/Errno104。警告保留、不声称logs_clean，
+也不将后置传输异常替代数学拒绝原因。原SDK四文件成功receipt计数2/2/1/1。
+独立账单快照14:18:38.192255Z三类79/79、0/0、0/0完整，唯一094 goodsUseId
+365138617380306944，观察price5.4/runtime4/deductGift0.36/paid0/gift余额17.78；
+单位、币种与最终结算未知。根账本当前仍63/68条，下载代理未修改真实池。
+本地IWR请求未出现实际timeout异常；前一次0B快照后首件已完成288861152B，
+SHA c64db6465ea1469716b03cebf310b70f5889241affc5797c5f10fb67a08bf3b2/CRC通过。
+随后仅中断已核实的本地observer，保留第二件125287902B片段，没有停止云任务。
+第二件单次curl独占retry01在120.0766秒外部截止，仍收到161939456B进展，
+HTTP状态未知；原两个片段保留。下一唯一恢复使用其副本Range续取并严格206/
+Content-Range/ZIP CRC核验，不并发重取、重跑云任务或补造缺失模型。
