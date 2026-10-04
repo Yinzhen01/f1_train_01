@@ -18,9 +18,9 @@ import time
 from urllib.parse import urlsplit
 
 
-CONFIG = 'configs/amp/head_smooth_v1.json'
+CONFIG = 'configs/amp/head_smooth_v2.json'
 SOURCE_CONFIG = 'configs/amp/lafan_walk02_sustain_control.json'
-SMOKE_SCHEMA = 'head_smooth_native_smoke_audit_v1'
+SMOKE_SCHEMA = 'head_smooth_native_smoke_audit_v2'
 SOURCE_SHA = '07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31'
 SOURCE_MODEL_SHA = 'c06fbd97e32a483d46a2738014215de2721ad7db4b2b86547645ab72d4c555bc'
 
@@ -65,7 +65,7 @@ def sealed_recording_command(*, source, head, head_sha, commit, output, task,
         '--expected-commit', commit, '--output', str(output), '--duration', '60',
         '--sealed-cohort', str(sealed), '--train-cohort', str(train),
         '--validation-cohort', str(validation), '--task', task, '--headless',
-        '--num_envs', '8', '--seed', '705', '--sim_device', 'cuda:0',
+        '--num_envs', '8', '--seed', '706', '--sim_device', 'cuda:0',
         '--rl_device', 'cuda:0', '--pipeline', 'gpu', '--armature_mode', 'nominal']
 
 
@@ -158,7 +158,7 @@ def validate_smoke_certificate(certificate, *, identity, fingerprint, repo):
         implementation_fingerprint=fingerprint, native_verified=True,
         cohort_arrays_verified=True, source_forward_verified=True,
         head_archive_verified=True, native_recorder_verified=True,
-        train_seed=305, validation_seed=505,
+        train_seed=306, validation_seed=506,
         num_envs=4, duration_s=2, solver_runs=1, formal_admission=False,
         source_checkpoint_sha256=SOURCE_SHA, source_model_state_sha256=SOURCE_MODEL_SHA,
         platform_terminal_status='5', effectiveness_verified=False, dr_unlocked=False)
@@ -240,13 +240,14 @@ def main():
                                        'humanoid', 'configs', 'resources'], cwd=str(repo)).strip()):
         raise ValueError('Exact published clean checkout is required')
     cfg = json.loads((repo/CONFIG).read_text(encoding='utf-8'))
-    if (cfg['schema'] != 'actor_head_offline_v1' or cfg['source_config'] != SOURCE_CONFIG
+    if (cfg['schema'] != 'actor_head_offline_v2' or cfg['source_config'] != SOURCE_CONFIG
             or cfg['source_checkpoint_sha256'] != ORIGINAL110_PARENT['file_sha256']
             or cfg['source_model_state_sha256'] != ORIGINAL110_PARENT['model_state_sha256']
             or cfg['source_task'] != ORIGINAL110_PARENT['source_task']
             or cfg['head_keys'] != ['actor.6.weight', 'actor.6.bias']
             or cfg['physical_acceptance_required'] is not True
-            or cfg['solver'] != dict(temporal_weight=1., ridge=1e-6, fir_taps=21)
+            or cfg['solver'] != dict(temporal_weight=1., ridge=1e-6, fir_taps=21,
+                                     direction_scope='per_output_axis_train_only')
             or cfg['seeds'] != SEEDS or cfg['effectiveness_verified'] is not False
             or cfg['dr_unlocked'] is not False):
         raise ValueError('Unregistered final-head experiment definition')
@@ -283,12 +284,12 @@ def main():
              for name, offset in (('train', 1), ('validation', 2), ('head', 3),
                                   ('report', 4), ('policy_probe', 5),
                                   ('sealed', 6), ('sealed_policy', 7))}
-    start = dict(schema='head_smooth_native_stage_v1', mode=extra.mode,
+    start = dict(schema='head_smooth_native_stage_v2', mode=extra.mode,
         code_commit=commit, implementation_fingerprint=fingerprint,
         native_hardware=hardware,
         identity=identity, source_checkpoint_sha256=file_sha(source),
         source_exclusions=source_proof, num_envs=num_envs, duration_s=duration,
-        seeds=dict(train=305, validation=505), ppo_updates_added=0,
+        seeds=dict(train=306, validation=506), ppo_updates_added=0,
         optimizer_state_reused=False, effectiveness_verified=False, dr_unlocked=False,
         platform_evidence='4090-family runtime readback is not SKU/silicon authentication; '
             'registered Gradmotion task/run/log/artifact audit is required separately')
@@ -360,9 +361,11 @@ def main():
                       admitted_to_physical_test=bool(admitted and extra.mode == 'formal'))
         math_bytes = json.dumps(report, sort_keys=True, allow_nan=False).encode('utf-8')
         provenance = dict(code_commit=commit, implementation_fingerprint=fingerprint,
-            mode=extra.mode, solver=dict(kind='quadratic_direction_scaled_v1',
+            mode=extra.mode, solver=dict(kind='quadratic_direction_per_axis_v2',
                 temporal_weight=1., ridge=1e-6, filter_window=21, action_scale=.5,
-                dtype='float64', solve_count=1, direction_scale=fitted.report['direction_scale']),
+                dtype='float64', solve_count=1,
+                direction_scope=fitted.report['direction_scope'],
+                direction_scale_per_joint=fitted.report['direction_scale_per_joint']),
             budget=dict(num_envs=num_envs, duration_s=duration, fit_episode_count=num_envs),
             cohorts={key: dict(sha256=file_sha(paths[key]), seed=SEEDS[key],
                 num_envs=num_envs, duration_s=duration, episode_ids=manifests[key]['episode_ids'])
@@ -416,7 +419,7 @@ def main():
             '--split', 'sealed', '--mode', 'formal', '--checkpoint-file', str(source),
             '--expected-commit', commit, '--output', str(paths['sealed']),
             '--duration', '20', '--task', experiment.cfg['experiment'], '--headless',
-            '--num_envs', '8', '--seed', '705', '--sim_device', 'cuda:0', '--rl_device', 'cuda:0',
+            '--num_envs', '8', '--seed', '706', '--sim_device', 'cuda:0', '--rl_device', 'cuda:0',
             '--pipeline', 'gpu', '--armature_mode', 'nominal',
             '--exclude-cohort', str(paths['train']), '--exclude-cohort', str(paths['validation'])]
             +exclusion_args, cwd=str(repo))
@@ -427,7 +430,7 @@ def main():
         if not sealed_audit['deduplication']['passed']:
             raise ValueError('Sealed native initial states/history overlap protected cohorts')
         report['sealed_cohort'] = dict(artifact_name=paths['sealed'].name,
-            sha256=file_sha(paths['sealed']), seed=705, num_envs=8, duration_s=20,
+            sha256=file_sha(paths['sealed']), seed=706, num_envs=8, duration_s=20,
             split='sealed', fit_eligible=False, episodes=sealed_audit['episodes'],
             deduplication_passed=True, holdout_not_used_for_fitting=True)
         subprocess.check_call(sealed_recording_command(source=source, head=paths['head'],
@@ -445,7 +448,7 @@ def main():
             raise ValueError('Actual sealed physical pair differs from the bound native request')
         report['sealed_policy'] = dict(artifact_name=paths['sealed_policy'].name,
             sha256=file_sha(paths['sealed_policy']), type=sealed_policy['type'],
-            mode='formal', seed=705, num_envs=8, duration_s=60,
+            mode='formal', seed=706, num_envs=8, duration_s=60,
             head_artifact_sha256=report['head_sha256'], source_checkpoint_sha256=SOURCE_SHA,
             sealed_cohort_sha256=report['sealed_cohort']['sha256'],
             effectiveness_verified=False, dr_unlocked=False)

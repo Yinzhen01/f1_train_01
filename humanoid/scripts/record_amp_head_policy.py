@@ -47,7 +47,7 @@ def require_candidate_admission(artifact, mode):
         if artifact is not None:
             raise ValueError('New recorder smoke is source-only, not candidate quality evidence')
         return True
-    if (not isinstance(artifact, dict) or artifact.get('artifact_kind') != 'actor_head_offline_v1'
+    if (not isinstance(artifact, dict) or artifact.get('artifact_kind') != 'actor_head_offline_v2'
             or artifact.get('provenance', {}).get('mode') != 'formal'
             or artifact['provenance'].get('offline_admitted') is not True
             or type(artifact['provenance'].get('offline_admitted')) is not bool
@@ -172,7 +172,7 @@ def _native_main(extra, remaining):
     validate_source_state(state, experiment.identity())
     if args.task != experiment.cfg['experiment'] or state_fingerprint(state['model_state_dict']) != SOURCE_MODEL_SHA:
         raise ValueError('Wrong original110 task/model identity')
-    config = json.loads((repo/'configs/amp/head_smooth_v1.json').read_text(encoding='utf-8'))
+    config = json.loads((repo/'configs/amp/head_smooth_v2.json').read_text(encoding='utf-8'))
     exclusions, source_proof, source_manifest = registered_source_exclusions(
         repo, repo/config['source_exclusions']['path'], experiment.identity())
     artifact, head_sha, archive_audit = None, None, None

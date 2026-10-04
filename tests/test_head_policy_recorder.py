@@ -75,14 +75,15 @@ class HeadRecorderProtocolTests(unittest.TestCase):
 
     def test_candidate_requires_formal_and_true_offline_admission_after_strict_archive_gate(self):
         # Deliberately minimal synthetic admission fixture, NOT a valid archive.
-        artifact = dict(artifact_kind='actor_head_offline_v1', provenance=dict(
+        artifact = dict(artifact_kind='actor_head_offline_v2', provenance=dict(
             mode='formal', offline_admitted=True), effectiveness_verified=False, dr_unlocked=False)
         self.assertTrue(require_candidate_admission(artifact, 'formal'))
         self.assertTrue(require_candidate_admission(None, 'smoke'))
-        for changed in ('missing', 'kind', 'mode', 'failed', 'int_flag', 'effectiveness', 'dr'):
+        for changed in ('missing', 'kind', 'v1_kind', 'mode', 'failed', 'int_flag', 'effectiveness', 'dr'):
             value = copy.deepcopy(artifact)
             if changed == 'missing': value = None
             elif changed == 'kind': value['artifact_kind'] = 'native_ppo_checkpoint'
+            elif changed == 'v1_kind': value['artifact_kind'] = 'actor_head_offline_v1'
             elif changed == 'mode': value['provenance']['mode'] = 'smoke'
             elif changed == 'failed': value['provenance']['offline_admitted'] = False
             elif changed == 'int_flag': value['provenance']['offline_admitted'] = 1

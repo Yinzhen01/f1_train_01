@@ -20,7 +20,7 @@ import torch
 from .mu_temporal import state_fingerprint
 
 
-ARTIFACT_KIND = 'actor_head_offline_v1'
+ARTIFACT_KIND = 'actor_head_offline_v2'
 HEAD_SHAPES = {'actor.6.weight': (12, 128), 'actor.6.bias': (12,)}
 ORIGINAL110_PARENT = MappingProxyType(dict(
     source_task='TASK_20260926_110',
@@ -201,18 +201,21 @@ def _validate_provenance(provenance):
         if provenance[key] is not False:
             _fail('offline metadata cannot claim '+key)
     solver = provenance['solver']
-    constants = dict(kind='quadratic_direction_scaled_v1', temporal_weight=1., ridge=1e-6,
-                     filter_window=21, action_scale=.5, dtype='float64', solve_count=1)
-    _exact_keys(solver, tuple(constants)+('direction_scale',), 'solver')
+    constants = dict(kind='quadratic_direction_per_axis_v2', temporal_weight=1., ridge=1e-6,
+                     filter_window=21, action_scale=.5, dtype='float64', solve_count=1,
+                     direction_scope='per_output_axis_train_only')
+    _exact_keys(solver, tuple(constants)+('direction_scale_per_joint',), 'solver')
     for key, expected in constants.items():
         actual = solver[key]
         if isinstance(expected, (int, float)):
             _number(actual, 'solver '+key, integer=type(expected) is int)
         if actual != expected:
             _fail('changed solver '+key)
-    scale = _number(solver['direction_scale'], 'solver direction_scale')
-    if not 0 <= scale <= 1:
-        _fail('direction scale outside [0,1]')
+    scales = solver['direction_scale_per_joint']
+    if (type(scales) is not list or len(scales) != 12
+            or any(type(scale) is not float or not math.isfinite(scale)
+                   or not 0. <= scale <= 1. for scale in scales)):
+        _fail('direction scales must be exactly 12 finite floats in [0,1]')
     num_envs, duration_s = (4, 2) if provenance['mode'] == 'smoke' else (8, 20)
     budget = provenance['budget']
     _exact_keys(budget, ('num_envs', 'duration_s', 'fit_episode_count'), 'budget')
@@ -222,7 +225,7 @@ def _validate_provenance(provenance):
             _fail('offline mode/budget mismatch '+key)
     cohorts = provenance['cohorts']
     _exact_keys(cohorts, ('train', 'validation'), 'cohorts')
-    for split, seed in (('train', 305), ('validation', 505)):
+    for split, seed in (('train', 306), ('validation', 506)):
         cohort = cohorts[split]
         _exact_keys(cohort, ('sha256', 'seed', 'num_envs', 'duration_s', 'episode_ids'), split+' cohort')
         _sha(cohort['sha256'], split+' cohort')
@@ -230,7 +233,7 @@ def _validate_provenance(provenance):
             if _number(cohort[key], split+' '+key, integer=key != 'duration_s') != expected:
                 _fail('changed '+split+' cohort '+key)
         ids = cohort['episode_ids']
-        expected_ids = ['head_cohort_v1/%s/seed-%d/env-%d/episode-0' % (split, seed, i)
+        expected_ids = ['head_cohort_v2/%s/seed-%d/env-%d/episode-0' % (split, seed, i)
                         for i in range(num_envs)]
         if type(ids) is not list or ids != expected_ids:
             _fail('wrong/duplicate/sealed/source-regression '+split+' episode IDs')

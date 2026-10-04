@@ -13,7 +13,8 @@ import re
 import numpy as np
 
 
-SCHEMA = 'actor_head_offline_smoothing_v1'
+SCHEMA = 'actor_head_offline_smoothing_v2'
+DIRECTION_SCOPE = 'per_output_axis_train_only'
 HEAD_WEIGHT_KEY = 'actor.6.weight'
 HEAD_BIAS_KEY = 'actor.6.bias'
 HEAD_KEYS = (HEAD_WEIGHT_KEY, HEAD_BIAS_KEY)
@@ -233,18 +234,36 @@ def _solve(train, source, low_scales, curve_scales):
 
 
 def _limit_direction(train, source, solution):
+    """Bound each output column on every training row, never on validation.
+
+    An extreme direction in one ankle must not shrink the other eleven axes.
+    This is a predeclared per-axis line step, not a constrained QP or a search.
+    Float64 rounding backoff remains training-only; exported float32 breaches
+    are still rejected read-only, with no repair or second solve.
+    """
     direction = solution-source
-    peak = max(float(np.max(np.abs(ACTION_SCALE*row['design'].dot(direction)))) for row in train)
-    if not math.isfinite(peak):
-        raise ValueError('training direction is nonfinite')
-    scale = min(1., MAX_OUTPUT_CHANGE/peak) if peak > 0 else 1.
-    candidate = source+scale*direction
-    # A global backoff only compensates floating rounding of the *training* bound.
-    actual = max(float(np.max(np.abs(ACTION_SCALE*row['design'].dot(candidate-source)))) for row in train)
-    if actual > MAX_OUTPUT_CHANGE:
-        scale *= np.nextafter(MAX_OUTPUT_CHANGE/actual, 0.)
-        candidate = source+scale*direction
-    return candidate, scale, peak
+
+    def training_peaks(delta):
+        peaks = np.zeros(OUTPUT_WIDTH, dtype=np.float64)
+        for row in train:
+            values = ACTION_SCALE*row['design'].dot(delta)
+            if values.ndim != 2 or values.shape[1] != OUTPUT_WIDTH or not np.isfinite(values).all():
+                raise ValueError('training direction is nonfinite or has wrong output width')
+            peaks = np.maximum(peaks, np.max(np.abs(values), axis=0))
+        return peaks
+
+    peaks = training_peaks(direction)
+    scales = np.ones(OUTPUT_WIDTH, dtype=np.float64)
+    nonzero = peaks > 0
+    scales[nonzero] = np.minimum(1., MAX_OUTPUT_CHANGE/peaks[nonzero])
+    candidate = source+scales*direction
+    # Only columns with a rounding breach receive a float64 training backoff.
+    actual = training_peaks(candidate-source)
+    over = actual > MAX_OUTPUT_CHANGE
+    if np.any(over):
+        scales[over] *= np.nextafter(MAX_OUTPUT_CHANGE/actual[over], 0.)
+        candidate = source+scales*direction
+    return candidate, scales, peaks
 
 
 def _summary(u, curve_scales, action_clip):
@@ -371,7 +390,7 @@ def fit_head_smoothing(train_episodes, validation_episodes, source_weight, sourc
     """Solve once on training only, then audit untouched independent validation.
 
     Coefficients are fixed, not a validation-search API. Validation never affects
-    scales, the normal equations, or the single source-to-solution direction.
+    scales, the normal equations, or the per-axis source-to-solution step.
     Check the actual exported float32 head with ``evaluate_head_candidate`` and
     its complete model state with ``validate_head_only_change``. Neither offline
     mathematical audit replaces independent original closed-loop evaluation.
@@ -383,10 +402,11 @@ def fit_head_smoothing(train_episodes, validation_episodes, source_weight, sourc
         train_episodes, validation_episodes, source_weight, source_bias, source_identity,
         action_clip, forbidden_cohort_ids, forbidden_episode_digests)
     solution = _solve(train, source, scales[0], scales[1])
-    candidate, scale, unconstrained_peak = _limit_direction(train, source, solution)
+    candidate, direction_scales, unconstrained_peaks = _limit_direction(train, source, solution)
     report = _candidate_report(identity, clip, source, train, validation, candidate, scales)
     report.update(audit_origin='float64_closed_form_training', candidate_head_dtype='float64',
-        direction_scale=float(scale), unconstrained_training_output_change_peak_rad=unconstrained_peak)
+        direction_scope=DIRECTION_SCOPE, direction_scale_per_joint=direction_scales.tolist(),
+        unconstrained_training_output_change_peak_per_joint_rad=unconstrained_peaks.tolist())
     return HeadSmoothingResult(candidate[:-1].T.copy(), candidate[-1].copy(), report)
 
 

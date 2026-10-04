@@ -261,14 +261,14 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
     for role in ('validation', 'sealed'):
         same(numerical_contexts[role], numerical_contexts['train'],
              'actual '+role+'/train source numerical context')
-    contract = sealed_recorder_contract('formal', 705, 8, 60.)
+    contract = sealed_recorder_contract('formal', 706, 8, 60.)
     constants = dict(contract, code_commit=commit, implementation_fingerprint=fingerprint,
         source_identity=identity, parent_checkpoint_sha256=binding['file_sha256'],
         parent_model_state_sha256=binding['model_state_sha256'],
         head_artifact_sha256=head_sha,
         candidate_model_state_sha256=archive['candidate_model_state_sha256'],
         cohorts=inputs['cohorts'], cohort_audit=inputs,
-        evaluation_protocol='new_reference8_seed705_source_head_paired60',
+        evaluation_protocol='new_reference8_seed706_source_head_paired60',
         array_naming='source_reference_* and candidate_reference_* retain native reference field semantics',
         process_isolation='source and candidate run in separate fresh native processes/simulators',
         capture='all eight first-episode prefixes, terminal ticks and invalid tails; no survivor selection')
@@ -278,11 +278,11 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
             'physical pair claims PPO continuation')
     sealed = cohorts['sealed']
     same(sealed_reference, dict(artifact_name='model_7100006.pt', sha256=sealed['sha256'],
-        seed=705, num_envs=8, duration_s=20, split='sealed', fit_eligible=False,
+        seed=706, num_envs=8, duration_s=20, split='sealed', fit_eligible=False,
         episodes=inputs['audits']['sealed']['episodes'], deduplication_passed=True,
         holdout_not_used_for_fitting=True), 'sixth artifact binding')
     same(pair_reference, dict(artifact_name='model_7100007.pt', sha256=pair_sha, type=SCHEMA,
-        mode='formal', seed=705, num_envs=8, duration_s=60,
+        mode='formal', seed=706, num_envs=8, duration_s=60,
         head_artifact_sha256=manifest['head_artifact_sha256'],
         source_checkpoint_sha256=binding['file_sha256'], sealed_cohort_sha256=sealed['sha256'],
         effectiveness_verified=False, dr_unlocked=False), 'seventh artifact binding')
@@ -341,7 +341,7 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
         cases[arm] = dict(manifest=arm_manifest, arrays=arm_arrays)
         logs[arm] = dict(start=dict(type=ARM_SCHEMA, arm=arm, code_commit=commit,
             parent_checkpoint_sha256=binding['file_sha256'], head_artifact_sha256=manifest['head_artifact_sha256'],
-            policy_model_state_sha256=arm_manifest['policy_model_state_sha256'], num_envs=8, seed=705,
+            policy_model_state_sha256=arm_manifest['policy_model_state_sha256'], num_envs=8, seed=706,
             duration_s=60., control_dt=arm_manifest['runtime']['control_dt'],
             physics_dt=arm_manifest['runtime']['physics_dt'], no_training=True),
             complete=dict(type=ARM_SCHEMA, arm=arm, episodes=result['episodes'],

@@ -99,7 +99,7 @@ def fixture():
     for arm in ('source', 'candidate'):
         manifest, arrays = arm_fixture(arm, inputs, cohorts['sealed']['arrays'], ticks=620)
         environment = copy.deepcopy(source['environment'])
-        environment['seed'] = 705
+        environment['seed'] = 706
         environment['env'].update(num_envs=8, episode_length_s=60.1)
         runtime = copy.deepcopy(source['runtime'])
         runtime['physics_sim_parameters'] = native_sim_fixture(environment['sim'])
@@ -124,18 +124,18 @@ def fixture():
         arrays['reference_physics_raw_body_state'][:, :, 0] = arrays['reference_root_state'][:, 0, None]
         arrays['reference_physics_raw_body_state'][:, :, 1:] = arrays['reference_foot_state'][:, 0, None]
         arms[arm] = dict(manifest=manifest, arrays=arrays)
-    contract = sealed_recorder_contract('formal', 705, 8, 60.)
+    contract = sealed_recorder_contract('formal', 706, 8, 60.)
     manifest, arrays = assemble_sealed_pair(arms['source']['manifest'], arms['source']['arrays'],
         arms['candidate']['manifest'], arms['candidate']['arrays'], contract=contract, identity=IDENTITY,
         code_commit=COMMIT, implementation_fingerprint=IMPLEMENTATION, head_sha256=HEAD_SHA,
         candidate_model_sha256=CANDIDATE_SHA, inputs=inputs, sealed_arrays=cohorts['sealed']['arrays'],
         source_runtime_manifest=source, arm_file_shas=dict(source='a'*64, candidate='b'*64))
     reference6 = dict(artifact_name='model_7100006.pt', sha256=cohorts['sealed']['sha256'],
-        seed=705, num_envs=8, duration_s=20, split='sealed', fit_eligible=False,
+        seed=706, num_envs=8, duration_s=20, split='sealed', fit_eligible=False,
         episodes=inputs['audits']['sealed']['episodes'], deduplication_passed=True,
         holdout_not_used_for_fitting=True)
     reference7 = dict(artifact_name='model_7100007.pt', sha256='d'*64,
-        type=sealed_audit.SCHEMA, mode='formal', seed=705, num_envs=8, duration_s=60,
+        type=sealed_audit.SCHEMA, mode='formal', seed=706, num_envs=8, duration_s=60,
         head_artifact_sha256=HEAD_SHA, source_checkpoint_sha256=SOURCE_SHA,
         sealed_cohort_sha256=cohorts['sealed']['sha256'], effectiveness_verified=False, dr_unlocked=False)
     vertices = np.array([[x, y, z] for x in (-.05, .05) for y in (-.03, .03)
@@ -203,7 +203,7 @@ class SealedArtifactAuditTests(unittest.TestCase):
                 sealed_audit.source_proof_equal(self.options['source_proof'], wrong)
 
     def test_actual_shapes_dtype_full_initial_and_extra_arrays_rejected(self):
-        contract = sealed_recorder_contract('formal', 705, 8, 60.)
+        contract = sealed_recorder_contract('formal', 706, 8, 60.)
         original = {k[len('source_'):]: v for k, v in self.arrays.items() if k.startswith('source_')}
         for mutation in ('raw9', 'fifteen', 'intmask', 'full3101', 'extra'):
             arrays = dict(original)
@@ -271,6 +271,18 @@ class SealedArtifactAuditTests(unittest.TestCase):
             else: manifest['arms']['candidate']['arm_file_sha256'] = manifest['arms']['source']['arm_file_sha256']
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 sealed_audit.audit_sealed_artifacts(manifest, self.arrays, **options)
+
+    def test_legacy_sealed_seed_and_pair_evaluation_protocol_rejected(self):
+        for field, value in (('seed', 705),
+                             ('evaluation_protocol', 'new_reference8_seed705_source_head_paired60')):
+            manifest = copy.deepcopy(self.manifest)
+            manifest[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                sealed_audit.audit_sealed_artifacts(manifest, self.arrays, **self.options)
+        options = dict(self.options)
+        options['sealed_reference'] = dict(options['sealed_reference'], seed=705)
+        with self.assertRaises(ValueError):
+            sealed_audit.audit_sealed_artifacts(self.manifest, self.arrays, **options)
 
     def test_seven_file_log_actual_chronology_all_receipts(self):
         report, audits, policy, text = self.log_fixture()

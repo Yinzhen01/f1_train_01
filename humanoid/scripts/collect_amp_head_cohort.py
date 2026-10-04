@@ -21,13 +21,13 @@ import sys
 import numpy as np
 
 
-SCHEMA = 'head_cohort_v1'
+SCHEMA = 'head_cohort_v2'
 SOURCE_TASK = 'TASK_20260926_110'
 SOURCE_SHA = '07c0f5b0a0b50fe57b9c42fe5743efad1d4bda9ce806c64be88ea01193446f31'
 SOURCE_MODEL_SHA = 'c06fbd97e32a483d46a2738014215de2721ad7db4b2b86547645ab72d4c555bc'
 SOURCE_ENDPOINT_SHA = 'de77d4a0c85cd581ae9dc9418d3fbce144730749b9f746f93b9671ec122a833b'
 SOURCE_CONFIG = 'configs/amp/lafan_walk02_sustain_control.json'
-SEEDS = dict(train=305, validation=505, sealed=705)
+SEEDS = dict(train=306, validation=506, sealed=706)
 BUDGETS = dict(smoke=(4, 2.), formal=(8, 20.))
 HISTORY = 66
 OBS = 47
@@ -529,7 +529,7 @@ def add_prior_exclusions(path, contract, identity, index, torch):
 def registered_exclusion_path(repo, requested):
     """A published fixed config owns the hash; argv cannot substitute a hash."""
     repo = Path(repo).resolve()
-    config = json.loads((repo/'configs/amp/head_smooth_v1.json').read_text(encoding='utf-8'))
+    config = json.loads((repo/'configs/amp/head_smooth_v2.json').read_text(encoding='utf-8'))
     spec = config.get('source_exclusions', {})
     if (set(spec) != {'path', 'sha256'}
             or spec['path'] != 'resources/amp_inputs/source110_exclusions_v1.npz'

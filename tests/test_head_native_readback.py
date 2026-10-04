@@ -16,11 +16,11 @@ class NativeSourceReadbackTests(unittest.TestCase):
     def fixture(self):
         source = source_fixture()
         environment = copy.deepcopy(source['environment'])
-        environment['seed'] = 305
+        environment['seed'] = 306
         environment['env'].update(num_envs=4, episode_length_s=2.1)
         runtime = copy.deepcopy(source['runtime'])
         runtime['physics_sim_parameters'] = native_sim_fixture(source['environment']['sim'])
-        return source, environment, runtime, cohort_contract('train', 'smoke', 305, 4, 2.)
+        return source, environment, runtime, cohort_contract('train', 'smoke', 306, 4, 2.)
 
     def test_real_float32_abi_representation_passes_without_rewriting_config(self):
         source, environment, runtime, contract = self.fixture()

@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 
 from humanoid.amp.head_smoothing import (Episode, HEAD_BIAS_KEY, HEAD_WEIGHT_KEY,
-    ACTION_SCALE, CONTROL_DT, DESIGN_WIDTH, HIDDEN_WIDTH, OUTPUT_WIDTH,
+    ACTION_SCALE, CONTROL_DT, DESIGN_WIDTH, HIDDEN_WIDTH, OUTPUT_WIDTH, DIRECTION_SCOPE, SCHEMA,
     _admission, _candidate_report, _limit_direction, _prepare_head_audit, _solve,
     _source_scales, curvature, episode_digest, evaluate_head_candidate,
     fit_head_smoothing, valid_hann, validate_head_only_change)
@@ -64,6 +64,12 @@ class HeadSmoothingMathematicsTests(unittest.TestCase):
         self.assertTrue(np.array_equal(old_w, w))
         self.assertTrue(np.array_equal(old_b, b))
         self.assertEqual(result.report['parameter_scalars'], 1548)
+        self.assertEqual(result.report['schema'], SCHEMA)
+        self.assertEqual(result.report['direction_scope'], DIRECTION_SCOPE)
+        self.assertEqual(len(result.report['direction_scale_per_joint']), OUTPUT_WIDTH)
+        self.assertEqual(len(result.report['unconstrained_training_output_change_peak_per_joint_rad']), OUTPUT_WIDTH)
+        self.assertNotIn('direction_scale', result.report)
+        self.assertNotIn('unconstrained_training_output_change_peak_rad', result.report)
         self.assertEqual(result.report['ppo_updates_added'], 0)
         self.assertFalse(result.report['optimizer_state_reused'])
         self.assertFalse(result.report['closed_loop_verified'])
@@ -79,7 +85,9 @@ class HeadSmoothingMathematicsTests(unittest.TestCase):
         second = fit(validation=[episode('different', 'independent_val', 1.9, gain=100., seed=7)])
         self.assertTrue(np.array_equal(first.candidate_weight, second.candidate_weight))
         self.assertTrue(np.array_equal(first.candidate_bias, second.candidate_bias))
-        for key in ('direction_scale', 'low_frequency_scales_rad', 'curvature_scales_rad_s2'):
+        for key in ('direction_scope', 'direction_scale_per_joint',
+                'unconstrained_training_output_change_peak_per_joint_rad',
+                'low_frequency_scales_rad', 'curvature_scales_rad_s2'):
             self.assertEqual(first.report[key], second.report[key])
         self.assertFalse(second.report['admitted'])
         self.assertTrue(any('output_change_exceeds' in reason for reason in second.report['rejection_reasons']))
@@ -109,18 +117,70 @@ class HeadSmoothingMathematicsTests(unittest.TestCase):
             rhs = (keep+regularization).dot(source[:, joint])
             np.testing.assert_allclose(normal.dot(solution[:, joint]), rhs, atol=1e-9, rtol=1e-9)
 
-    def test_direction_is_single_global_train_bounded_and_identity_is_safe(self):
+    def test_direction_is_per_axis_train_bounded_and_identity_is_safe(self):
         train, _, w, b = fixture()
         rows, source = [dict(design=train[0].design)], np.vstack((w.T, b))
-        candidate, scale, peak = _limit_direction(rows, source, source+100.)
-        self.assertGreater(peak, .05)
-        self.assertGreater(scale, 0.)
-        self.assertLess(scale, 1.)
-        np.testing.assert_allclose(candidate-source, scale*100., atol=1e-14)
+        candidate, scales, peaks = _limit_direction(rows, source, source+100.)
+        self.assertTrue(np.all(peaks > .05))
+        self.assertTrue(np.all(scales > 0.))
+        self.assertTrue(np.all(scales < 1.))
+        np.testing.assert_allclose(candidate-source, np.broadcast_to(scales*100., source.shape), atol=1e-14)
         self.assertLessEqual(float(np.max(np.abs(.5*train[0].design.dot(candidate-source)))), .05+1e-12)
-        identity, scale, peak = _limit_direction(rows, source, source.copy())
+        identity, scales, peaks = _limit_direction(rows, source, source.copy())
         self.assertTrue(np.array_equal(identity, source))
-        self.assertEqual((scale, peak), (1., 0.))
+        np.testing.assert_array_equal(scales, np.ones(OUTPUT_WIDTH))
+        np.testing.assert_array_equal(peaks, np.zeros(OUTPUT_WIDTH))
+
+    def test_one_axis_extreme_cannot_shrink_other_axes_or_zero_directions(self):
+        rows = [dict(design=episode('training', 'new_train').design)]
+        source = np.zeros((DESIGN_WIDTH, OUTPUT_WIDTH), dtype=np.float64)
+        solved = source.copy()
+        solved[-1, [10, 0, 3]] = [2., .04, -.06]
+        candidate, scales, peaks = _limit_direction(rows, source, solved)
+        self.assertAlmostEqual(peaks[10], 1.)
+        self.assertAlmostEqual(scales[10], .05)
+        self.assertEqual(scales[0], 1.)
+        self.assertEqual(scales[3], 1.)
+        np.testing.assert_array_equal(candidate[:, 0], solved[:, 0])
+        np.testing.assert_array_equal(candidate[:, 3], solved[:, 3])
+        self.assertEqual(scales[1], 1.)
+        self.assertEqual(peaks[1], 0.)
+        solved[-1, 10] *= 100.
+        more_extreme, more_scales, _ = _limit_direction(rows, source, solved)
+        self.assertLess(more_scales[10], scales[10])
+        np.testing.assert_array_equal(more_extreme[:, [0, 3]], candidate[:, [0, 3]])
+
+    def test_limiter_uses_all_rows_of_all_training_episodes_per_axis(self):
+        first = episode('first', 'new_train').design.copy()
+        second = first.copy()
+        first[:, 0], second[:, 0] = 1., 1.
+        second[-1, 0] = 20.
+        rows = [dict(design=first), dict(design=second)]
+        source = np.zeros((DESIGN_WIDTH, OUTPUT_WIDTH), dtype=np.float64)
+        solved = source.copy()
+        solved[0, 2], solved[-1, 7] = .2, -.2
+        candidate, scales, peaks = _limit_direction(rows, source, solved)
+        np.testing.assert_allclose(peaks[[2, 7]], [2., .1], rtol=0, atol=1e-15)
+        np.testing.assert_allclose(scales[[2, 7]], [.025, .5], rtol=0, atol=1e-15)
+        for row in rows:
+            self.assertTrue(np.all(np.max(np.abs(.5*row['design'].dot(candidate-source)), axis=0) <= .05+1e-12))
+        permuted, reverse_scales, reverse_peaks = _limit_direction(rows[::-1], source, solved)
+        np.testing.assert_array_equal(permuted, candidate)
+        np.testing.assert_array_equal(reverse_scales, scales)
+        np.testing.assert_array_equal(reverse_peaks, peaks)
+
+    def test_nonfinite_direction_is_refused_without_other_axis_fallback(self):
+        source = np.zeros((DESIGN_WIDTH, OUTPUT_WIDTH), dtype=np.float64)
+        bad = source.copy()
+        bad[0, 10] = np.nan
+        with self.assertRaisesRegex(ValueError, 'nonfinite'):
+            _limit_direction([dict(design=episode('train', 'new_train').design)], source, bad)
+
+    def test_fit_still_calls_one_solve_and_does_not_choose_on_validation(self):
+        with patch('humanoid.amp.head_smoothing._solve', wraps=_solve) as solver:
+            result = fit()
+        self.assertEqual(solver.call_count, 1)
+        self.assertEqual(result.report['direction_scope'], 'per_output_axis_train_only')
 
     def test_episode_weight_not_long_episode_sample_weight(self):
         train, val, w, b = fixture()
@@ -272,6 +332,8 @@ class ExportedHeadAuditTests(unittest.TestCase):
         self.assertFalse(actual['candidate_adjusted'])
         self.assertEqual(actual['audit_origin'], 'exported_float32_head_readback')
         self.assertNotIn('direction_scale', actual)
+        self.assertNotIn('direction_scale_per_joint', actual)
+        self.assertNotIn('unconstrained_training_output_change_peak_per_joint_rad', actual)
         self.assertTrue(np.array_equal(cw, before_w))
         self.assertTrue(np.array_equal(cb, before_b))
         for key in ('low_frequency_scales_rad', 'curvature_scales_rad_s2', 'low_frequency_scale_floor_rad',

@@ -30,7 +30,7 @@ SOURCE = ROOT.parent/'f1-amp-sustain'/'outputs'/'amp-sustain'/\
 
 def fixture():
     """4x2 smoke-shaped synthetic arrays; no simulator or fabricated provenance."""
-    contract = cohort_contract('train', 'smoke', 305, 4, 2.)
+    contract = cohort_contract('train', 'smoke', 306, 4, 2.)
     t, n = 200, 4
     singles = np.empty((t, n, OBS), dtype=np.float32)
     for tick in range(t):
@@ -82,9 +82,21 @@ def bytes_snapshot(value):
 
 
 class CohortProtocolTests(unittest.TestCase):
+    def test_v2_protocol_rejects_all_legacy_seeds_not_claiming_novelty(self):
+        self.assertEqual(SCHEMA, 'head_cohort_v2')
+        for split, old_seed, new_seed in (('train', 305, 306),
+                                         ('validation', 505, 506), ('sealed', 705, 706)):
+            for mode, n, duration in (('smoke', 4, 2.), ('formal', 8, 20.)):
+                with self.subTest(split=split, mode=mode), self.assertRaises(ValueError):
+                    cohort_contract(split, mode, old_seed, n, duration)
+            with self.assertRaises(ValueError):
+                episode_id(split, old_seed, 0)
+            self.assertEqual(episode_id(split, new_seed, 0),
+                'head_cohort_v2/%s/seed-%d/env-0/episode-0' % (split, new_seed))
+
     def test_only_registered_reference_seeds_and_exact_budgets(self):
         self.assertEqual(canonical_split('val'), 'validation')
-        for split, seed in (('train', 305), ('validation', 505), ('sealed', 705)):
+        for split, seed in (('train', 306), ('validation', 506), ('sealed', 706)):
             for mode, n, duration in (('smoke', 4, 2.), ('formal', 8, 20.)):
                 contract = cohort_contract(split, mode, seed, n, duration)
                 self.assertEqual(contract['type'], SCHEMA)
@@ -93,9 +105,9 @@ class CohortProtocolTests(unittest.TestCase):
                 self.assertNotIn('initialization', contract)
                 self.assertEqual(len(set(contract['episode_ids'])), n)
                 self.assertEqual(contract['episode_ids'][0], episode_id(split, seed, 0))
-        for args in (('train', 'smoke', 5, 4, 2.), ('train', 'smoke', 305, 8, 2.),
-                     ('train', 'formal', 305, 8, 60.), ('standing', 'smoke', 305, 4, 2.),
-                     ('train', 'smoke', True, 4, 2.), ('train', 'smoke', 305, True, 2.)):
+        for args in (('train', 'smoke', 5, 4, 2.), ('train', 'smoke', 306, 8, 2.),
+                     ('train', 'formal', 306, 8, 60.), ('standing', 'smoke', 306, 4, 2.),
+                     ('train', 'smoke', True, 4, 2.), ('train', 'smoke', 306, True, 2.)):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 cohort_contract(*args)
 
@@ -183,7 +195,7 @@ class CohortProtocolTests(unittest.TestCase):
         self.assertEqual(proof['overlaps'][0]['kind'], 'initial_state')
         exclusions = empty_exclusion_index()
         exclusions['ready_full_history'][own[0]['ready_full_history'][0]['sha256']] = [
-            'head_cohort_v1/validation/seed-505/env-0/episode-0']
+            'head_cohort_v2/validation/seed-506/env-0/episode-0']
         _, proof = fingerprint_cohort(arrays, contract, ready, exclusions)
         self.assertFalse(proof['passed'])
         self.assertEqual(proof['overlaps'][0]['kind'], 'ready_full_history')
@@ -202,7 +214,7 @@ class CohortProtocolTests(unittest.TestCase):
         self.assertTrue(any(row['kind'] == 'initial_state' for row in proof['overlaps']))
 
     def test_formal_admission_cannot_drop_a_failed_environment_or_fit_sealed_smoke(self):
-        contract = cohort_contract('train', 'formal', 305, 8, 20.)
+        contract = cohort_contract('train', 'formal', 306, 8, 20.)
         rows = [dict(fit_eligible=True) for _ in range(8)]
         self.assertTrue(fit_admission(contract, rows, {'exact': True}, {'passed': True}))
         bad = copy.deepcopy(rows); bad[3]['fit_eligible'] = False
@@ -210,8 +222,8 @@ class CohortProtocolTests(unittest.TestCase):
         self.assertFalse(fit_admission(contract, rows[:-1], {'exact': True}, {'passed': True}))
         self.assertFalse(fit_admission(contract, rows, {'exact': True}, {'passed': False}))
         self.assertFalse(fit_admission(contract, rows, {'exact': False}, {'passed': True}))
-        for split, mode, seed, n, duration in (('sealed', 'formal', 705, 8, 20.),
-                                               ('train', 'smoke', 305, 4, 2.)):
+        for split, mode, seed, n, duration in (('sealed', 'formal', 706, 8, 20.),
+                                               ('train', 'smoke', 306, 4, 2.)):
             current = cohort_contract(split, mode, seed, n, duration)
             self.assertFalse(fit_admission(current, [dict(fit_eligible=True)]*n,
                 {'exact': True}, {'passed': True}))
@@ -225,7 +237,7 @@ class CohortProtocolTests(unittest.TestCase):
                 source_exclusions(path, {}, None)
 
     def test_native_config_pd_and_physx_readback_only_allow_registered_collection_changes(self):
-        contract = cohort_contract('train', 'smoke', 305, 4, 2.)
+        contract = cohort_contract('train', 'smoke', 306, 4, 2.)
         physx = dict(solver_type=1, num_position_iterations=4, num_velocity_iterations=0,
             contact_offset=.01, rest_offset=0., max_depenetration_velocity=1., contact_collection=2)
         environment = dict(seed=5, env=dict(num_envs=16, episode_length_s=60.1, frame_stack=66),
@@ -236,7 +248,7 @@ class CohortProtocolTests(unittest.TestCase):
             control_dt=10*native_dt, physics_dt=native_dt)
         source = dict(environment=environment, runtime=runtime)
         current = copy.deepcopy(environment)
-        current.update(seed=305)
+        current.update(seed=306)
         current['env'].update(num_envs=4, episode_length_s=2.1)
         actual_runtime = copy.deepcopy(runtime)
         read_physx = copy.deepcopy(physx)
@@ -263,7 +275,7 @@ class CohortProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixed = root/'resources/amp_inputs/source110_exclusions_v1.npz'
-            config_path = root/'configs/amp/head_smooth_v1.json'
+            config_path = root/'configs/amp/head_smooth_v2.json'
             fixed.parent.mkdir(parents=True); config_path.parent.mkdir(parents=True)
             fixed.write_bytes(b'synthetic immutable-index protocol fixture, not actual source')
             spec = dict(path='resources/amp_inputs/source110_exclusions_v1.npz', sha256=file_sha(fixed))
@@ -285,7 +297,7 @@ class CohortProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixed = root/'resources/amp_inputs/source110_exclusions_v1.npz'
-            config_path = root/'configs/amp/head_smooth_v1.json'
+            config_path = root/'configs/amp/head_smooth_v2.json'
             fixed.parent.mkdir(parents=True); config_path.parent.mkdir(parents=True)
             fixed.write_bytes(b'index interface fixture, not actual source provenance')
             digest = file_sha(fixed)

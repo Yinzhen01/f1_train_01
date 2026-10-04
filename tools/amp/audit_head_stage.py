@@ -43,7 +43,7 @@ from tools.amp.audit_head_sealed import (
     ARM_START, ARM_COMPLETE, PAIR_COMPLETE, audit_sealed_artifacts,
     metrics_for_case)
 
-SCHEMA = 'head_stage_artifact_audit_v1'
+SCHEMA = 'head_stage_artifact_audit_v2'
 START, COHORT, COMPLETE = ('[head-smooth-start] ', '[head-cohort-complete] ',
                             '[head-smooth-complete] ')
 INDEX_SHA = 'cf621dc289c74796e37d4d6f547308a17808d4e96c53fb2edb87339f0b326df2'
@@ -523,6 +523,38 @@ def _parity_record(value, arrays, capture, hardware):
         _same(context[key], hardware[key], 'native numerical context/hardware '+key)
 
 
+def _fit_direction_record(fitted, solver):
+    """Check archived train-only axis evidence without solving or repairing it."""
+    require(type(fitted) is dict and fitted.get('schema') == 'actor_head_offline_smoothing_v2'
+            and fitted.get('audit_origin') == 'float64_closed_form_training'
+            and fitted.get('candidate_head_dtype') == 'float64'
+            and type(fitted.get('admitted')) is bool,
+            'wrong recorded float64 solve schema/scope')
+    require('direction_scale' not in fitted and
+            'unconstrained_training_output_change_peak_rad' not in fitted,
+            'legacy global direction evidence is forbidden')
+    scope = 'per_output_axis_train_only'
+    require(fitted.get('direction_scope') == scope and type(solver) is dict and
+            solver.get('kind') == 'quadratic_direction_per_axis_v2' and
+            solver.get('direction_scope') == scope, 'wrong recorded per-axis train-only scope')
+    scales = fitted.get('direction_scale_per_joint')
+    peaks = fitted.get('unconstrained_training_output_change_peak_per_joint_rad')
+    for name, values in (('direction scales', scales), ('unconstrained training peaks', peaks)):
+        require(type(values) is list and len(values) == 12 and
+                all(type(value) is float and math.isfinite(value) for value in values),
+                'invalid recorded per-axis '+name+' shape/type')
+    require(all(0. <= value <= 1. for value in scales) and all(value >= 0. for value in peaks),
+            'invalid recorded per-axis direction/peak range')
+    _same(scales, solver.get('direction_scale_per_joint'), 'recorded per-axis provenance scales')
+    # A training floating-point backoff may only shorten its own column. The
+    # archived unscaled peak cannot justify a larger line step or a global one.
+    # The original float64 direction/candidate was not archived, so this is
+    # arithmetic consistency of recorded evidence, not independent refitting.
+    require(all(scale == 1. if peak == 0. else scale <= min(1., .05/peak)
+                for scale, peak in zip(scales, peaks)),
+            'recorded per-axis scale exceeds its training direction bound')
+
+
 def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report,
                      cloud_log, platform_info, expected_commit, repo=ROOT,
                      expected_parent=ORIGINAL110_PARENT, policy_rollout=None,
@@ -589,10 +621,10 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
     # RTX 4090's reported driver name is not proof of RTX 4090D silicon.
     hardware = start.get('native_hardware')
     require(validate_hardware_record(hardware) is True, 'native hardware validation did not pass')
-    for key, value in dict(schema='head_smooth_native_stage_v1', mode=mode,
+    for key, value in dict(schema='head_smooth_native_stage_v2', mode=mode,
             code_commit=expected_commit, implementation_fingerprint=fp, identity=identity,
             source_checkpoint_sha256=binding['file_sha256'], num_envs=n, duration_s=seconds,
-            seeds=dict(train=305, validation=505), ppo_updates_added=0, optimizer_state_reused=False,
+            seeds=dict(train=306, validation=506), ppo_updates_added=0, optimizer_state_reused=False,
             effectiveness_verified=False, dr_unlocked=False).items():
         _same(start.get(key), value, 'START.'+key)
     require(type(actual['solver_runs']) is int and actual['solver_runs'] == 1 and
@@ -625,7 +657,7 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
             require(data[name].shape == shape and data[name].dtype == np.float32,
                     'wrong source-protocol cohort key-body dimensions '+name)
         _source_proof(manifest['source_regression'], source_proof)
-        prior = [] if split == 'train' else [dict(sha256=hashes['train'], split='train', seed=305,
+        prior = [] if split == 'train' else [dict(sha256=hashes['train'], split='train', seed=306,
             num_envs=n, duration_s=seconds, episode_ids=manifests['train']['episode_ids'])]
         _same(manifest.get('previous_cohorts'), prior, split+' prior split proof')
         audit = audit_cohort(manifest, data, split=split, mode=mode, identity=identity,
@@ -671,19 +703,14 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         forbidden_cohort_ids=forbidden)
     _same(actual['exported_head'], exported, 'exported float32 metrics', approximate=True)
     fitted = actual['float64_fit']
-    require(fitted.get('audit_origin') == 'float64_closed_form_training' and
-            fitted.get('candidate_head_dtype') == 'float64' and type(fitted.get('admitted')) is bool and
-            fitted.get('direction_scale') == provenance['solver']['direction_scale'],
-            'wrong recorded float64 solve scope/direction')
-    solver_extra = {'audit_origin', 'candidate_head_dtype', 'direction_scale',
-                    'unconstrained_training_output_change_peak_rad'}
+    _fit_direction_record(fitted, provenance['solver'])
+    solver_extra = {'audit_origin', 'candidate_head_dtype', 'direction_scope',
+                    'direction_scale_per_joint',
+                    'unconstrained_training_output_change_peak_per_joint_rad'}
     exported_extra = {'audit_origin', 'candidate_head_dtype', 'candidate_identity',
                       'candidate_adjusted', 'solver_run'}
     require(set(fitted)-solver_extra == set(exported)-exported_extra,
             'recorded float64 solver report schema changed')
-    peak = fitted['unconstrained_training_output_change_peak_rad']
-    require(type(peak) in (int, float) and math.isfinite(peak) and peak >= 0,
-            'invalid recorded unconstrained solve peak')
     for key in set(exported)-exported_extra-{'admitted', 'rejection_reasons', 'train', 'validation',
             'train_normalized_curvature_squared', 'validation_normalized_curvature_squared'}:
         _same(fitted[key], exported[key], 'recorded fixed solve protocol '+key, approximate=True)
@@ -783,6 +810,12 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         cpu_forward_scope='Same per-tick cohort batch, but independently recorded CPU device/library '
             'context. CPU error below .001 neither reproduces nor certifies GPU numerical execution.',
         exported_float32_report=exported, recorded_float64_solver_admitted=fitted['admitted'],
+        recorded_float64_direction=dict(direction_scope=fitted['direction_scope'],
+            direction_scale_per_joint=fitted['direction_scale_per_joint'],
+            unconstrained_training_output_change_peak_per_joint_rad=
+                fitted['unconstrained_training_output_change_peak_per_joint_rad'],
+            evidence='Recorded train-only per-axis evidence; raw float64 solution not archived '
+                'or independently reconstructed. No audit solve or candidate adjustment.'),
         offline_admitted=admitted, formal_admission=False, solver_runs=1, auditor_solver_runs=0,
         logs=logs, logs_clean=logs['logs_clean'], effectiveness_verified=False, dr_unlocked=False,
         limitation='CPU source forward must independently meet .001, not equal GPU error numerically. '
@@ -798,8 +831,8 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
     if mode == 'smoke' and not synthetic:
         result['smoke_certificate'] = dict(schema=SMOKE_SCHEMA, mode='smoke', identity=identity,
             implementation_fingerprint=fp, native_verified=True, cohort_arrays_verified=True,
-            source_forward_verified=True, head_archive_verified=True, native_recorder_verified=True, train_seed=305,
-            validation_seed=505, num_envs=4, duration_s=2, solver_runs=1, formal_admission=False,
+            source_forward_verified=True, head_archive_verified=True, native_recorder_verified=True, train_seed=306,
+            validation_seed=506, num_envs=4, duration_s=2, solver_runs=1, formal_admission=False,
             source_checkpoint_sha256=binding['file_sha256'], source_model_state_sha256=binding['model_state_sha256'],
             platform_task_id=platform['task_id'], platform_terminal_status='5', code_commit=expected_commit,
             cloud_log_sha256=diagnostics['raw_log_sha256'], train_sha256=hashes['train'],

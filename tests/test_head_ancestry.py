@@ -323,11 +323,11 @@ class CertificateAncestryIntegrationTests(unittest.TestCase):
         cls.driver = load_driver()
 
     def certificate(self):
-        return dict(schema='head_smooth_native_smoke_audit_v1', mode='smoke',
+        return dict(schema='head_smooth_native_smoke_audit_v2', mode='smoke',
             identity={'synthetic': True}, implementation_fingerprint='e' * 64,
             native_verified=True, cohort_arrays_verified=True, source_forward_verified=True,
             head_archive_verified=True, native_recorder_verified=True,
-            train_seed=305, validation_seed=505, num_envs=4, duration_s=2, solver_runs=1,
+            train_seed=306, validation_seed=506, num_envs=4, duration_s=2, solver_runs=1,
             formal_admission=False, source_checkpoint_sha256=self.driver.SOURCE_SHA,
             source_model_state_sha256=self.driver.SOURCE_MODEL_SHA,
             platform_terminal_status='5', effectiveness_verified=False, dr_unlocked=False,

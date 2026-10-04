@@ -49,10 +49,10 @@ def invoke_nodes(nodes, namespace):
 
 
 def certificate():
-    return dict(schema='head_smooth_native_smoke_audit_v1', mode='smoke',
+    return dict(schema='head_smooth_native_smoke_audit_v2', mode='smoke',
         identity=copy.deepcopy(IDENTITY), implementation_fingerprint=FINGERPRINT,
         native_verified=True, cohort_arrays_verified=True, source_forward_verified=True,
-        head_archive_verified=True, native_recorder_verified=True, train_seed=305, validation_seed=505,
+        head_archive_verified=True, native_recorder_verified=True, train_seed=306, validation_seed=506,
         num_envs=4, duration_s=2, solver_runs=1, formal_admission=False,
         effectiveness_verified=False, dr_unlocked=False, code_commit=COMMIT,
         cloud_log_sha256='1'*64, train_sha256='2'*64, validation_sha256='3'*64,
@@ -77,10 +77,12 @@ class NewSmokeCertificateTests(unittest.TestCase):
         with patch.object(self.driver.subprocess, 'check_call', return_value=0) as ancestor:
             self.assertIsNone(self.validate(certificate()))
             ancestor.assert_called_once_with(['git', 'merge-base', '--is-ancestor', COMMIT, 'HEAD'], cwd=str(ROOT))
-        for changed in (dict(schema='mu_cloud_smoke_audit_v1'), dict(schema='amp_native_smoke_v1'),
+        for changed in (dict(schema='head_smooth_native_smoke_audit_v1'),
+                dict(schema='mu_cloud_smoke_audit_v1'), dict(schema='amp_native_smoke_v1'),
                 dict(mode='formal'), dict(implementation_fingerprint='6'*64),
                 dict(identity={'old_ppo_source': True}), dict(train_seed=105),
-                dict(validation_seed=305), dict(num_envs=32), dict(duration_s=60),
+                dict(train_seed=305), dict(validation_seed=505), dict(validation_seed=306),
+                dict(num_envs=32), dict(duration_s=60),
                 dict(solver_runs=2), dict(source_checkpoint_sha256='7'*64),
                 dict(source_model_state_sha256='8'*64), dict(platform_task_id='old_ppo_task'),
                 dict(platform_terminal_status='6')):
@@ -149,6 +151,17 @@ class NewSmokeCertificateTests(unittest.TestCase):
         with patch.object(self.driver.subprocess, 'check_call', return_value=0), self.assertRaises(ValueError):
             self.validate(value)
 
+    def test_actual_historical_092_v1_certificate_cannot_bootstrap_axis_v2(self):
+        # Read only the existing safe resource; no native logs or cloud access.
+        old = json.loads((ROOT/'resources/amp_admission/head_native_smoke_TASK_20261004_092.json')
+                         .read_text(encoding='utf-8'))
+        self.assertEqual(old['schema'], 'head_smooth_native_smoke_audit_v1')
+        with patch.object(self.driver.subprocess, 'check_call') as ancestor, \
+                self.assertRaisesRegex(ValueError, 'schema'):
+            self.driver.validate_smoke_certificate(old, identity=old['identity'],
+                fingerprint=old['implementation_fingerprint'], repo=ROOT)
+        ancestor.assert_not_called()
+
 
 class NativeRecorderRequestTests(unittest.TestCase):
     @classmethod
@@ -190,7 +203,7 @@ class NativeRecorderRequestTests(unittest.TestCase):
             task='source_task', sealed=Path('sealed.pt'), train=Path('train.pt'),
             validation=Path('validation.pt'))
         self.assertEqual(command[1:3], ['-m', 'humanoid.scripts.record_amp_head_sealed'])
-        for key, value in (('--mode', 'formal'), ('--num_envs', '8'), ('--seed', '705'),
+        for key, value in (('--mode', 'formal'), ('--num_envs', '8'), ('--seed', '706'),
                 ('--duration', '60'), ('--sealed-cohort', 'sealed.pt'),
                 ('--train-cohort', 'train.pt'), ('--validation-cohort', 'validation.pt')):
             self.assertEqual(command[command.index(key)+1], value)
@@ -210,7 +223,7 @@ class NativeRecorderRequestTests(unittest.TestCase):
             extra=SimpleNamespace(mode='smoke'), source=Path('source.pt'), commit=COMMIT,
             paths={'train': Path('train.pt')}, duration=2,
             experiment=SimpleNamespace(cfg={'experiment': 'source_task'}), num_envs=4,
-            SEEDS={'train': 305}, exclusion_args=['--source-exclusion-index', 'index.npz'])
+            SEEDS={'train': 306}, exclusion_args=['--source-exclusion-index', 'index.npz'])
         invoke_nodes([collection_command], namespace)
         sealed_gate = next(node for node in body if isinstance(node, ast.If)
             and any(isinstance(item, ast.Call) and isinstance(item.func, ast.Name)
@@ -250,6 +263,60 @@ class NativeRecorderRequestTests(unittest.TestCase):
 
 
 class DriverGuardStructureTests(unittest.TestCase):
+    def test_axis_v2_config_scope_and_new_predeclared_seeds_are_mandatory(self):
+        driver = module()
+        self.assertEqual(driver.CONFIG, 'configs/amp/head_smooth_v2.json')
+        self.assertEqual(driver.SMOKE_SCHEMA, 'head_smooth_native_smoke_audit_v2')
+        cfg = json.loads((ROOT/driver.CONFIG).read_text(encoding='utf-8'))
+        gate = next(node for node in main_node().body if isinstance(node, ast.If)
+            and any(isinstance(item, ast.Constant) and
+                item.value == 'Unregistered final-head experiment definition' for item in ast.walk(node)))
+        namespace = dict(cfg=cfg, SOURCE_CONFIG=driver.SOURCE_CONFIG,
+            ORIGINAL110_PARENT=dict(file_sha256=SOURCE_SHA, model_state_sha256=SOURCE_MODEL_SHA,
+                                   source_task='TASK_20260926_110'),
+            SEEDS=dict(train=306, validation=506, sealed=706))
+        invoke_nodes([gate], namespace)
+        changes = ({'schema': 'actor_head_offline_v1'},
+            {'solver': dict(temporal_weight=1., ridge=1e-6, fir_taps=21)},
+            {'solver': dict(cfg['solver'], direction_scope='global_training_only')},
+            {'seeds': dict(train=305, validation=505, sealed=705)},
+            {'dr_unlocked': True}, {'effectiveness_verified': True})
+        for change in changes:
+            changed = copy.deepcopy(cfg); changed.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                invoke_nodes([gate], dict(namespace, cfg=changed))
+
+    def test_native_start_v2_and_solver_provenance_use_only_axis_evidence(self):
+        start_node = next(node for node in main_node().body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'start' for target in node.targets))
+        namespace = dict(extra=SimpleNamespace(mode='smoke'), commit=COMMIT,
+            fingerprint=FINGERPRINT, hardware={'synthetic': True}, identity=IDENTITY,
+            file_sha=lambda path: SOURCE_SHA, source=Path('synthetic_source.pt'),
+            source_proof={'synthetic': True}, num_envs=4, duration=2)
+        invoke_nodes([start_node], namespace)
+        start = namespace['start']
+        self.assertEqual(start['schema'], 'head_smooth_native_stage_v2')
+        self.assertEqual(start['seeds'], dict(train=306, validation=506))
+        self.assertEqual(start['ppo_updates_added'], 0)
+        self.assertFalse(start['optimizer_state_reused'])
+        self.assertFalse(start['effectiveness_verified'])
+        self.assertFalse(start['dr_unlocked'])
+        assignment = next(node for node in ast.walk(main_node()) if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'provenance' for target in node.targets))
+        scales = [1., .5]+[.25]*10
+        namespace.update(fitted=SimpleNamespace(report=dict(direction_scope='per_output_axis_train_only',
+            direction_scale_per_joint=scales)), paths={s: Path(s+'.pt') for s in ('train', 'validation')},
+            SEEDS=dict(train=306, validation=506),
+            manifests={s: {'episode_ids': ['synthetic/'+s]} for s in ('train', 'validation')},
+            parities={s: {'max_abs_error': 0.} for s in ('train', 'validation')},
+            hashlib=__import__('hashlib'), math_bytes=b'synthetic-only', admitted=False)
+        invoke_nodes([assignment], namespace)
+        solver = namespace['provenance']['solver']
+        self.assertEqual(solver, dict(kind='quadratic_direction_per_axis_v2', temporal_weight=1.,
+            ridge=1e-6, filter_window=21, action_scale=.5, dtype='float64', solve_count=1,
+            direction_scope='per_output_axis_train_only', direction_scale_per_joint=scales))
+        self.assertNotIn('direction_scale', solver)
+
     def test_parent_matches_source_seed_backend_before_policy_and_native_batch_context(self):
         body = main_node().body
         seed = next(i for i, node in enumerate(body) if isinstance(node, ast.Expr)
@@ -362,7 +429,7 @@ class NativeArtifactRouteTests(unittest.TestCase):
         self.assertEqual(set(assignments), set(names))
         repo = Path('synthetic_repo')
         stamp = '20261004T110000Z'
-        experiment = 'f1_amp_head_smooth_v1'
+        experiment = 'f1_amp_head_axis_smooth_v2'
         offsets = dict(train=1, validation=2, head=3, report=4,
                        policy_probe=5, sealed=6, sealed_policy=7)
         for mode, number in (('smoke', 7000000), ('formal', 7100000)):
@@ -437,7 +504,8 @@ class DriverOneSolveReadbackTests(unittest.TestCase):
             statements.append(node)
         fitted = SimpleNamespace(candidate_weight=np.full((12, 128), .100000002, dtype=np.float64),
             candidate_bias=np.full(12, .030000002, dtype=np.float64),
-            report={'admitted': f64_pass, 'direction_scale': .5})
+            report={'admitted': f64_pass, 'direction_scope': 'per_output_axis_train_only',
+                    'direction_scale_per_joint': [.5]*12})
         solver = Mock(return_value=fitted)
         fake_torch = MemoryTorch()
         def verify(*args, **kwargs):
@@ -456,7 +524,7 @@ class DriverOneSolveReadbackTests(unittest.TestCase):
             arrays={'train': {}, 'validation': {}}, audits={'train': {}, 'validation': {}},
             fit_episodes=ep_builder, identity=IDENTITY,
             exclusions={'initial_state': {'x': ['source110/reference/env-0/episode-0',
-                'head_cohort_v1/train/seed-305/env-0/episode-0', 'head_cohort_v1/sealed/seed-705/env-0/episode-0']}},
+                'head_cohort_v2/train/seed-306/env-0/episode-0', 'head_cohort_v2/sealed/seed-706/env-0/episode-0']}},
             source_state=packet, fit_head_smoothing=solver, evaluate_head_candidate=exporter,
             env_cfg=SimpleNamespace(normalization=SimpleNamespace(clip_actions=100.)),
             identity_digest=lambda value: 'a'*64, io=io, torch=fake_torch, report={})
@@ -470,7 +538,7 @@ class DriverOneSolveReadbackTests(unittest.TestCase):
         self.assertEqual(builder.call_count, 2)
         self.assertEqual(solver.call_args.args[:2], (['whole_train_episode'], ['whole_validation_episode']))
         self.assertEqual(solver.call_args.kwargs['forbidden_cohort_ids'], [
-            'source110/reference/env-0/episode-0', 'head_cohort_v1/sealed/seed-705/env-0/episode-0'])
+            'source110/reference/env-0/episode-0', 'head_cohort_v2/sealed/seed-706/env-0/episode-0'])
         self.assertEqual(namespace['report']['solver_runs'], 1)
         self.assertEqual(namespace['report']['status'], 'offline_pass')
         self.assertTrue(namespace['report']['admitted_to_physical_test'])

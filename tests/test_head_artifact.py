@@ -54,16 +54,17 @@ def synthetic_provenance(mode='formal', admitted=True):
 
     def cohort(split, seed, sha):
         return dict(sha256=sha*64, seed=seed, num_envs=n, duration_s=duration,
-                    episode_ids=['head_cohort_v1/%s/seed-%d/env-%d/episode-0' % (split, seed, i)
+                    episode_ids=['head_cohort_v2/%s/seed-%d/env-%d/episode-0' % (split, seed, i)
                                  for i in range(n)])
 
     return dict(code_commit='a'*40, implementation_fingerprint='b'*64, mode=mode,
-                solver=dict(kind='quadratic_direction_scaled_v1', temporal_weight=1.,
+                solver=dict(kind='quadratic_direction_per_axis_v2', temporal_weight=1.,
                             ridge=1e-6, filter_window=21, action_scale=.5, dtype='float64',
-                            solve_count=1, direction_scale=.25),
+                            solve_count=1, direction_scope='per_output_axis_train_only',
+                            direction_scale_per_joint=[.25]*12),
                 budget=dict(num_envs=n, duration_s=duration, fit_episode_count=n),
-                cohorts=dict(train=cohort('train', 305, 'c'),
-                             validation=cohort('validation', 505, 'd')),
+                cohorts=dict(train=cohort('train', 306, 'c'),
+                             validation=cohort('validation', 506, 'd')),
                 source_parity=dict(full_obs_verified=True, hidden_verified=True,
                                    action_verified=True, max_abs_error=.0001),
                 report_sha256='e'*64, offline_admitted=admitted,
@@ -137,9 +138,9 @@ class OfflineHeadArtifactTests(unittest.TestCase):
             self.assertFalse(artifact['model_state_dict'][key].requires_grad)
             self.assertNotEqual(tensor.data_ptr(), artifact['model_state_dict'][key].data_ptr())
         # Caller mutation cannot silently modify any copied provenance/archive.
-        self.provenance['solver']['direction_scale'] = 1.
+        self.provenance['solver']['direction_scale_per_joint'][0] = 1.
         self.head['actor.6.weight'].data.fill_(2.)
-        self.assertEqual(artifact['provenance']['solver']['direction_scale'], .25)
+        self.assertEqual(artifact['provenance']['solver']['direction_scale_per_joint'], [.25]*12)
         self.validate(artifact)
 
     def test_every_nonhead_policy_tensor_mutation_rejected_even_with_rehashed_model(self):
@@ -335,8 +336,11 @@ class OfflineHeadArtifactTests(unittest.TestCase):
         for key, bad in (('kind', 'native_ppo'), ('dtype', 'float32'), ('ridge', 0.),
                          ('temporal_weight', .05), ('filter_window', 20),
                          ('solve_count', 2), ('solve_count', True), ('action_scale', 1.),
-                         ('direction_scale', -1.), ('direction_scale', 1.01),
-                         ('direction_scale', float('nan')), ('direction_scale', True)):
+                         ('direction_scope', 'global_train_only'),
+                         ('direction_scale_per_joint', [-1.]*12),
+                         ('direction_scale_per_joint', [1.01]*12),
+                         ('direction_scale_per_joint', [float('nan')]*12),
+                         ('direction_scale_per_joint', [True]*12)):
             artifact = self.assemble()
             artifact['provenance']['solver'][key] = bad
             self.reject(artifact)
@@ -345,6 +349,54 @@ class OfflineHeadArtifactTests(unittest.TestCase):
             artifact = self.assemble()
             artifact['provenance']['budget'][key] = bad
             self.reject(artifact)
+
+    def test_axis_v2_vector_has_exact_float12_shape_and_train_only_scope(self):
+        provenance = copy.deepcopy(self.provenance)
+        provenance['solver']['direction_scale_per_joint'] = [i/11. for i in range(12)]
+        artifact = self.assemble(provenance)
+        self.assertEqual(artifact['artifact_kind'], 'actor_head_offline_v2')
+        self.assertEqual(artifact['provenance']['solver']['direction_scale_per_joint'],
+                         [i/11. for i in range(12)])
+        self.validate(artifact)
+        for bad in (.25, None, tuple([.25]*12), [.25]*11, [.25]*13,
+                    [[.25]]*12, [0]*12, [True]*12, [float('inf')]*12,
+                    [float('nan')]*12, [torch.tensor(.25)]*12):
+            current = copy.deepcopy(artifact)
+            current['provenance']['solver']['direction_scale_per_joint'] = bad
+            with self.subTest(value_type=type(bad).__name__, value_repr=str(bad)[:40]):
+                self.reject(current)
+        for scope in ('global_train_only', 'per_output_axis_train_validation',
+                      'per_output_axis_sealed', None, True):
+            current = copy.deepcopy(artifact)
+            current['provenance']['solver']['direction_scope'] = scope
+            with self.subTest(scope=scope):
+                self.reject(current)
+
+    def test_legacy_head_scalar_and_cohort_cannot_be_auto_converted(self):
+        pristine = self.assemble()
+        for change in ('artifact_kind', 'solver_kind', 'scalar_extra', 'scalar_only',
+                       'cohort_prefix', 'train_seed', 'validation_seed'):
+            current = copy.deepcopy(pristine)
+            solver = current['provenance']['solver']
+            if change == 'artifact_kind':
+                current['artifact_kind'] = 'actor_head_offline_v1'
+            elif change == 'solver_kind':
+                solver['kind'] = 'quadratic_direction_scaled_v1'
+            elif change == 'scalar_extra':
+                solver['direction_scale'] = .25
+            elif change == 'scalar_only':
+                del solver['direction_scale_per_joint']
+                del solver['direction_scope']
+                solver['direction_scale'] = .25
+            elif change == 'cohort_prefix':
+                for cohort in current['provenance']['cohorts'].values():
+                    cohort['episode_ids'] = [v.replace('head_cohort_v2/', 'head_cohort_v1/')
+                                            for v in cohort['episode_ids']]
+            else:
+                split, seed = ('train', 305) if change == 'train_seed' else ('validation', 505)
+                current['provenance']['cohorts'][split]['seed'] = seed
+            with self.subTest(change=change):
+                self.reject(current)
 
     def test_train_validation_sealed_and_source_regression_ids_cannot_overlap(self):
         for change in ('same_hash', 'same_ids', 'duplicate', 'source', 'sealed', 'wrong_seed',
@@ -361,9 +413,9 @@ class OfflineHeadArtifactTests(unittest.TestCase):
             elif change == 'source':
                 train['episode_ids'][0] = 'source110/reference/env-0/episode-0'
             elif change == 'sealed':
-                val['episode_ids'][0] = 'head_cohort_v1/sealed/seed-705/env-0/episode-0'
+                val['episode_ids'][0] = 'head_cohort_v2/sealed/seed-706/env-0/episode-0'
             elif change == 'wrong_seed':
-                val['seed'] = 305
+                val['seed'] = 306
             elif change == 'wrong_envs':
                 train['num_envs'] = 4
             elif change == 'wrong_duration':

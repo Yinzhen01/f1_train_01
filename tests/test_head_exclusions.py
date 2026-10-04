@@ -251,7 +251,7 @@ class HeadExclusionIndexTests(unittest.TestCase):
             elif change == 'missing_coverage':
                 del index['initial_state'][digest]
             else:
-                index['initial_state'][digest] = ['head_cohort_v1/train/seed-305/env-0/episode-0']
+                index['initial_state'][digest] = ['head_cohort_v2/train/seed-306/env-0/episode-0']
             with self.subTest(change=change), self.assertRaises(ValueError):
                 write_exclusion_index(Path(self.temp.name)/(change+'.npz'), index, self.proof,
                                       identity=self.identity, builder_sha='a'*64)

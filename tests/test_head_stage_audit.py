@@ -141,7 +141,7 @@ def synthetic_pipeline(directory):
             env['env'].update(num_envs=4, episode_length_s=2.1)
             runtime['physics_sim_parameters'] = native_sim_fixture(env['sim'])
             prior = [] if split == 'train' else [dict(sha256=stage.file_sha(paths['train']),
-                split='train', seed=305, num_envs=4, duration_s=2., episode_ids=manifests['train']['episode_ids'])]
+                split='train', seed=306, num_envs=4, duration_s=2., episode_ids=manifests['train']['episode_ids'])]
             manifest = dict(contract, source_checkpoint_sha256=parent['file_sha256'],
                 source_model_state_sha256=parent['model_state_sha256'], identity=identity,
                 source_completed_updates=2500, code_commit=COMMIT, implementation_fingerprint=FP,
@@ -179,11 +179,12 @@ def synthetic_pipeline(directory):
     fitted = {key: copy.deepcopy(value) for key, value in exported.items() if key not in
               ('candidate_identity', 'candidate_adjusted', 'solver_run')}
     fitted.update(audit_origin='float64_closed_form_training', candidate_head_dtype='float64',
-                  direction_scale=0., unconstrained_training_output_change_peak_rad=0.)
-    start = dict(schema='head_smooth_native_stage_v1', mode='smoke', code_commit=COMMIT,
+                  direction_scope='per_output_axis_train_only', direction_scale_per_joint=[1.]*12,
+                  unconstrained_training_output_change_peak_per_joint_rad=[0.]*12)
+    start = dict(schema='head_smooth_native_stage_v2', mode='smoke', code_commit=COMMIT,
         native_hardware=hardware_fixture(),
         implementation_fingerprint=FP, identity=identity, source_checkpoint_sha256=parent['file_sha256'],
-        source_exclusions=proof, num_envs=4, duration_s=2., seeds=dict(train=305, validation=505),
+        source_exclusions=proof, num_envs=4, duration_s=2., seeds=dict(train=306, validation=506),
         ppo_updates_added=0, optimizer_state_reused=False, effectiveness_verified=False, dr_unlocked=False)
     report = dict(start=start, cohort_sha256={s: stage.file_sha(paths[s]) for s in manifests},
         source_parity=parities, effectiveness_verified=False, dr_unlocked=False, solver_runs=1,
@@ -196,7 +197,7 @@ def synthetic_pipeline(directory):
             duration_s=2., episode_ids=manifests[s]['episode_ids']) for s in manifests},
         source_parity=dict(full_obs_verified=True, hidden_verified=True, action_verified=True,
                            max_abs_error=max(row['max_abs_error'] for row in parities.values())))
-    provenance['solver']['direction_scale'] = 0.
+    provenance['solver']['direction_scale_per_joint'] = [1.]*12
     artifact = assemble_head_artifact(source_path, {k: old[k] for k in ('actor.6.weight', 'actor.6.bias')},
                                       provenance=provenance, expected_parent=parent)
     paths['head'] = directory/'model_7000003.pt'
@@ -317,6 +318,13 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         rng = torch.get_rng_state().clone()
         result = self.audit()
         facts = result['facts']
+        self.assertEqual(facts['schema'], 'head_stage_artifact_audit_v2')
+        self.assertEqual(facts['exported_float32_report']['schema'], 'actor_head_offline_smoothing_v2')
+        self.assertEqual(facts['recorded_float64_direction']['direction_scope'],
+                         'per_output_axis_train_only')
+        self.assertEqual(facts['recorded_float64_direction']['direction_scale_per_joint'], [1.]*12)
+        self.assertEqual(facts['recorded_float64_direction'][
+            'unconstrained_training_output_change_peak_per_joint_rad'], [0.]*12)
         self.assertTrue(facts['verified'])
         self.assertTrue(facts['synthetic_fixture_only'])
         self.assertFalse(facts['native_verified'])
@@ -482,6 +490,16 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         self.refresh_report_binding(report)
         with self.assertRaisesRegex(ValueError, 'source_archive'): self.audit()
 
+    def test_v1_stage_and_old_train_validation_seeds_are_rejected(self):
+        for change in ({'schema': 'head_smooth_native_stage_v1'},
+                       {'seeds': dict(train=305, validation=505)},
+                       {'seeds': dict(train=306, validation=505)}):
+            report = copy.deepcopy(self.fixture['report'])
+            report['start'].update(change)
+            self.refresh_report_binding(report)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'START'):
+                self.audit()
+
     def test_missing_fifth_artifact_and_tampered_policy_sha_rejected(self):
         with self.assertRaisesRegex(ValueError, 'fifth policy artifact'): self.audit(policy_rollout=None)
         self.args['policy_rollout'].write_bytes(self.snapshots['policy_rollout']+b'changed')
@@ -540,7 +558,7 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
             manifest, arrays = _read_bundle(self.args['train'], torch)
             if change == 'history': arrays['reference_full_obs'][90, 0, 0] += .1
             elif change == 'hidden': arrays['reference_actor_hidden'][90, 0, 0] += .1
-            elif change == 'seed': manifest['seed'] = 505
+            elif change == 'seed': manifest['seed'] = 506
             else: arrays['reference_initial_dof_pos'][0, 0] += .1
             bundle(self.args['train'], manifest, arrays)
             report = copy.deepcopy(self.fixture['report'])
@@ -590,6 +608,71 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         torch.save(dict(report_json=json.dumps(report)), self.args['report'])
         with self.assertRaisesRegex(ValueError, 'sealed physical-pair independent audit is pending'):
             self.audit()
+
+
+class RecordedAxisDirectionTests(unittest.TestCase):
+    """Pure synthetic record checks; never recreate the original f64 solve."""
+    def fixture(self):
+        fitted = dict(schema='actor_head_offline_smoothing_v2',
+            audit_origin='float64_closed_form_training', candidate_head_dtype='float64',
+            admitted=False, direction_scope='per_output_axis_train_only',
+            direction_scale_per_joint=[1., .5, .25]+[1.]*9,
+            unconstrained_training_output_change_peak_per_joint_rad=[0., .1, .2]+[.02]*9)
+        solver = dict(kind='quadratic_direction_per_axis_v2',
+            direction_scope='per_output_axis_train_only',
+            direction_scale_per_joint=copy.deepcopy(fitted['direction_scale_per_joint']))
+        return fitted, solver
+
+    def test_train_only_axis_scaling_and_downward_rounding_backoff(self):
+        fitted, solver = self.fixture()
+        stage._fit_direction_record(fitted, solver)
+        fitted['direction_scale_per_joint'][1] = float(np.nextafter(.5, 0.))
+        solver['direction_scale_per_joint'] = copy.deepcopy(fitted['direction_scale_per_joint'])
+        stage._fit_direction_record(fitted, solver)
+        self.assertNotIn('direction_scale', fitted)
+        self.assertNotIn('unconstrained_training_output_change_peak_rad', fitted)
+
+    def test_old_schema_global_scalar_scope_and_missing_evidence_are_rejected(self):
+        for change in ({'schema': 'actor_head_offline_smoothing_v1'},
+                {'direction_scale': .5}, {'unconstrained_training_output_change_peak_rad': .2},
+                {'direction_scope': 'global_training_only'}, {'direction_scope': 'validation'},
+                {'candidate_head_dtype': 'float32'}, {'admitted': 0}):
+            fitted, solver = self.fixture(); fitted.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                stage._fit_direction_record(fitted, solver)
+        for field in ('direction_scope', 'direction_scale_per_joint',
+                      'unconstrained_training_output_change_peak_per_joint_rad'):
+            fitted, solver = self.fixture(); fitted.pop(field)
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                stage._fit_direction_record(fitted, solver)
+
+    def test_exact_twelve_finite_genuine_floats_required_for_both_vectors(self):
+        for field in ('direction_scale_per_joint',
+                      'unconstrained_training_output_change_peak_per_joint_rad'):
+            invalid = (None, .5, (), [.1]*11, [.1]*13, [1]*12, [True]*12,
+                       [float('nan')]+[.1]*11, [float('inf')]+[.1]*11)
+            for value in invalid:
+                fitted, solver = self.fixture(); fitted[field] = value
+                with self.subTest(field=field, value_type=type(value).__name__), self.assertRaises(ValueError):
+                    stage._fit_direction_record(fitted, solver)
+
+    def test_scale_peak_range_and_training_bound_reject_invalid_values(self):
+        for field, index, value in (('direction_scale_per_joint', 1, -.1),
+                ('direction_scale_per_joint', 1, 1.1), ('direction_scale_per_joint', 1, .500001),
+                ('direction_scale_per_joint', 0, .9),
+                ('unconstrained_training_output_change_peak_per_joint_rad', 0, -.1)):
+            fitted, solver = self.fixture(); fitted[field][index] = value
+            solver['direction_scale_per_joint'] = copy.deepcopy(fitted['direction_scale_per_joint'])
+            with self.subTest(field=field, index=index, value=value), self.assertRaises(ValueError):
+                stage._fit_direction_record(fitted, solver)
+
+    def test_solver_scope_kind_and_exact_typed_scale_provenance_are_bound(self):
+        for change in ({'kind': 'quadratic_direction_scaled_v1'},
+                {'direction_scope': 'global_training_only'}, {'direction_scale_per_joint': [.5]*12},
+                {'direction_scale_per_joint': [1, .5, .25]+[1.]*9}):
+            fitted, solver = self.fixture(); solver.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                stage._fit_direction_record(fitted, solver)
 
 
 if __name__ == '__main__':

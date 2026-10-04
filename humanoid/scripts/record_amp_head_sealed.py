@@ -35,15 +35,15 @@ ARMS = ('source', 'candidate')
 
 
 def sealed_recorder_contract(mode, seed, num_envs, duration_s):
-    if (mode != 'formal' or type(seed) is not int or seed != 705
+    if (mode != 'formal' or type(seed) is not int or seed != 706
             or type(num_envs) is not int or num_envs != 8
             or isinstance(duration_s, bool) or duration_s != 60.):
-        raise ValueError('Sealed recorder requires formal reference8 seed705 for60s')
+        raise ValueError('Sealed recorder requires formal reference8 seed706 for60s')
     return dict(type=SCHEMA, mode=mode, seed=seed, num_envs=num_envs,
         duration_s=float(duration_s), fps=100, modes=['reference'],
         parent_completed_updates=2500, no_training=True, ppo_continuation=False,
         effectiveness_verified=False, dr_unlocked=False,
-        episode_ids=cohort_contract('sealed', 'formal', 705, 8, 20.)['episode_ids'])
+        episode_ids=cohort_contract('sealed', 'formal', 706, 8, 20.)['episode_ids'])
 
 
 def _sha(value, label):
@@ -118,7 +118,7 @@ def audit_sealed_inputs(cohorts, *, artifact, identity, code_commit,
 
 def initial_sealed_matches(arrays, sealed_arrays, episode_ids):
     """Exact dtype/shape/value/row matches, signed zero equivalent on copies."""
-    expected_ids = cohort_contract('sealed', 'formal', 705, 8, 20.)['episode_ids']
+    expected_ids = cohort_contract('sealed', 'formal', 706, 8, 20.)['episode_ids']
     if episode_ids != expected_ids:
         raise ValueError('All eight canonical sealed episode identities are required')
     for key in INITIAL_FIELDS+('full_obs',):
@@ -252,7 +252,7 @@ def assemble_sealed_pair(source_manifest, source_arrays, candidate_manifest,
         arms={arm: dict(manifest=copy.deepcopy(manifests[arm]),
             arm_file_sha256=arm_file_shas[arm], actual_audit=proofs[arm]) for arm in ARMS},
         initial_sealed_matches=proofs['source']['initial_sealed_matches'],
-        evaluation_protocol='new_reference8_seed705_source_head_paired60',
+        evaluation_protocol='new_reference8_seed706_source_head_paired60',
         array_naming='source_reference_* and candidate_reference_* retain native reference field semantics',
         process_isolation='source and candidate run in separate fresh native processes/simulators',
         capture='all eight first-episode prefixes, terminal ticks and invalid tails; no survivor selection',
@@ -306,7 +306,7 @@ def _collect_arm(extra, args, context):
     policy_sha = SOURCE_MODEL_SHA if extra.arm == 'source' else context['candidate_sha']
     cfg, train_cfg, _ = select_environment('sustain_control')
     cfg = apply_diagnostic_config(cfg, 'original')  # validate only; original physics/PD.
-    cfg.seed, cfg.env.episode_length_s = 705, 60.1
+    cfg.seed, cfg.env.episode_length_s = 706, 60.1
     gate = assert_no_domain_randomization(cfg)
     task_registry.register(args.task, X1AMPPhysicsDiagnosticEnv, cfg, train_cfg)
     env, cfg = task_registry.make_env(args.task, args=args, env_cfg=cfg)
@@ -330,7 +330,7 @@ def _collect_arm(extra, args, context):
         print('[head-sealed-arm-start] '+json.dumps(dict(type=ARM_SCHEMA, arm=extra.arm,
             code_commit=context['commit'], parent_checkpoint_sha256=SOURCE_SHA,
             head_artifact_sha256=extra.head_sha256, policy_model_state_sha256=policy_sha,
-            num_envs=8, seed=705, duration_s=60., control_dt=env.dt,
+            num_envs=8, seed=706, duration_s=60., control_dt=env.dt,
             physics_dt=env.sim_params.dt, no_training=True)), flush=True)
         def cpu(value):
             return value.detach().cpu().numpy().copy()
@@ -371,7 +371,7 @@ def _collect_arm(extra, args, context):
         env.check_termination = check_and_capture
         # Construction consumes initialization RNG before this same registered
         # seed/reset protocol. No replay/hidden injection/pre-forward is used.
-        set_seed(705)
+        set_seed(706)
         env.rsi_enabled = True
         obs, _ = env.reset()  # unchanged original reference zero-action10ms warmup.
         initial, initial_obs = capture(), cpu(obs)
@@ -511,7 +511,7 @@ def _native_main(extra, remaining):
     artifact = torch.load(io.BytesIO(head_blob), map_location='cpu', weights_only=True)
     archive_audit = validate_head_artifact(artifact, extra.source_checkpoint)
     require_candidate_admission(artifact, 'formal')
-    config = json.loads((repo/'configs/amp/head_smooth_v1.json').read_text(encoding='utf-8'))
+    config = json.loads((repo/'configs/amp/head_smooth_v2.json').read_text(encoding='utf-8'))
     index_path = repo/config['source_exclusions']['path']
     exclusions, source_proof, source_manifest = registered_source_exclusions(repo, index_path, identity)
     cohorts, bindings = {}, [(extra.source_checkpoint, SOURCE_SHA), (extra.head_artifact, head_sha),

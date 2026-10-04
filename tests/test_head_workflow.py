@@ -132,7 +132,7 @@ class CohortWorkflowAdmissionTests(unittest.TestCase):
         self.assertEqual(len(episodes), 4)
         for i, episode in enumerate(episodes):
             self.assertEqual(episode.episode_id, manifest['episode_ids'][i])
-            self.assertEqual(episode.seed, 305)
+            self.assertEqual(episode.seed, 306)
             self.assertEqual(episode.env_id, i)
             self.assertEqual(episode.source_identity, identity_digest(IDENTITY))
             self.assertEqual(episode.history_frames, 66)
@@ -150,7 +150,10 @@ class CohortWorkflowAdmissionTests(unittest.TestCase):
             with self.subTest(split=split), self.assertRaises(ValueError):
                 audit(manifest, arrays, index, split=other)
         manifest, arrays, index = cohort_fixture()
-        changes = [dict(seed=505), dict(mode='formal'), dict(num_envs=8), dict(duration_s=20.),
+        changes = [dict(type='head_cohort_v1'), dict(seed=305),
+            dict(episode_ids=[v.replace('head_cohort_v2/', 'head_cohort_v1/')
+                              for v in manifest['episode_ids']]),
+            dict(seed=506), dict(mode='formal'), dict(num_envs=8), dict(duration_s=20.),
             dict(fps=50), dict(expected_ticks=199), dict(initialization_mode='standing'),
             dict(episode_ids=list(reversed(manifest['episode_ids']))), dict(split='sealed')]
         for changed in changes:

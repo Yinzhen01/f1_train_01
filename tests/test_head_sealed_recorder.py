@@ -107,7 +107,7 @@ def input_fixture():
     for role, offset in (('train', 10.), ('validation', 20.), ('sealed', 30.)):
         cohorts[role], proof = synthetic_cohort(role, offset, index, earlier)
         earlier.append(proof)
-    artifact = dict(artifact_kind='actor_head_offline_v1', amp_identity=IDENTITY,
+    artifact = dict(artifact_kind='actor_head_offline_v2', amp_identity=IDENTITY,
         provenance=dict(mode='formal', offline_admitted=True, code_commit=COMMIT,
             implementation_fingerprint=IMPLEMENTATION,
             cohorts={role: {key: value for key, value in earlier[i].items() if key != 'split'}
@@ -124,7 +124,7 @@ def input_audit(cohorts, artifact, index=None):
 
 
 def arm_fixture(arm, inputs, sealed_arrays, ticks=100):
-    contract = sealed_recorder_contract('formal', 705, 8, 60.)
+    contract = sealed_recorder_contract('formal', 706, 8, 60.)
     arrays = {}
     for key in INITIAL_FIELDS:
         initial = sealed_arrays['reference_initial_'+key].copy()
@@ -157,7 +157,7 @@ def arm_fixture(arm, inputs, sealed_arrays, ticks=100):
         arrays['reference_'+key] = np.zeros((ticks,)+shape, dtype=np.float32)
     source = source_runtime_fixture()
     cfg, runtime = copy.deepcopy(source['environment']), copy.deepcopy(source['runtime'])
-    cfg['seed'], cfg['env']['num_envs'] = 705, 8
+    cfg['seed'], cfg['env']['num_envs'] = 706, 8
     runtime['physics_sim_parameters'] = native_sim_fixture(source['environment']['sim'])
     proof = validate_source_runtime(cfg, runtime, source, contract)
     manifest = dict(contract, type=ARM_SCHEMA, arm=arm, code_commit=COMMIT,
@@ -176,7 +176,7 @@ def arm_fixture(arm, inputs, sealed_arrays, ticks=100):
 
 def arm_audit(manifest, arrays, inputs, sealed_arrays, arm):
     return audit_sealed_arm(manifest, arrays, arm=arm,
-        contract=sealed_recorder_contract('formal', 705, 8, 60.), identity=IDENTITY,
+        contract=sealed_recorder_contract('formal', 706, 8, 60.), identity=IDENTITY,
         code_commit=COMMIT, implementation_fingerprint=IMPLEMENTATION,
         head_sha256=HEAD_SHA, candidate_model_sha256=CANDIDATE_SHA,
         inputs=inputs, sealed_arrays=sealed_arrays, source_manifest=source_runtime_fixture())
@@ -190,16 +190,17 @@ class SealedRecorderTests(unittest.TestCase):
         cls.sealed = cls.cohorts['sealed']['arrays']
 
     def test_exact_formal_only_budget_without_ppo_counters(self):
-        contract = sealed_recorder_contract('formal', 705, 8, 60.)
+        contract = sealed_recorder_contract('formal', 706, 8, 60.)
         self.assertEqual(contract['type'], SCHEMA)
         self.assertEqual(contract['modes'], ['reference'])
         self.assertEqual(len(contract['episode_ids']), 8)
         self.assertFalse(contract['effectiveness_verified'])
         self.assertNotIn('completed_updates', contract)
         self.assertNotIn('iter', contract)
-        for args in (('smoke', 705, 8, 60.), ('formal', 105, 8, 60.),
-                     ('formal', 705, 16, 60.), ('formal', 705, 8, 20.),
-                     ('formal', True, 8, 60.), ('formal', 705, True, 60.)):
+        for args in (('smoke', 706, 8, 60.), ('formal', 105, 8, 60.),
+                     ('formal', 705, 8, 60.),
+                     ('formal', 706, 16, 60.), ('formal', 706, 8, 20.),
+                     ('formal', True, 8, 60.), ('formal', 706, True, 60.)):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 sealed_recorder_contract(*args)
 
@@ -250,7 +251,7 @@ class SealedRecorderTests(unittest.TestCase):
 
     def test_all12_initial_fields_and_complete_first_input_exact_all8(self):
         _, arrays = arm_fixture('source', self.inputs, self.sealed)
-        expected = sealed_recorder_contract('formal', 705, 8, 60.)['episode_ids']
+        expected = sealed_recorder_contract('formal', 706, 8, 60.)['episode_ids']
         proof = initial_sealed_matches(arrays, self.sealed, expected)
         self.assertEqual(len(proof['rows']), 8)
         self.assertTrue(proof['all_exact'])
@@ -273,7 +274,7 @@ class SealedRecorderTests(unittest.TestCase):
         arrays['reference_initial_action'][:] = -0.
         before = arrays['reference_initial_action'].tobytes()
         proof = initial_sealed_matches(arrays, self.sealed,
-            sealed_recorder_contract('formal', 705, 8, 60.)['episode_ids'])
+            sealed_recorder_contract('formal', 706, 8, 60.)['episode_ids'])
         self.assertTrue(proof['all_exact'])
         self.assertEqual(before, arrays['reference_initial_action'].tobytes())
 
@@ -301,10 +302,10 @@ class SealedRecorderTests(unittest.TestCase):
             elif kind == 'crop':
                 value['reference_failure'][-1, 0] = False
                 value['reference_done'][-1, 0] = False
-                modified_manifest['episodes'] = audit_rollout_arrays(value, sealed_recorder_contract('formal', 705, 8, 60.))
+                modified_manifest['episodes'] = audit_rollout_arrays(value, sealed_recorder_contract('formal', 706, 8, 60.))
             elif kind == 'lost_terminal':
                 value['reference_done'][-1, 0] = False
-                modified_manifest['episodes'] = audit_rollout_arrays(value, sealed_recorder_contract('formal', 705, 8, 60.))
+                modified_manifest['episodes'] = audit_rollout_arrays(value, sealed_recorder_contract('formal', 706, 8, 60.))
             else: value['reference_dof_pos'] = value['reference_dof_pos'][:, :, :11]
             with self.subTest(kind=kind), self.assertRaises((ValueError, KeyError)):
                 arm_audit(modified_manifest, value, self.inputs, self.sealed, 'candidate')
@@ -312,7 +313,7 @@ class SealedRecorderTests(unittest.TestCase):
     def test_pair_retains_different_lengths_all8_each_and_cannot_swap_source(self):
         source_manifest, source = arm_fixture('source', self.inputs, self.sealed, ticks=100)
         candidate_manifest, candidate = arm_fixture('candidate', self.inputs, self.sealed, ticks=80)
-        options = dict(contract=sealed_recorder_contract('formal', 705, 8, 60.),
+        options = dict(contract=sealed_recorder_contract('formal', 706, 8, 60.),
             identity=IDENTITY, code_commit=COMMIT, implementation_fingerprint=IMPLEMENTATION,
             head_sha256=HEAD_SHA, candidate_model_sha256=CANDIDATE_SHA, inputs=self.inputs,
             sealed_arrays=self.sealed, source_runtime_manifest=source_runtime_fixture(),
@@ -338,7 +339,7 @@ class SealedRecorderTests(unittest.TestCase):
         source_manifest, source = arm_fixture('source', self.inputs, self.sealed, ticks=100)
         candidate_manifest, candidate = arm_fixture('candidate', self.inputs, self.sealed, ticks=80)
         manifest, arrays = assemble_sealed_pair(source_manifest, source, candidate_manifest, candidate,
-            contract=sealed_recorder_contract('formal', 705, 8, 60.), identity=IDENTITY,
+            contract=sealed_recorder_contract('formal', 706, 8, 60.), identity=IDENTITY,
             code_commit=COMMIT, implementation_fingerprint=IMPLEMENTATION,
             head_sha256=HEAD_SHA, candidate_model_sha256=CANDIDATE_SHA, inputs=self.inputs,
             sealed_arrays=self.sealed, source_runtime_manifest=source_runtime_fixture(),
@@ -360,7 +361,7 @@ class SealedRecorderTests(unittest.TestCase):
         extra = argparse.Namespace(source_checkpoint=Path('source.pt'), head_artifact=Path('head.pt'),
             head_sha256=HEAD_SHA, expected_commit=COMMIT, sealed_cohort=Path('sealed.pt'),
             train_cohort=Path('train.pt'), validation_cohort=Path('validation.pt'))
-        remaining = ['--task', 'original', '--seed', '705', '--num_envs', '8', '--headless']
+        remaining = ['--task', 'original', '--seed', '706', '--num_envs', '8', '--headless']
         commands = [arm_command(extra, remaining, arm, Path('temp')/(arm+'-arm.pt')) for arm in ARMS]
         for arm, command in zip(ARMS, commands):
             self.assertEqual(command[command.index('--arm')+1], arm)
