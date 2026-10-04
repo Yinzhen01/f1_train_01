@@ -363,3 +363,55 @@ SHA c64db6465ea1469716b03cebf310b70f5889241affc5797c5f10fb67a08bf3b2/CRC通过�
 第二件单次curl独占retry01在120.0766秒外部截止，仍收到161939456B进展，
 HTTP状态未知；原两个片段保留。下一唯一恢复使用其副本Range续取并严格206/
 Content-Range/ZIP CRC核验，不并发重取、重跑云任务或补造缺失模型。
+
+### 正式03完整产物审核与训练瓶颈
+
+094四份实际`model_7100001..4.pt`现已全部完整下载，文件大小依次为
+288861152/288859424/93367858/267232B，逐份本地SHA和ZIP CRC通过。
+第二件从已保留片段的副本Range续取，实际HTTP206、Content-Range精确匹配；
+第三/四件实际HTTP200，三个唯一恢复请求均exit0。原失败片段保留，没有云端
+重跑、并发重取、首件重下载或补造模型；平台未提供远端SHA，不声称远端哈希比对。
+ignored下载证据位于`outputs/amp-head-smooth/TASK_20261004_094/download-recovery-02/`。
+
+独立生产正式审计实际exit0、17.9369秒、stderr0；审计文件为
+`outputs/amp-head-smooth/TASK_20261004_094/native-formal-audit.local.json`，SHA
+`c4d561f0283c39e1e43ea8e0df3e37a5ba8e88e1f4bc11f46353248d632b4c56`，
+canonical facts SHA `80d4585f1d4f09cbbdee267c0543db546db6a49456aa09f211698265d7a66c2b`。
+实际运行绑定仍为完整647提交/d16指纹/原110字节，不改成后续纯文档HEAD。
+native/cohort arrays/source forward/head archive/hardware/numerical context均核验通过；
+不是synthetic fixture。train/validation各8条完整2000tick、无失败，每组15472个
+ready点；整段历史与原32/排除输入/训练组的exact去重均通过，不外推统计独立性。
+GPU原源hidden/rawmu误差0，CPU最大差约0.000231、未放宽0.001阈值。
+仅actor.6的weight/bias两张量改变，其他31张量dtype/shape/bytes精确不变；
+原学习状态只存档、未恢复训练。唯一solver_runs=1，独立auditor_solver_runs=0。
+
+候选仍被原门禁拒绝：8段验证曲率平方改善约5.7873%–5.8226%，均不足10%。
+实际导出float32训练峰值0.04999999023243684rad满足0.05界，本轮不能复用092的
+舍入超界原因。offline/formal/effect/DR准入均false、未进入已知32或封存新初态
+物理评估，不能把文件完整、审计exit0或平台终态5当作抖动修复。
+26条日志告警保留、logs_clean=false；其中两次Pika异常位于stage COMPLETE之后，
+不抹除，也不将其替代已由真实数组确认的数学拒绝原因。
+
+后续纯训练只读诊断覆盖8×1934×12=185664个ready输出；没有重solve/refit、
+修改候选、读取validation选参数或启动额外仿真。记录的float64未缩放训练峰值
+1.6208019173215085rad经全局alpha=0.03084892698216238限制到0.05rad，
+绑定env2/joint10（right_ankle_pitch_joint）。未缩放float64解及逐点方向未存档，
+因此不能认证其极值精确帧；实际存档float32头独立全点复算的唯一极值在
+env2/ready-row84/recorded tick150（注册1.5秒），对应输出变化+0.04999999023243684rad。
+这是未裁剪策略目标偏移，不是机器人实测关节角或受力证明。
+12轴实际训练输出变化峰值依关节顺序约为
+0.037112/0.029653/0.011237/0.016704/0.041756/0.010939/
+0.044003/0.040701/0.015217/0.014276/0.050000/0.012977rad。
+右踝一处峰值使全部12轴统一回退到求解方向约3.0849%，其他轴仍离上限较远。
+按实际候选进行训练曲率能量分解，source归一化均值约1、cross=-0.02942198、
+step-square=0.00088400，改善约5.796%；说明约5.8%并非采集或入口失败。
+这仅解释固定训练输入下的幅度瓶颈，不证明约束改法一定能通过物理验收。
+下一独立定义可比较逐轴约束与约束二次求解，仍须预注册、保持原变化/低频/幅度
+及曲率门禁、采集新队列并真实短测；不得降低10%门槛或反复利用旧validation调参。
+
+根唯一094终态账本更新实际exit0，status=completed_offline_rejected，63/68条且
+所有非目标字段不变；新pool SHA为
+`d599e719cfd9ef0d1a4bc2a45f39762e0ac3645637e7981f2d8bdf2587bb36d2`。
+观察账单扣gift0.36/runtime4，单位与最终结算未知，不将263秒与账单runtime等同。
+原110/control2500不替换，PPO未续跑，DR/noise不解锁，用户指定窗口和全轨迹
+抖动目标仍未完成。
