@@ -242,3 +242,23 @@ canonical事实SHA为`df1b26f1133fae70db9dac099f1d9db5d73c30b0a9ad10213ab98e5486
 账单快照唯一087记录扣费0.18、runtime=2、余额18.32；计费单位和最终结算未知，
 保留平台150秒与账单runtime的不同含义。终态ledger仅修改087行，非目标字段核验
 不变，未切换账号、机器或原模型。原5秒/29–30秒/48秒与全轨迹抖动验收仍未完成。
+
+### 正式02/090仍在原生START前失败
+
+`TASK_20261004_090`实际代码为`4e4352e9b3653a777fa0cd6891cd9efd1a362ac2`，
+21:17:22–21:17:57运行35秒、实际终态6。原生START/COMPLETE/history证明及模型均0。
+唯一失败观测记录`Head history refresh failed; no retry or diagnostic echo`；结合
+实际driver，这对应一次受限历史fetch返回非0。具体stderr未回显，所以认证、
+网络、Git选项兼容性仍未知，不能仅凭此推断。硬件marker1不证明策略或采集运行。
+完整空模型页、控制台日志及安全诊断保留于`outputs/amp-head-smooth/TASK_20261004_090/`。
+
+没有重复启动90、继承任何失败模型、调整数学或物理门禁。后续先通过受限独立
+基础设施诊断获取实际Git版本、选项支持和安全错误分类；不是追加训练/PPO更新，
+也不改变原087流程证书或将其当完整效果证明。
+
+独立纯stdlib探针`tools/amp/probe_head_git_history.py`已实现，固定原087证书和
+单一注册repo，调用原history helper最多一次，不增加fallback或训练。只输出版本、
+帮助中选项是否出现和固定布尔错误分类/返回码/字节长度，不保存或打印transport
+原文、URL和认证字段；未知原因仍为unknown。实际新增25项mock测试通过（主线程
+0.322秒、exit0），原21项history测试通过（0.081秒、exit0）。纯哈希与导入检查
+确认运行指纹仍为`71073f3f`，没有导入Torch/Isaac；不是云端探针结果。
