@@ -239,7 +239,7 @@ class DeterministicMuLoss:
                        for parameter in self._student_parameters() if parameter.requires_grad)
             self._latest_stats = self._stats(0., 0., 0., 0., 0, 0, True)
             if return_components:
-                return zero, dict(self._latest_stats), dict(weighted_anchor=zero,
+                return zero+zero, dict(self._latest_stats), dict(weighted_anchor=zero,
                                                            weighted_temporal=zero)
             return zero, dict(self._latest_stats)
         current_mu = self.actor_critic.act_inference(observations)

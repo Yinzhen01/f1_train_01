@@ -125,6 +125,38 @@ _COMPONENT_PAIRS = (
 )
 
 
+def _validate_component_sum_graph(aux_loss, component_losses):
+    """Prove the two returned tensors are the native auxiliary sum's exact edges.
+
+    This is graph provenance, NOT bitwise equality of separately accumulated
+    gradients. Backpropagating a shared float32 linear graph once and adding
+    two separate backprops use different reduction orders. Near-zero entries
+    can therefore fail elementwise allclose even for this exact native graph.
+    No extra inference, backward, precision change or approximate graph match.
+    """
+    native_add = getattr(getattr(torch._C, '_functions', None), 'AddBackward0', None)
+    edge_reader = getattr(getattr(torch.autograd, 'graph', None), 'get_gradient_edge', None)
+    node = aux_loss.grad_fn
+    if (native_add is None or edge_reader is None or type(node) is not native_add or
+            getattr(node, '_saved_alpha', None) != 1):
+        raise ValueError('Auxiliary requires the exact direct native component sum graph')
+    if not aux_loss.requires_grad or any(not loss.requires_grad for loss in component_losses):
+        raise ValueError('Weighted loss components were detached from the actual graph')
+    # Hold all node wrappers together: identity (not name/type/value equality)
+    # and output_nr both matter for a multiple-output autograd operation.
+    edges = tuple(edge_reader(loss) for loss in component_losses)
+    children = node.next_functions
+    if len(children) != 2 or any(child is not edge.node or output_nr != edge.output_nr
+            for (child, output_nr), edge in zip(children, edges)):
+        raise ValueError('Weighted components are not the exact auxiliary graph edges')
+    if any(loss.is_leaf and getattr(edge.node, 'variable', None) is not loss
+           for loss, edge in zip(component_losses, edges)):
+        raise ValueError('Weighted component leaf identity differs from the auxiliary graph')
+    if not torch.equal((component_losses[0]+component_losses[1]).detach(), aux_loss.detach()):
+        raise ValueError('Weighted loss components differ from the actual auxiliary loss')
+    return True
+
+
 def gradient_diagnostics(model, main_loss, aux_loss, es_loss, *, components=None):
     """Actual current minibatch gradients, before global clipping. No RNG/.grad writes."""
     if any(not isinstance(loss, torch.Tensor) or loss.ndim != 0 or not bool(torch.isfinite(loss))
@@ -134,6 +166,18 @@ def gradient_diagnostics(model, main_loss, aux_loss, es_loss, *, components=None
     parameters = [p for _, p in named]
     if not parameters:
         raise ValueError('Gradient diagnostics require trainable parameters')
+    component_losses = None
+    if components is not None:
+        if (not isinstance(components, dict) or
+                set(components) != {'weighted_anchor', 'weighted_temporal'}):
+            raise ValueError('Both original weighted component tensors are required')
+        component_losses = [components[key] for key in ('weighted_anchor', 'weighted_temporal')]
+        if any(not isinstance(loss, torch.Tensor) or loss.ndim != 0 or
+               loss.device != aux_loss.device or loss.dtype != aux_loss.dtype or
+               not bool(torch.isfinite(loss)) for loss in component_losses):
+            raise ValueError('Weighted gradient components must be finite scalar tensors')
+        # Reject a substituted graph BEFORE asking autograd to traverse it.
+        _validate_component_sum_graph(aux_loss, component_losses)
     def grads(loss):
         return (torch.autograd.grad(loss, parameters, retain_graph=True, allow_unused=True)
                 if loss.requires_grad else (None,)*len(parameters))
@@ -157,18 +201,6 @@ def gradient_diagnostics(model, main_loss, aux_loss, es_loss, *, components=None
                 actor_main_aux_cosine=max(-1., min(1., values[5]/math.sqrt(values[3]*values[4]))) if valid else 0.,
                 actor_cosine_valid_fraction=float(valid))
     if components is not None:
-        if (not isinstance(components, dict) or
-                set(components) != {'weighted_anchor', 'weighted_temporal'}):
-            raise ValueError('Both original weighted component tensors are required')
-        component_losses = [components[key] for key in ('weighted_anchor', 'weighted_temporal')]
-        if any(not isinstance(loss, torch.Tensor) or loss.ndim != 0 or
-               loss.device != aux_loss.device or loss.dtype != aux_loss.dtype or
-               not bool(torch.isfinite(loss)) for loss in component_losses):
-            raise ValueError('Weighted gradient components must be finite scalar tensors')
-        if aux_loss.requires_grad and any(not loss.requires_grad for loss in component_losses):
-            raise ValueError('Weighted loss components were detached from the actual graph')
-        if not torch.equal((component_losses[0]+component_losses[1]).detach(), aux_loss.detach()):
-            raise ValueError('Weighted loss components differ from the actual auxiliary loss')
         anchor, temporal = [grads(loss) for loss in component_losses]
         # Frozen features leave ONLY actor parameters in the auxiliary path.
         # Reject an accidentally supplied critic/std supervision graph rather
@@ -178,14 +210,6 @@ def gradient_diagnostics(model, main_loss, aux_loss, es_loss, *, components=None
                    (not name.startswith('actor.') and bool((g != 0).any())))
                    for (name, _), g in zip(named, component)):
                 raise ValueError('Nonfinite or non-actor weighted component gradient')
-        for parameter, actual, left, right in zip(parameters, aux, anchor, temporal):
-            if actual is None and left is None and right is None:
-                continue
-            zero_gradient = torch.zeros_like(parameter)
-            expected = (left if left is not None else zero_gradient)+(right if right is not None else zero_gradient)
-            actual = actual if actual is not None else zero_gradient
-            if not torch.allclose(actual, expected, rtol=1e-5, atol=1e-7):
-                raise ValueError('Weighted component gradients do not sum to the actual auxiliary gradient')
         anchor_sq, temporal_sq = sq(anchor, True), sq(temporal, True)
         def actor_dot(left, right):
             return sum((a.detach().double().mul(b.detach().double()).sum()

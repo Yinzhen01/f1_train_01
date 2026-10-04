@@ -212,7 +212,7 @@ class ComponentAutogradTests(unittest.TestCase):
         auxiliary = anchor+temporal
         wrong_anchor = -anchor+2*anchor.detach()
         self.assertEqual(float(wrong_anchor), float(anchor))
-        with self.assertRaisesRegex(ValueError, 'sum to the actual auxiliary gradient'):
+        with self.assertRaisesRegex(ValueError, 'exact auxiliary graph edges'):
             gradient_diagnostics(model, actor_loss(model, (3., 4.)), auxiliary, torch.tensor(1.),
                                  components=dict(weighted_anchor=wrong_anchor, weighted_temporal=temporal))
 
