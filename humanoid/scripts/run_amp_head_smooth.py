@@ -129,7 +129,7 @@ def main():
     from humanoid.scripts.collect_amp_head_cohort import (
         file_sha, _read_bundle, source_exclusions, registered_source_exclusions,
         BUDGETS, SEEDS)
-    from humanoid.utils.helpers import class_to_dict
+    from humanoid.utils.helpers import class_to_dict, set_seed
 
     # ESKU000001 is independently checked in the actual Gradmotion task API.
     # That SKU's native readback (TASK_20261004_080) omits D in the device name.
@@ -203,6 +203,9 @@ def main():
     manifests, arrays, audits, parities = {}, {}, {}, {}
     source_state = torch.load(str(source), map_location='cpu', weights_only=True)
     env_cfg, train_cfg, _ = select_environment('sustain_control')
+    # Match the source collector's existing deterministic cuDNN setup, not a
+    # new numerical precision setting. Loaded source parameters remain frozen.
+    set_seed(SEEDS['train'])
     policy = ActorCriticDH(env_cfg.env.short_frame_stack*env_cfg.env.num_single_obs,
         env_cfg.env.num_single_obs, env_cfg.env.num_privileged_obs, env_cfg.env.num_actions,
         **class_to_dict(train_cfg.policy)).to('cuda:0')
@@ -225,7 +228,8 @@ def main():
             identity=identity, code_commit=commit, implementation_fingerprint=fingerprint,
             exclusions=exclusions, source_manifest=source_manifest)
         parities[split] = forward_parity(policy, data,
-            action_clip=env_cfg.normalization.clip_actions)
+            action_clip=env_cfg.normalization.clip_actions, batch_size=num_envs,
+            expected_numerical_context=manifest['inference_capture']['numerical_context'])
         exclusion_add_cohort(exclusions, audits[split])
     report = dict(start=start, cohort_sha256={key: file_sha(paths[key]) for key in manifests},
         source_parity=parities, effectiveness_verified=False, dr_unlocked=False,

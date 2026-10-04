@@ -53,6 +53,16 @@ def hardware_fixture():
         torch_version='2.4.1', torch_cuda_version='12.1')
 
 
+def synthetic_native_context():
+    """Typed fake GPU snapshot for this synthetic protocol fixture, NOT readback."""
+    return dict(schema='source_forward_numerical_context_v1', device_type='cuda', device_index=0,
+        input_dtype='torch.float32', grad_enabled=False, policy_training=False,
+        cudnn_enabled=True, cudnn_deterministic=True, cudnn_benchmark=False,
+        cudnn_allow_tf32=True, cuda_matmul_allow_tf32=False,
+        float32_matmul_precision='highest', torch_version='2.4.1',
+        torch_cuda_version='12.1', cudnn_version=8902)
+
+
 def bundle(path, manifest, arrays):
     memory = io.BytesIO()
     np.savez_compressed(memory, **arrays)
@@ -142,14 +152,21 @@ def synthetic_pipeline(directory):
                 source_runtime_proof=validate_source_runtime(env, runtime, source_manifest, contract),
                 fingerprints=fingerprints, history_proof=history, episodes=episodes,
                 deduplication=dedupe, fit_eligible=False, previous_cohorts=prior,
+                inference_capture=dict(actor_module='actor.6', hidden_dim=128, action_dim=12,
+                    actual_forwards=200, extra_forward=False, actual_output_exact=True,
+                    model_state_unchanged=True, numerical_context=synthetic_native_context()),
                 body_names=list(stage.SOURCE_BODIES))
             paths[split] = directory/('model_700000%d.pt' % (1 if split == 'train' else 2))
             bundle(paths[split], manifest, arrays)
             audit = audit_cohort(manifest, arrays, split=split, mode='smoke', identity=identity,
                 code_commit=COMMIT, implementation_fingerprint=FP, exclusions=index,
                 source_manifest=source_manifest)
-            parities[split] = forward_parity(policy, arrays, action_clip=1000.,
+            parities[split] = forward_parity(policy, arrays, action_clip=1000., batch_size=4,
                 expected_model_fingerprint=parent['model_state_sha256'])
+            # Explicit synthetic GPU-shaped claimed metadata only. The audit
+            # independently retains its actual CPU context and never certifies
+            # this fake native snapshot as a real cloud/runtime result.
+            parities[split]['numerical_context'] = synthetic_native_context()
             exclusion_add_cohort(index, audit)
             manifests[split], all_arrays[split], audits[split] = manifest, arrays, audit
     rows = [fit_episodes(manifests[s], all_arrays[s], audits[s], identity=identity)
@@ -310,6 +327,17 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
         self.assertEqual(facts['native_hardware'], hardware_fixture())
         self.assertEqual(facts['native_hardware']['devices'][0]['name'], 'NVIDIA GeForce RTX 4090')
         self.assertIn('does not establish', facts['hardware_evidence_scope'])
+        self.assertTrue(facts['native_numerical_context_verified'])
+        for split in ('train', 'validation'):
+            native, cpu = (facts[key][split] for key in
+                ('native_recorded_source_parity', 'recomputed_cpu_source_parity'))
+            self.assertEqual(native['batch_size'], 4)
+            self.assertEqual(native['forward_batches'], 200)
+            self.assertEqual(native['numerical_context']['device_type'], 'cuda')
+            self.assertEqual(cpu['batch_size'], 4)
+            self.assertEqual(cpu['forward_batches'], 200)
+            self.assertEqual(cpu['numerical_context']['device_type'], 'cpu')
+        self.assertIn('neither reproduces nor certifies GPU', facts['cpu_forward_scope'])
         self.assertTrue(facts['logs_clean'])
         self.assertFalse(facts['offline_admitted'])
         self.assertFalse(facts['formal_admission'])
@@ -368,6 +396,52 @@ class IndependentHeadStageAuditTests(unittest.TestCase):
             self.refresh_report_binding(report)
             with self.subTest(case=number), self.assertRaisesRegex(ValueError, 'Native head hardware:'):
                 self.audit()
+
+    def test_native_parity_exact_schema_batch_context_capture_and_versions_rejected(self):
+        from humanoid.scripts.collect_amp_head_cohort import _read_bundle
+        manifest, arrays = _read_bundle(self.args['train'], torch)
+        parity = self.fixture['report']['source_parity']['train']
+        capture = manifest['inference_capture']
+        stage._parity_record(parity, arrays, capture, hardware_fixture())
+        cases = [('batch_size', 256), ('batch_size', True), ('batch_size', 4.),
+            ('forward_batches', 4), ('forward_batches', True), ('actual_rows', 799),
+            ('max_abs_error', .001), ('max_hidden_error', float('nan'))]
+        for field, value in cases:
+            changed = copy.deepcopy(parity); changed[field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                stage._parity_record(changed, arrays, capture, hardware_fixture())
+        for field in ('batch_size', 'numerical_context'):
+            changed = copy.deepcopy(parity); changed.pop(field)
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                stage._parity_record(changed, arrays, capture, hardware_fixture())
+        context_cases = [('device_type', 'cpu'), ('device_index', True), ('device_index', 1),
+            ('input_dtype', 'torch.float64'), ('grad_enabled', 0), ('grad_enabled', True),
+            ('policy_training', True), ('cudnn_enabled', False), ('cudnn_deterministic', False),
+            ('cudnn_benchmark', True), ('cudnn_allow_tf32', 1), ('cuda_matmul_allow_tf32', 0),
+            ('float32_matmul_precision', 'unknown'), ('torch_version', ''),
+            ('torch_cuda_version', None), ('cudnn_version', None), ('cudnn_version', True)]
+        for field, value in context_cases:
+            changed = copy.deepcopy(parity); changed['numerical_context'][field] = value
+            with self.subTest(context_field=field), self.assertRaises(ValueError):
+                stage._parity_record(changed, arrays, capture, hardware_fixture())
+        for field, value in (('cuda_matmul_allow_tf32', True), ('cudnn_allow_tf32', False),
+                ('float32_matmul_precision', 'high'), ('cudnn_version', 9100)):
+            changed = copy.deepcopy(parity); changed['numerical_context'][field] = value
+            with self.subTest(valid_context_mismatch=field), self.assertRaises(ValueError):
+                stage._parity_record(changed, arrays, capture, hardware_fixture())
+        for field, value in (('torch_version', '2.5.0'), ('torch_cuda_version', '12.2')):
+            changed, cap = copy.deepcopy(parity), copy.deepcopy(capture)
+            changed['numerical_context'][field] = cap['numerical_context'][field] = value
+            with self.subTest(hardware_version_mismatch=field), self.assertRaises(ValueError):
+                stage._parity_record(changed, arrays, cap, hardware_fixture())
+        for field, value in (('actual_forwards', 199), ('actual_forwards', True),
+                ('extra_forward', 0), ('actual_output_exact', False), ('model_state_unchanged', False)):
+            cap = copy.deepcopy(capture); cap[field] = value
+            with self.subTest(capture_field=field), self.assertRaises(ValueError):
+                stage._parity_record(parity, arrays, cap, hardware_fixture())
+        for cap in (None, {}, dict(capture, unregistered_field=True)):
+            with self.subTest(capture_shape=type(cap).__name__), self.assertRaises(ValueError):
+                stage._parity_record(parity, arrays, cap, hardware_fixture())
 
     def test_valid_hardware_cannot_override_unregistered_platform_resource(self):
         raw = platform_fixture()

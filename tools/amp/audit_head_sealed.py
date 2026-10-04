@@ -15,7 +15,8 @@ import numpy as np
 
 from humanoid.amp.learnability import assert_no_domain_randomization
 from humanoid.amp.recovery import foot_collision_vertices
-from humanoid.scripts.collect_amp_head_cohort import INITIAL_FIELDS
+from humanoid.scripts.collect_amp_head_cohort import (
+    INITIAL_FIELDS, validate_source_forward_context)
 from humanoid.scripts.record_amp_head_sealed import (
     ARMS, ARM_SCHEMA, SCHEMA, audit_sealed_arm, audit_sealed_inputs,
     sealed_recorder_contract)
@@ -232,7 +233,7 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
     inputs = audit_sealed_inputs(cohorts, artifact=artifact, identity=identity,
         code_commit=commit, implementation_fingerprint=fingerprint, exclusions=exclusions,
         source_proof=native_proof, source_manifest=source_manifest)
-    cohort_telemetry = {}
+    cohort_telemetry, numerical_contexts = {}, {}
     for role, item in cohorts.items():
         data = item['arrays']
         frames = len(data['reference_time'])
@@ -243,10 +244,23 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
             value = data['reference_'+key]
             require(value.shape == (frames,)+shape and value.dtype == np.float32 and np.isfinite(value).all(),
                     'missing actual source-cohort raw1ms telemetry '+role+' '+key)
-        same(item['manifest'].get('inference_capture'), dict(actor_module='actor.6', hidden_dim=128,
+        capture = item['manifest'].get('inference_capture')
+        require(type(capture) is dict, 'missing actual '+role+' source capture')
+        context = capture.get('numerical_context')
+        require(validate_source_forward_context(context, native=True) is True,
+                'invalid actual '+role+' source numerical context')
+        same(capture, dict(actor_module='actor.6', hidden_dim=128,
             action_dim=12, actual_forwards=frames, extra_forward=False, actual_output_exact=True,
-            model_state_unchanged=True), 'actual '+role+' one-source-forward capture')
+            model_state_unchanged=True, numerical_context=context),
+            'actual '+role+' one-source-forward capture')
+        numerical_contexts[role] = context
         cohort_telemetry[role] = validate_telemetry(item['manifest'], data)
+    # The stage auditor separately binds train/validation native contexts to
+    # START's hardware version snapshot. Match sealed to those exact native
+    # source contexts, not to an unrelated CPU re-forward or a guessed backend.
+    for role in ('validation', 'sealed'):
+        same(numerical_contexts[role], numerical_contexts['train'],
+             'actual '+role+'/train source numerical context')
     contract = sealed_recorder_contract('formal', 705, 8, 60.)
     constants = dict(contract, code_commit=commit, implementation_fingerprint=fingerprint,
         source_identity=identity, parent_checkpoint_sha256=binding['file_sha256'],
@@ -346,6 +360,10 @@ def audit_sealed_artifacts(manifest, arrays, *, cohorts, artifact, archive, iden
         episodes={arm: audits[arm]['actual_arm']['episodes'] for arm in ARMS},
         effectiveness_verified=False, dr_unlocked=False)
     return dict(cohort_inputs=inputs, source_cohort_raw_telemetry=cohort_telemetry,
+        source_cohort_numerical_contexts=numerical_contexts,
+        source_context_scope='All three native source-cohort contexts match exactly. START hardware '
+            'version binding is additionally verified by the full seven-file stage auditor; '
+            'this standalone helper does not authenticate hardware or CPU/GPU equivalence.',
         arms=audits, log_records=logs,
         metrics=dict(source=metrics_for_case(cases['source'], geometry),
             candidate=metrics_for_case(cases['candidate'], geometry),

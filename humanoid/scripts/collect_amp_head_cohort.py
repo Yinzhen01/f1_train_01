@@ -343,6 +343,63 @@ def validate_source_runtime(environment, runtime, source_manifest, contract):
         source_physical_shape_readback='not present in old endpoint; current shapes preserved, not fabricated')
 
 
+def validate_source_forward_context(value, *, native=False):
+    """Typed numerical readback, not a policy/simulation or platform certificate."""
+    if type(native) is not bool:
+        raise ValueError('Invalid source forward context validation mode')
+    types = dict(schema=str, device_type=str, device_index=(int, type(None)),
+        input_dtype=str, grad_enabled=bool, policy_training=bool,
+        cudnn_enabled=bool, cudnn_deterministic=bool, cudnn_benchmark=bool,
+        cudnn_allow_tf32=bool, cuda_matmul_allow_tf32=bool,
+        float32_matmul_precision=str, torch_version=str,
+        torch_cuda_version=(str, type(None)), cudnn_version=(int, type(None)))
+    if type(value) is not dict or set(value) != set(types):
+        raise ValueError('Missing/malformed source forward numerical context')
+    for key, expected in types.items():
+        allowed = expected if type(expected) is tuple else (expected,)
+        if type(value[key]) not in allowed:
+            raise ValueError('Wrong source forward numerical context type: '+key)
+    if (value['schema'] != 'source_forward_numerical_context_v1'
+            or value['device_type'] not in ('cpu', 'cuda')
+            or value['input_dtype'] != 'torch.float32'
+            or value['grad_enabled'] is not False or value['policy_training'] is not False
+            or value['float32_matmul_precision'] not in ('highest', 'high', 'medium')
+            or not value['torch_version']
+            or (value['torch_cuda_version'] is not None and not value['torch_cuda_version'])
+            or (value['cudnn_version'] is not None and value['cudnn_version'] <= 0)
+            or (value['device_type'] == 'cpu' and value['device_index'] is not None)
+            or (value['device_type'] == 'cuda' and
+                (type(value['device_index']) is not int or value['device_index'] < 0))):
+        raise ValueError('Invalid source forward numerical context values')
+    if native and (value['device_type'] != 'cuda' or value['device_index'] != 0
+            or value['cudnn_enabled'] is not True or value['cudnn_deterministic'] is not True
+            or value['cudnn_benchmark'] is not False
+            or value['torch_cuda_version'] is None or value['cudnn_version'] is None):
+        raise ValueError('Native source forward context differs from source inference protocol')
+    return True
+
+
+def source_forward_context(policy, observation):
+    """Read actual backend settings inside the ordinary no-grad forward scope."""
+    import torch
+    device = next(policy.parameters()).device
+    if observation.device != device:
+        raise ValueError('Source parity input and policy devices differ')
+    value = dict(schema='source_forward_numerical_context_v1', device_type=device.type,
+        device_index=device.index, input_dtype=str(observation.dtype),
+        grad_enabled=torch.is_grad_enabled(), policy_training=policy.training,
+        cudnn_enabled=torch.backends.cudnn.enabled,
+        cudnn_deterministic=torch.backends.cudnn.deterministic,
+        cudnn_benchmark=torch.backends.cudnn.benchmark,
+        cudnn_allow_tf32=torch.backends.cudnn.allow_tf32,
+        cuda_matmul_allow_tf32=torch.backends.cuda.matmul.allow_tf32,
+        float32_matmul_precision=torch.get_float32_matmul_precision(),
+        torch_version=str(torch.__version__), torch_cuda_version=torch.version.cuda,
+        cudnn_version=torch.backends.cudnn.version())
+    validate_source_forward_context(value)
+    return value
+
+
 class FrozenActorCapture:
     """Read actor.6's ACTUAL input/output during the one source inference call."""
     def __init__(self, policy):
@@ -643,11 +700,20 @@ def _native_main(extra, remaining):
         if reset_pending:
             raise ValueError('No actual reference reset/history-clear evidence')
         recording = True
+        inference_context = None
         with torch.no_grad():
             for tick in range(contract['expected_ticks']):
                 full = cpu(obs)
                 command = cpu(env.commands)
+                actual_context = source_forward_context(policy, obs)
+                validate_source_forward_context(actual_context, native=True)
+                if inference_context is None:
+                    inference_context = actual_context
+                elif actual_context != inference_context:
+                    raise ValueError('Source numerical context changed during native collection')
                 actions, hidden = hook.inference(obs)
+                if source_forward_context(policy, obs) != actual_context:
+                    raise ValueError('Source numerical context changed during native forward')
                 pending = dict(full_obs=full, single_obs=full[:, -OBS:].copy(),
                     actor_hidden=cpu(hidden), raw_mu=cpu(actions), command=command,
                     tick=np.full(env.num_envs, tick, dtype=np.int64),
@@ -703,7 +769,8 @@ def _native_main(extra, remaining):
                 all12_initial_fields=list(INITIAL_FIELDS), actual_initial_full_obs=True),
             inference_capture=dict(actor_module='actor.6', hidden_dim=HIDDEN,
                 action_dim=ACTIONS, actual_forwards=hook.calls, extra_forward=False,
-                actual_output_exact=True, model_state_unchanged=True),
+                actual_output_exact=True, model_state_unchanged=True,
+                numerical_context=inference_context),
             history_proof=history_proof, fingerprints=fingerprints, deduplication=dedupe,
             episodes=episodes, fit_eligible=eligible,
             capture='all first-episode valid prefixes including failing tick before native reset; invalid tails retained',

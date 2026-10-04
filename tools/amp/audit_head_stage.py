@@ -34,7 +34,8 @@ from humanoid.amp.native_hardware import validate_hardware_record
 from humanoid.amp.scaled_experiment import ScaledExperiment, implementation_fingerprint
 from humanoid.scripts.collect_amp_head_cohort import (
     BUDGETS, SEEDS, SOURCE_ENDPOINT_SHA, INITIAL_FIELDS, PHYSICS_FIELDS,
-    _read_bundle, registered_source_exclusions, validate_source_runtime)
+    _read_bundle, registered_source_exclusions, validate_source_runtime,
+    validate_source_forward_context)
 from humanoid.scripts.record_amp_head_policy import (
     audit_rollout_arrays, initial_source_matches, recorder_contract)
 from humanoid.scripts.run_amp_head_smooth import SMOKE_SCHEMA
@@ -489,10 +490,10 @@ def audit_policy_rollout(path, reference, *, mode, identity, binding, commit,
                     're-forward every closed-loop policy mean or prove dynamics/hardware quality.')
 
 
-def _parity_record(value, arrays):
+def _parity_record(value, arrays, capture, hardware):
     required = ('full_obs_verified', 'hidden_verified', 'action_verified', 'max_abs_error',
                 'max_hidden_error', 'max_raw_mu_error', 'actual_rows', 'forward_batches',
-                'policy_unchanged', 'observations')
+                'policy_unchanged', 'observations', 'batch_size', 'numerical_context')
     require(type(value) is dict and set(value) == set(required), 'missing native source parity fields')
     for key in ('full_obs_verified', 'hidden_verified', 'action_verified', 'policy_unchanged'):
         require(value[key] is True, 'native source parity flag is not true')
@@ -501,11 +502,25 @@ def _parity_record(value, arrays):
                 0 <= value[key] < .001, 'native source parity error exceeds bound')
     require(value['max_abs_error'] == max(value['max_hidden_error'], value['max_raw_mu_error']),
             'native source parity error arithmetic mismatch')
-    rows = int(np.prod(arrays['reference_full_obs'].shape[:2]))
+    ticks, count = arrays['reference_full_obs'].shape[:2]
+    rows = int(ticks*count)
     require(type(value['actual_rows']) is int and value['actual_rows'] == rows and
-            type(value['forward_batches']) is int and value['forward_batches'] == (rows+255)//256 and
+            type(value['batch_size']) is int and value['batch_size'] == count and
+            type(value['forward_batches']) is int and value['forward_batches'] == ticks and
             value['observations'] == 'actual archived 66x47 native inputs, not reconstructed',
             'native source parity row/batch protocol mismatch')
+    require(type(capture) is dict, 'missing native collector inference capture')
+    context = capture.get('numerical_context')
+    require(validate_source_forward_context(context, native=True) is True,
+            'invalid native collector numerical context')
+    require(validate_source_forward_context(value['numerical_context'], native=True) is True,
+            'invalid native parity numerical context')
+    _same(capture, dict(actor_module='actor.6', hidden_dim=128, action_dim=12,
+        actual_forwards=int(ticks), extra_forward=False, actual_output_exact=True,
+        model_state_unchanged=True, numerical_context=context), 'native one-forward capture')
+    _same(value['numerical_context'], context, 'native collector/parity numerical context')
+    for key in ('torch_version', 'torch_cuda_version'):
+        _same(context[key], hardware[key], 'native numerical context/hardware '+key)
 
 
 def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report,
@@ -618,10 +633,14 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
             exclusions=exclusions, source_manifest=source_manifest)
         require(audit['smoke_eligible' if mode == 'smoke' else 'fit_eligible'],
                 'incomplete/failed/duplicate actual '+split+' cohort')
-        _parity_record(actual['source_parity'][split], data)
+        _parity_record(actual['source_parity'][split], data,
+                       manifest.get('inference_capture'), hardware)
         parities[split] = forward_parity(policy, data,
             action_clip=manifest['environment']['normalization']['clip_actions'],
+            batch_size=count,
             expected_model_fingerprint=binding['model_state_sha256'])
+        require(parities[split]['numerical_context']['device_type'] == 'cpu',
+                'independent source re-forward is not the CPU audit path')
         exclusion_add_cohort(exclusions, audit)
         manifests[split], arrays[split], audits[split] = manifest, data, audit
     artifact = torch.load(io.BytesIO(paths['head'].read_bytes()), weights_only=True, map_location='cpu')
@@ -719,7 +738,10 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         audits['sealed'] = sealed_audit['cohort_inputs']['audits']['sealed']
         parities['sealed'] = forward_parity(policy, data,
             action_clip=manifest['environment']['normalization']['clip_actions'],
+            batch_size=data['reference_full_obs'].shape[1],
             expected_model_fingerprint=binding['model_state_sha256'])
+        require(parities['sealed']['numerical_context']['device_type'] == 'cpu',
+                'independent sealed source re-forward is not the CPU audit path')
         if experiment is not None:
             from humanoid.amp.recovery import foot_collision_vertices
             from tools.amp.audit_physics_diagnostic import fast_geometry
@@ -757,6 +779,9 @@ def audit_head_stage(*, mode, source_checkpoint, train, validation, head, report
         cohorts={split: dict(episodes=audits[split]['episodes'], history=audits[split]['history'],
             deduplication=audits[split]['deduplication']) for split in audits},
         native_recorded_source_parity=actual['source_parity'], recomputed_cpu_source_parity=parities,
+        native_numerical_context_verified=True,
+        cpu_forward_scope='Same per-tick cohort batch, but independently recorded CPU device/library '
+            'context. CPU error below .001 neither reproduces nor certifies GPU numerical execution.',
         exported_float32_report=exported, recorded_float64_solver_admitted=fitted['admitted'],
         offline_admitted=admitted, formal_admission=False, solver_runs=1, auditor_solver_runs=0,
         logs=logs, logs_clean=logs['logs_clean'], effectiveness_verified=False, dr_unlocked=False,

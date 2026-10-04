@@ -12,7 +12,8 @@ import torch
 from humanoid.scripts.collect_amp_head_cohort import (
     SCHEMA, SOURCE_SHA, SOURCE_MODEL_SHA, SOURCE_ENDPOINT_SHA, BUDGETS,
     SEEDS, FrozenActorCapture, audit_arrays, cohort_contract,
-    fingerprint_cohort, validate_initialization_proof, validate_source_runtime)
+    fingerprint_cohort, validate_initialization_proof, validate_source_runtime,
+    source_forward_context, validate_source_forward_context)
 from .head_smoothing import Episode
 from .learnability import assert_no_domain_randomization
 from .mu_temporal import state_fingerprint
@@ -79,7 +80,8 @@ def audit_cohort(manifest, arrays, *, split, mode, identity, code_commit,
 
 
 def forward_parity(policy, arrays, *, action_clip, batch_size=256,
-                   expected_model_fingerprint=SOURCE_MODEL_SHA):
+                   expected_model_fingerprint=SOURCE_MODEL_SHA,
+                   expected_numerical_context=None):
     """Verify EVERY stored actual observation against the original frozen actor.
 
 The hook observes one ordinary deterministic act_inference call per batch. It
@@ -90,6 +92,8 @@ second, independent read-only forward audits its exported rows.
     if (type(batch_size) is not int or batch_size < 1 or isinstance(action_clip, bool)
             or not np.isfinite(action_clip) or action_clip <= 0):
         raise ValueError('Invalid source parity bounds')
+    if expected_numerical_context is not None:
+        validate_source_forward_context(expected_numerical_context)
     before = state_fingerprint(policy.state_dict())
     if before != expected_model_fingerprint or policy.training:
         raise ValueError('Parity requires the frozen source in inference mode')
@@ -113,28 +117,54 @@ second, independent read-only forward audits its exported rows.
         raise ValueError('Actual applied native action is not the clipped recorded mean')
     device = next(policy.parameters()).device
     max_hidden, max_mu = 0., 0.
+    hidden_location = mu_location = [0, 0, 0]
+    numerical_context = None
     hook = FrozenActorCapture(policy)
     try:
         with torch.no_grad():
             for start in range(0, len(full), batch_size):
                 end = min(start+batch_size, len(full))
                 observation = torch.from_numpy(full[start:end].copy()).to(device)
+                actual_context = source_forward_context(policy, observation)
+                if numerical_context is None:
+                    numerical_context = actual_context
+                if (actual_context != numerical_context or
+                        (expected_numerical_context is not None and
+                         actual_context != expected_numerical_context)):
+                    raise ValueError('Source forward numerical context mismatch: '+json.dumps(dict(
+                        actual=actual_context, expected=expected_numerical_context,
+                        batch_size=batch_size), sort_keys=True, allow_nan=False))
                 actual_mu, actual_hidden = hook.inference(observation)
-                max_hidden = max(max_hidden, float(np.max(np.abs(
-                    actual_hidden.cpu().numpy()-hidden[start:end]))))
-                max_mu = max(max_mu, float(np.max(np.abs(
-                    actual_mu.cpu().numpy()-mu[start:end]))))
+                if source_forward_context(policy, observation) != actual_context:
+                    raise ValueError('Source numerical context changed during parity forward')
+                hidden_error = np.abs(actual_hidden.cpu().numpy()-hidden[start:end])
+                mu_error = np.abs(actual_mu.cpu().numpy()-mu[start:end])
+                for values, role in ((hidden_error, 'hidden'), (mu_error, 'mu')):
+                    row, component = np.unravel_index(np.argmax(values), values.shape)
+                    peak = float(values[row, component])
+                    location = [(start+int(row))//leading[1],
+                                (start+int(row)) % leading[1], int(component)]
+                    if role == 'hidden' and peak > max_hidden:
+                        max_hidden, hidden_location = peak, location
+                    if role == 'mu' and peak > max_mu:
+                        max_mu, mu_location = peak, location
     finally:
         hook.close()
     if state_fingerprint(policy.state_dict()) != before:
         raise ValueError('Read-only source forward changed the policy')
     error = max(max_hidden, max_mu)
     if not error < .001:
-        raise ValueError('Source full-input/hidden/action forward parity failed')
+        raise ValueError('Source full-input/hidden/action forward parity failed: '+json.dumps(dict(
+            max_hidden_error=max_hidden, max_raw_mu_error=max_mu,
+            hidden_argmax_tick_env_component=hidden_location,
+            raw_mu_argmax_tick_env_component=mu_location, bound=.001,
+            actual_rows=len(full), batch_size=batch_size,
+            numerical_context=numerical_context), sort_keys=True, allow_nan=False))
     return dict(full_obs_verified=True, hidden_verified=True, action_verified=True,
                 max_abs_error=error, max_hidden_error=max_hidden,
                 max_raw_mu_error=max_mu, actual_rows=len(full),
                 forward_batches=hook.calls, policy_unchanged=True,
+                batch_size=batch_size, numerical_context=numerical_context,
                 observations='actual archived 66x47 native inputs, not reconstructed')
 
 

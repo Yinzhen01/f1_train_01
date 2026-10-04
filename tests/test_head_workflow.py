@@ -8,8 +8,10 @@ import contextlib
 import copy
 import importlib.util
 import io
+import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -332,6 +334,50 @@ class CohortWorkflowAdmissionTests(unittest.TestCase):
 
 
 class ActualArchitectureForwardParityTests(unittest.TestCase):
+    def test_actual_readonly_numerical_context_matches_and_typed_mismatch_is_rejected(self):
+        policy, arrays, clip, fingerprint = self.fixture()
+        first = self.parity(policy, arrays, clip, fingerprint)
+        self.assertEqual(first['batch_size'], 3)
+        self.assertEqual(first['numerical_context']['device_type'], 'cpu')
+        matched = self.parity(policy, arrays, clip, fingerprint,
+            expected_numerical_context=first['numerical_context'])
+        self.assertLess(matched['max_abs_error'], .001)
+        mismatch = dict(first['numerical_context'])
+        mismatch['cudnn_deterministic'] = not mismatch['cudnn_deterministic']
+        with self.assertRaisesRegex(ValueError, 'numerical context mismatch'):
+            self.parity(policy, arrays, clip, fingerprint, expected_numerical_context=mismatch)
+        mismatch['cudnn_deterministic'] = 1
+        with self.assertRaisesRegex(ValueError, 'context type'):
+            self.parity(policy, arrays, clip, fingerprint, expected_numerical_context=mismatch)
+        self.assertFalse(policy.actor[6]._forward_pre_hooks)
+        self.assertFalse(policy.actor[6]._forward_hooks)
+
+    def test_failure_reports_all_row_peak_locations_without_widening_threshold(self):
+        policy, arrays, clip, fingerprint = self.fixture()
+        arrays['reference_actor_hidden'][3, 1, 100] += .1
+        with self.assertRaisesRegex(ValueError, 'forward parity failed:') as caught:
+            self.parity(policy, arrays, clip, fingerprint)
+        details = json.loads(str(caught.exception).split('failed: ', 1)[1])
+        self.assertEqual(details['hidden_argmax_tick_env_component'], [3, 1, 100])
+        self.assertGreater(details['max_hidden_error'], .09)
+        self.assertEqual(details['bound'], .001)
+        self.assertEqual(details['actual_rows'], 8)
+        self.assertEqual(details['batch_size'], 3)
+        self.assertEqual(details['numerical_context']['device_type'], 'cpu')
+        self.assertEqual(state_fingerprint(policy.state_dict()), fingerprint)
+
+    def test_numerical_context_change_inside_forward_fails_and_removes_hooks(self):
+        policy, arrays, clip, fingerprint = self.fixture()
+        first = self.parity(policy, arrays, clip, fingerprint)['numerical_context']
+        changed = dict(first, cudnn_deterministic=not first['cudnn_deterministic'])
+        with patch('humanoid.amp.head_workflow.source_forward_context',
+                   side_effect=[first, changed]), self.assertRaisesRegex(
+                       ValueError, 'changed during parity forward'):
+            self.parity(policy, arrays, clip, fingerprint)
+        self.assertEqual(state_fingerprint(policy.state_dict()), fingerprint)
+        self.assertFalse(policy.actor[6]._forward_pre_hooks)
+        self.assertFalse(policy.actor[6]._forward_hooks)
+
     @classmethod
     def setUpClass(cls):
         spec = importlib.util.spec_from_file_location('synthetic_workflow_actor',

@@ -75,7 +75,7 @@ def probe(path, name, mutation):
         'humanoid.envs.base': '',
         'humanoid.envs.base.legged_robot_config': "class LeggedRobotCfg: pass\nevent('config-ready')\n",
         'humanoid.utils': "event('utils-enter')\nfrom .helpers import class_to_dict, get_args\nfrom .task_registry import task_registry\nevent('utils-ready')\n",
-        'humanoid.utils.helpers': "class_to_dict=object()\nget_args=object()\nevent('helpers-ready')\n",
+        'humanoid.utils.helpers': "class_to_dict=object()\nget_args=object()\nset_seed=object()\nevent('helpers-ready')\n",
         'humanoid.utils.task_registry': "event('registry-enter')\nfrom humanoid.envs.base.legged_robot_config import LeggedRobotCfg\ntask_registry=object()\nevent('registry-ready')\n",
     })
     # From-import of gymapi invokes a real submodule load, not a preset object.

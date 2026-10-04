@@ -250,6 +250,24 @@ class NativeRecorderRequestTests(unittest.TestCase):
 
 
 class DriverGuardStructureTests(unittest.TestCase):
+    def test_parent_matches_source_seed_backend_before_policy_and_native_batch_context(self):
+        body = main_node().body
+        seed = next(i for i, node in enumerate(body) if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == 'set_seed')
+        policy = next(i for i, node in enumerate(body) if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == 'policy' for target in node.targets))
+        self.assertLess(seed, policy)
+        self.assertEqual(ast.dump(body[seed].value),
+                         ast.dump(ast.parse("set_seed(SEEDS['train'])", mode='eval').body))
+        parity = next(node for node in ast.walk(main_node()) if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name) and node.func.id == 'forward_parity')
+        arguments = {kw.arg: ast.dump(kw.value) for kw in parity.keywords}
+        self.assertEqual(arguments['batch_size'], ast.dump(ast.parse('num_envs', mode='eval').body))
+        self.assertEqual(arguments['expected_numerical_context'],
+                         ast.dump(ast.parse("manifest['inference_capture']['numerical_context']",
+                                            mode='eval').body))
+
     def test_isaacgym_precedes_all_torch_imports_and_module_import_has_no_native_side_effects(self):
         body = main_node().body
         imports = [node for node in body if isinstance(node, (ast.Import, ast.ImportFrom))]

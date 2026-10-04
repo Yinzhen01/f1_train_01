@@ -20,6 +20,7 @@ from test_head_sealed_recorder import (
     COMMIT, IMPLEMENTATION, IDENTITY, HEAD_SHA, CANDIDATE_SHA,
     arm_fixture, input_fixture, source_runtime_fixture)
 from test_head_workflow import native_sim_fixture
+from test_head_stage_audit import synthetic_native_context
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,7 +86,7 @@ def fixture():
         arrays['reference_physics_valid'][3:] = True
         item['manifest']['inference_capture'] = dict(actor_module='actor.6', hidden_dim=128,
             action_dim=12, actual_forwards=frames, extra_forward=False, actual_output_exact=True,
-            model_state_unchanged=True)
+            model_state_unchanged=True, numerical_context=synthetic_native_context())
         exclusion_add_cohort(index, dict(fingerprints=fingerprints))
         earlier.append(dict(sha256=item['sha256'], split=role, seed=item['manifest']['seed'],
             num_envs=8, duration_s=20., episode_ids=item['manifest']['episode_ids']))
@@ -159,6 +160,11 @@ class SealedArtifactAuditTests(unittest.TestCase):
         self.assertTrue(result['all_eight_retained'])
         self.assertFalse(result['effectiveness_verified'])
         self.assertFalse(result['dr_unlocked'])
+        self.assertEqual(set(result['source_cohort_numerical_contexts']),
+                         {'train', 'validation', 'sealed'})
+        for context in result['source_cohort_numerical_contexts'].values():
+            self.assertEqual(context, synthetic_native_context())
+        self.assertIn('standalone helper does not authenticate hardware', result['source_context_scope'])
         for arm in ('source', 'candidate'):
             rows = result['arms'][arm]['actual_arm']['episodes']['reference']
             self.assertEqual(len(rows), 8)
@@ -233,6 +239,22 @@ class SealedArtifactAuditTests(unittest.TestCase):
             arrays[key][40].reshape(-1)[0] += 1
             with self.subTest(key=key), self.assertRaises(ValueError):
                 sealed_audit.audit_sealed_artifacts(self.manifest, arrays, **self.options)
+
+    def test_source_cohort_native_context_required_typed_and_all_splits_exact(self):
+        cases = [('missing', None), ('device_type', 'cpu'), ('cudnn_enabled', 1),
+            ('cuda_matmul_allow_tf32', True), ('torch_cuda_version', '12.2'),
+            ('capture_extra', True)]
+        for field, value in cases:
+            options = dict(self.options)
+            options['cohorts'] = {role: dict(item) for role, item in options['cohorts'].items()}
+            item = options['cohorts']['sealed']
+            item['manifest'] = copy.deepcopy(item['manifest'])
+            capture = item['manifest']['inference_capture']
+            if field == 'missing': capture.pop('numerical_context')
+            elif field == 'capture_extra': capture['unregistered'] = value
+            else: capture['numerical_context'][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                sealed_audit.audit_sealed_artifacts(self.manifest, self.arrays, **options)
 
     def test_duplicate_files_metadata_boolean_and_dr_cannot_bypass(self):
         for mutation in ('head_smoke', 'same_cohort', 'pair_effect', 'dr', 'pid_bool', 'same_arm_sha'):
